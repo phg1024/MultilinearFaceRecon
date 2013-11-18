@@ -53,6 +53,9 @@
     <ClCompile Include="BlendShapeViewer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="MultilinearReconstructor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="multilinearfacerecon.h">
@@ -70,6 +73,9 @@
       <Filter>Generated Files</Filter>
     </ClInclude>
     <ClInclude Include="BlendShapeViewer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MultilinearReconstructor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

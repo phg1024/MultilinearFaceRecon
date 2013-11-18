@@ -37,7 +37,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
-    <PlatformToolset>v110</PlatformToolset>
+    <PlatformToolset>v120_CTP_Nov2012</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -64,14 +64,16 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
-    <IncludePath>C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\include;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\include;C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\include;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\lib;C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\lib\Release\x64;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\lib\x64\Debug;$(LibraryPath)</LibraryPath>
+    <IncludePath>C:\Users\PhG\Desktop\Code\Libraries\armadillo-3.920.2\include;C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\include;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\include;C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Users\PhG\Desktop\Code\Libraries\BLAS_LAPACK;C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\lib;C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\lib\Release\x64;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\lib\x64\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IncludePath>C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\include;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\include;C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\include;C:\Users\PhG\Desktop\Code\Libraries\armadillo-3.920.2\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\lib;C:\Users\PhG\Desktop\Code\Libraries\BLAS_LAPACK;C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\lib;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\lib\x64\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -104,7 +106,7 @@
       <OutputFile>$(OutDir)\$(ProjectName).exe</OutputFile>
       <AdditionalLibraryDirectories>$(QTDIR)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>PhGUtilsd.lib;qtmaind.lib;Qt5Cored.lib;Qt5Guid.lib;Qt5OpenGLd.lib;opengl32.lib;glu32.lib;Qt5Widgetsd.lib;Qt5Xmld.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>blas_win64_MTd.lib;lapack_win64_MTd.lib;PhGUtilsd.lib;qtmaind.lib;Qt5Cored.lib;Qt5Guid.lib;Qt5OpenGLd.lib;opengl32.lib;glu32.lib;Qt5Widgetsd.lib;Qt5Xmld.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -136,7 +138,7 @@
       <OutputFile>$(OutDir)\$(ProjectName).exe</OutputFile>
       <AdditionalLibraryDirectories>$(QTDIR)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>false</GenerateDebugInformation>
-      <AdditionalDependencies>qtmain.lib;Qt5Core.lib;Qt5Gui.lib;Qt5OpenGL.lib;opengl32.lib;glu32.lib;Qt5Widgets.lib;Qt5Xml.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>blas_win64_MT.lib;lapack_win64_MT.lib;PhGUtils.lib;qtmain.lib;Qt5Core.lib;Qt5Gui.lib;Qt5OpenGL.lib;opengl32.lib;glu32.lib;Qt5Widgets.lib;Qt5Xml.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -161,6 +163,7 @@
     </ClCompile>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="multilinearfacerecon.cpp" />
+    <ClCompile Include="MultilinearReconstructor.cpp" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="multilinearfacerecon.h">
@@ -205,6 +208,7 @@
   <ItemGroup>
     <ClInclude Include="BlendShapeViewer.h" />
     <ClInclude Include="GeneratedFiles\ui_multilinearfacerecon.h" />
+    <ClInclude Include="MultilinearReconstructor.h" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="multilinearfacerecon.qrc">

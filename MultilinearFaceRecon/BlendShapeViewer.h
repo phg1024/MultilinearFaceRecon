@@ -3,6 +3,7 @@
 #include "OpenGL/gl3dcanvas.h"
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
+#include "MultilinearReconstructor.h"
 
 class BlendShapeViewer : GL3DCanvas
 {
@@ -15,7 +16,13 @@ protected:
 	virtual void paintGL();
 	virtual void resizeGL(int w, int h);
 
+	void drawLandmarks();
+
+private:
+	bool loadLandmarks();
+
 private:
 	QuadMesh mesh;
+	vector<int> landmarks;
+	MultilinearReconstructor recon;
 };
-
