@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QApplication>
+
 #include "Math/Tensor.hpp"
 #include "Geometry/point.hpp"
 #include "Geometry/matrix.hpp"
@@ -7,8 +9,9 @@
 #include <armadillo>
 using namespace arma;
 
-class MultilinearReconstructor
+class MultilinearReconstructor : public QObject
 {
+	Q_OBJECT
 public:
 	MultilinearReconstructor(void);
 	~MultilinearReconstructor(void);
@@ -21,13 +24,12 @@ public:
 		return tmesh;
 	}
 
-	void bindTarget(const vector<pair<Point3f, int>>& pts) {
-		targets = pts;
-
-		updateComputationTensor();
-	}
+	void bindTarget(const vector<pair<Point3f, int>>& pts);
 
 	void fit();
+
+signals:
+	void oneiter();
 
 private:
 	void loadCoreTensor();
@@ -36,15 +38,21 @@ private:
 	void initializeWeights();
 
 	void updateComputationTensor();
+	void updateTM0C();
+	void updateTM1C();
+	void updateTMC();
 
 private:
 	friend void evalCost(float *p, float *hx, int m, int n, void* adata);
+	friend void evalCost2(float *p, float *hx, int m, int n, void* adata);
+	friend void evalCost3(float *p, float *hx, int m, int n, void* adata);
 
 	void transformMesh();
+	void computeError();
 
-	void fitRigidTransformation();
-	void fitIdentityWeights();
-	void fitExpressionWeights();
+	bool fitRigidTransformation(float cc = 1e-4);
+	bool fitIdentityWeights(float cc = 1e-4);
+	bool fitExpressionWeights(float cc = 1e-4);
 
 private:
 	// the input core tensor
@@ -58,6 +66,7 @@ private:
 		
 	// the tensor after mode product, after truncation
 	Tensor2<float> tm0c, tm1c;
+	Tensor1<float> tmc;
 	
 	Tensor1<float> q;			// target point coordinates
 
@@ -69,6 +78,8 @@ private:
 	
 	fmat R;
 	fvec T;
+	Matrix3x3f Rmat;
+	Point3f Tvec;
 
 	// weights
 	Tensor1<float> Wid, Wexp;

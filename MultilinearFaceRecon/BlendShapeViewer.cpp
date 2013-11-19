@@ -14,6 +14,8 @@ BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	loadLandmarks();
 
 	updateMeshWithReconstructor();
+
+	connect(&recon, SIGNAL(oneiter()), this, SLOT(updateMeshWithReconstructor()));
 }
 
 
@@ -75,6 +77,7 @@ void BlendShapeViewer::drawLandmarks()
 
 void BlendShapeViewer::updateMeshWithReconstructor()
 {
+	cout << "updating mesh with recon ..." << endl;
 	// set the vertices of mesh with the template mesh in the reconstructor
 	const Tensor1<float>& tplt = recon.currentMesh();
 	for(int i=0,idx=0;i<tplt.length()/3;i++) {
@@ -82,6 +85,7 @@ void BlendShapeViewer::updateMeshWithReconstructor()
 		mesh.vertex(i).y = tplt(idx++);
 		mesh.vertex(i).z = tplt(idx++);
 	}
+	update();
 }
 
 void BlendShapeViewer::bindTargetMesh( const string& filename )
@@ -104,6 +108,15 @@ void BlendShapeViewer::bindTargetMesh( const string& filename )
 void BlendShapeViewer::fit()
 {
 	recon.fit();
-	updateMeshWithReconstructor();
-	update();
+}
+
+void BlendShapeViewer::keyPressEvent( QKeyEvent *e )
+{
+	switch( e->key() ) {
+	case Qt::Key_Space:
+		{
+			fit();
+			break;
+		}
+	}
 }

@@ -34,7 +34,6 @@ void MultilinearReconstructor::createTemplateItem()
 {
 	message("creating template face ...");
 	tplt = tm1.modeProduct(Wid, 0);
-
 	tmesh = tplt;
 	message("done.");
 }
@@ -63,10 +62,15 @@ void MultilinearReconstructor::initializeWeights()
 
 void MultilinearReconstructor::updateComputationTensor()
 {
+	updateTM0C();
+	updateTM1C();
+	updateTMC();
+}
+
+void MultilinearReconstructor::updateTM0C() {
+	// update tm0c
 	int npts = targets.size();
-
 	tm0c.resize(tm0.dim(0), npts * 3);
-
 	for(int i=0;i<tm0.dim(0);i++) {
 		for(int j=0, idx=0;j<npts;j++, idx+=3) {
 			int vidx = targets[j].second * 3;
@@ -75,6 +79,11 @@ void MultilinearReconstructor::updateComputationTensor()
 			tm0c(i, idx+2) = tm0(i, vidx+2);
 		}
 	}
+}
+
+void MultilinearReconstructor::updateTM1C() {
+	// update tm1c
+	int npts = targets.size();
 
 	tm1c.resize(tm1.dim(0), npts * 3);
 	for(int i=0;i<tm1.dim(0);i++) {
@@ -85,23 +94,43 @@ void MultilinearReconstructor::updateComputationTensor()
 			tm1c(i, idx+2) = tm1(i, vidx+2);
 		}
 	}
+}
 
-	q.resize(npts*3);
+void MultilinearReconstructor::updateTMC() {
+	// update tmc
+	int npts = targets.size();
 
-	for(int i=0, idx=0;i<npts;i++, idx+=3) {
-		int vidx = targets[i].second;
-		const Point3f& p = targets[i].first;	
-		q(idx) = p.x;
-		q(idx+1) = p.y;
-		q(idx+2) = p.z;
+	tmc.resize(npts * 3);
+	for(int i=0;i<tmc.length();i++) {
+		float val = 0;
+		for(int j=0;j<tm1c.dim(0);j++) {
+			val += tm1c(j, i) * Wid(j);
+		}
+		tmc(i) = val;
 	}
 }
 
 void MultilinearReconstructor::fit()
 {
-	fitRigidTransformation();
-	fitIdentityWeights();
-	fitExpressionWeights();	
+	const int MAXITERS = 1;
+	int iters = 0;
+	bool converged = false;
+	converged &= fitRigidTransformation();
+	while( !converged && iters++ < MAXITERS ) {
+		converged = true;		
+		converged &= fitIdentityWeights();
+		converged &= fitExpressionWeights();	
+
+		tplt = tm1.modeProduct(Wid, 0);
+		transformMesh();
+
+		computeError();
+		emit oneiter();
+		QApplication::processEvents();
+
+		//system("pause");
+	}
+	cout << "Total iterations = " << iters << endl;
 }
 
 void evalCost(float *p, float *hx, int m, int n, void* adata) {
@@ -112,16 +141,14 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 
 	auto targets = recon->targets;
 	int npts = targets.size();
-	auto tmesh = recon->tmesh;
+	auto tmc = recon->tmc;
 
 	// set up rotation matrix and translation vector
 	Point3f T(tx, ty, tz);
 	Matrix3x3f R = rotationMatrix(rx, ry, rz) * s;
 
-	float cost = 0;
-	for(int i=0;i<npts;i++) {
-		int vidx = targets[i].second * 3;
-		Point3f p(tmesh(vidx),	tmesh(vidx+1), tmesh(vidx+2));
+	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
+		Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
 		const Point3f& q = targets[i].first;
 
 		Point3f pp = R * p + T;
@@ -130,46 +157,166 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
-void MultilinearReconstructor::fitRigidTransformation()
+bool MultilinearReconstructor::fitRigidTransformation(float cc)
 {
 	float params[7] = {1.0, 0, 0, 0, 0, 0, 0};		/* scale, rx, ry, rz, tx, ty, tz */	
+	updateTMC();
+
 	int npts = targets.size();
 	vector<float> meas(npts);
-	int iters = slevmar_dif(evalCost, params, &meas[0], 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	int iters = slevmar_dif(evalCost, params, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
 	cout << "finished in " << iters << " iterations." << endl;
 
+	float diff = 0;
 	// set up the matrix and translation vector
-	Matrix3x3f Rmat = rotationMatrix(params[1], params[2], params[3]) * params[0];
+	Rmat = rotationMatrix(params[1], params[2], params[3]) * params[0];
 	for(int i=0;i<3;i++) {
 		for(int j=0;j<3;j++) {
+			diff += fabs(Rmat(i, j) - R(i, j));
 			R(i, j) = Rmat(i, j);
 		}
 	}
+	Tvec = Point3f(params[4], params[5], params[6]);
+	
+	diff += fabs(Tvec.x - T(0));
+	diff += fabs(Tvec.y - T(1));
+	diff += fabs(Tvec.z - T(2));
+
 	T(0) = params[4], T(1) = params[5], T(2) = params[6];
-	cout << R << endl;
-	cout << T << endl;
+	//cout << R << endl;
+	//cout << T << endl;
 
-	transformMesh();
+	return (diff / 7.0 < cc);
 }
 
-void MultilinearReconstructor::fitIdentityWeights()
-{
+void evalCost2(float *p, float *hx, int m, int n, void* adata) {
+	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
 
+	float s, rx, ry, rz, tx, ty, tz;
+	s = p[0], rx = p[1], ry = p[2], rz = p[3], tx = p[4], ty = p[5], tz = p[6];
+
+	auto targets = recon->targets;
+	int npts = targets.size();
+	auto tm1c = recon->tm1c;
+
+	// set up rotation matrix and translation vector
+	const Point3f& T = recon->Tvec;
+	const Matrix3x3f& R = recon->Rmat;
+
+	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
+		float x = 0, y = 0, z = 0;
+		for(int j=0;j<m;j++) {
+			x += tm1c(j, vidx) * p[j];
+			y += tm1c(j, vidx+1) * p[j];
+			z += tm1c(j, vidx+2) * p[j];
+		}
+		Point3f p(x, y, z);
+		const Point3f& q = targets[i].first;
+
+		Point3f pp = R * p + T;
+
+		hx[i] = pp.distanceTo(q);
+	}
 }
 
-void MultilinearReconstructor::fitExpressionWeights()
+bool MultilinearReconstructor::fitIdentityWeights(float cc)
 {
+	int nparams = core.dim(0);
+	vector<float> params(nparams);
+	int npts = targets.size();
+	vector<float> meas(npts);
+	int iters = slevmar_dif(evalCost2, &(params[0]), &(meas[0]), nparams, npts, 1024, NULL, NULL, NULL, NULL, this);
+	cout << "finished in " << iters << " iterations." << endl;
 
+	float diff = 0;
+	for(int i=0;i<nparams;i++) {
+		diff += fabs(Wid(i) - params[i]);
+		Wid(i) = params[i];		
+		//cout << params[i] << ' ';
+	}
+	//cout << endl;
+
+	// update the mesh with identity weights
+	//tplt = tm1.modeProduct(Wid, 0);
+	//tmesh = tplt;
+	//transformMesh();
+
+	// also update the tensor after mode product
+	tm0 = core.modeProduct(Wid, 0);
+
+	updateTM0C();
+
+	return (diff / nparams < cc);
+}
+
+void evalCost3(float *p, float *hx, int m, int n, void* adata) {
+	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+
+	float s, rx, ry, rz, tx, ty, tz;
+	s = p[0], rx = p[1], ry = p[2], rz = p[3], tx = p[4], ty = p[5], tz = p[6];
+
+	auto targets = recon->targets;
+	int npts = targets.size();
+	auto tm0c = recon->tm0c;
+
+	// set up rotation matrix and translation vector
+	const Point3f& T = recon->Tvec;
+	const Matrix3x3f& R = recon->Rmat;
+
+	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
+		float x = 0, y = 0, z = 0;
+		for(int j=0;j<m;j++) {
+			x += tm0c(j, vidx) * p[j];
+			y += tm0c(j, vidx+1) * p[j];
+			z += tm0c(j, vidx+2) * p[j];
+		}
+		Point3f p(x, y, z);
+		const Point3f& q = targets[i].first;
+
+		Point3f pp = R * p + T;
+
+		hx[i] = pp.distanceTo(q);
+	}
+}
+
+bool MultilinearReconstructor::fitExpressionWeights(float cc)
+{
+	// fix both rotation and identity weights, solve for expression weights
+	int nparams = core.dim(1);
+	vector<float> params(nparams);
+	int npts = targets.size();
+	vector<float> meas(npts);
+	int iters = slevmar_dif(evalCost3, &(params[0]), &(meas[0]), nparams, npts, 1024, NULL, NULL, NULL, NULL, this);
+
+	cout << "finished in " << iters << " iterations." << endl;
+
+	float diff = 0;
+	for(int i=0;i<nparams;i++) {
+		diff += fabs(Wexp(i) - params[i]);
+		Wexp(i) = params[i];
+		//cout << params[i] << ' ';
+	}
+	//cout << endl;
+
+	// update the mesh with identity weights
+	//tplt = tm0.modeProduct(Wexp, 0);
+	//tmesh = tplt;
+
+	// also update the tensor after mode product
+	tm1 = core.modeProduct(Wexp, 1);
+	updateTM1C();
+
+	return (diff / nparams < cc);
 }
 
 void MultilinearReconstructor::transformMesh()
 {
-	int nverts = tmesh.length()/3;
+	int nverts = tplt.length()/3;
 	fmat pt(3, nverts);
 	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
-		pt(0, i) = tmesh(idx);
-		pt(1, i) = tmesh(idx+1);
-		pt(2, i) = tmesh(idx+2);
+		pt(0, i) = tplt(idx);
+		pt(1, i) = tplt(idx+1);
+		pt(2, i) = tplt(idx+2);
 	}
 
 	fmat pt_trans =  R * pt;
@@ -178,4 +325,35 @@ void MultilinearReconstructor::transformMesh()
 		tmesh(idx+1) = pt_trans(1, i) + T(1);
 		tmesh(idx+2) = pt_trans(2, i) + T(2);
 	}
+}
+
+void MultilinearReconstructor::bindTarget( const vector<pair<Point3f, int>>& pts )
+{
+	targets = pts;
+	int npts = targets.size();
+
+	// initialize q
+	q.resize(npts*3);
+	for(int i=0, idx=0;i<npts;i++, idx+=3) {
+		int vidx = targets[i].second;
+		const Point3f& p = targets[i].first;	
+		q(idx) = p.x;
+		q(idx+1) = p.y;
+		q(idx+2) = p.z;
+	}
+
+	updateComputationTensor();
+}
+
+void MultilinearReconstructor::computeError()
+{
+	int npts = targets.size();
+	float E = 0;
+	for(int i=0;i<npts;i++) {
+		int vidx = targets[i].second * 3;
+		Point3f p(tmesh(vidx), tmesh(vidx+1), tmesh(vidx+2));
+		E += p.squaredDistanceTo(targets[i].first);
+	}
+
+	debug("Error", E);
 }

@@ -7,6 +7,7 @@
 
 class BlendShapeViewer : GL3DCanvas
 {
+	Q_OBJECT
 public:
 	BlendShapeViewer(QWidget* parent);
 	~BlendShapeViewer(void);
@@ -19,10 +20,14 @@ protected:
 	virtual void paintGL();
 	virtual void resizeGL(int w, int h);
 
+	virtual void keyPressEvent(QKeyEvent *e);
+
 	void drawLandmarks();
 
 private:
 	bool loadLandmarks();
+
+private slots:
 	void updateMeshWithReconstructor();
 
 private:
