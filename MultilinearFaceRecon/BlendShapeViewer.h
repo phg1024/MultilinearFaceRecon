@@ -11,6 +11,8 @@ public:
 	BlendShapeViewer(QWidget* parent);
 	~BlendShapeViewer(void);
 
+	void bindTargetMesh(const string& filename);
+
 protected:
 	virtual void initializeGL();
 	virtual void paintGL();
@@ -20,9 +22,10 @@ protected:
 
 private:
 	bool loadLandmarks();
+	void updateMeshWithReconstructor();
 
 private:
-	QuadMesh mesh;
+	QuadMesh mesh, targetMesh;
 	vector<int> landmarks;
 	MultilinearReconstructor recon;
 };

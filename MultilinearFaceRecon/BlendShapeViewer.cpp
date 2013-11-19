@@ -9,20 +9,11 @@ BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	// load a dummy mesh
 	OBJLoader loader;
 	loader.load("../Data/shape_0.obj");
-
-	const vector<OBJLoader::face_t>& faces = loader.getFaces();
-	const vector<OBJLoader::vert_t>& verts = loader.getVerts();
 	mesh.initWithLoader( loader );
 
-	// set the vertices of mesh with the template mesh in the reconstructor
-	const Tensor1<float>& tplt = recon.templateMesh();
-	for(int i=0,idx=0;i<tplt.length()/3;i++) {
-		mesh.vertex(i).x = tplt(idx++);
-		mesh.vertex(i).y = tplt(idx++);
-		mesh.vertex(i).z = tplt(idx++);
-	}
-
 	loadLandmarks();
+
+	updateMeshWithReconstructor();
 }
 
 
@@ -77,4 +68,32 @@ void BlendShapeViewer::drawLandmarks()
 		glVertex3f(v.x, v.y, v.z);
 	});
 	glEnd();
+}
+
+void BlendShapeViewer::updateMeshWithReconstructor()
+{
+	// set the vertices of mesh with the template mesh in the reconstructor
+	const Tensor1<float>& tplt = recon.currentMesh();
+	for(int i=0,idx=0;i<tplt.length()/3;i++) {
+		mesh.vertex(i).x = tplt(idx++);
+		mesh.vertex(i).y = tplt(idx++);
+		mesh.vertex(i).z = tplt(idx++);
+	}
+}
+
+void BlendShapeViewer::bindTargetMesh( const string& filename )
+{
+	OBJLoader loader;
+	loader.load(filename);
+	targetMesh.initWithLoader( loader );
+
+	// generate target points 
+	vector<pair<Point3f, int>> pts;
+	for(int i=0;i<landmarks.size();i++) {
+		int vidx = landmarks[i];
+		const Point3f& vi = targetMesh.vertex(vidx);
+		pts.push_back(make_pair(vi, vidx));
+	}
+
+	recon.bindTarget(pts);
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Math/Tensor.hpp"
+#include "Geometry/point.hpp"
 
 class MultilinearReconstructor
 {
@@ -12,11 +13,23 @@ public:
 		return tplt;
 	}
 
+	const Tensor1<float>& currentMesh() const {
+		return tmesh;
+	}
+
+	void bindTarget(const vector<pair<Point3f, int>>& pts) {
+		targets = pts;
+
+		updateComputationTensor();
+	}
+
 private:
 	void loadCoreTensor();
 	void createTemplateItem();
 	void unfoldTensor();
 	void initializeWeights();
+
+	void updateComputationTensor();
 
 private:
 	// the input core tensor
@@ -25,10 +38,23 @@ private:
 	// the unfolded tensor
 	Tensor2<float> tu0, tu1;
 
+	// the tensor after mode product
+	Tensor2<float> tm0, tm1;
+
+	// the tensor after mode product, after truncation
+	Tensor2<float> tm0c, tm1c;
+	Tensor1<float> q;			// target point coordinates
+
 	// template face
 	Tensor1<float> tplt;
 
+	// fitted face
+	Tensor1<float> tmesh;
+
 	// weights
 	Tensor1<float> Wid, Wexp;
+
+	// target vertices
+	vector<pair<Point3f, int>> targets;
 };
 

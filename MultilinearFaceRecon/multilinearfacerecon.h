@@ -14,6 +14,9 @@ public:
 	MultilinearFaceRecon(QWidget *parent = 0);
 	~MultilinearFaceRecon();
 
+private slots:
+	void loadTargetMesh();
+
 private:
 	Ui::MultilinearFaceReconClass ui;
 

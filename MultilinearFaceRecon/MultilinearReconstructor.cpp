@@ -5,9 +5,9 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 {
 	loadCoreTensor();
 	unfoldTensor();
-	createTemplateItem();
-
 	initializeWeights();
+
+	createTemplateItem();
 }
 
 
@@ -30,25 +30,15 @@ void MultilinearReconstructor::unfoldTensor()
 void MultilinearReconstructor::createTemplateItem()
 {
 	message("creating template face ...");
-	// take the average of neutral face as the template
-	tplt.resize(core.dim(2));
+	tplt = tm1.modeProduct(Wid, 0);
 
-	for(int i=0;i<core.dim(0);i++) {
-		for(int j=0;j<tplt.length();j++) {		
-			tplt(j) += core(i, 0, j);
-		}
-	}
-
-	double invCount = 1.0 / core.dim(0);
-
-	for(int j=0;j<tplt.length();j++) {
-		tplt(j) *= invCount;
-	}
+	tmesh = tplt;
 	message("done.");
 }
 
 void MultilinearReconstructor::initializeWeights()
 {
+	message("initializing weights ...");
 	Wid.resize(core.dim(0));
 	Wexp.resize(core.dim(1));
 
@@ -62,4 +52,44 @@ void MultilinearReconstructor::initializeWeights()
 		Wexp(i) = 0;
 	}
 	Wexp(0) = 1.0;
+
+	tm0 = core.modeProduct(Wid, 0);
+	tm1 = core.modeProduct(Wexp, 1);
+	message("done.");
+}
+
+void MultilinearReconstructor::updateComputationTensor()
+{
+	int npts = targets.size();
+
+	tm0c.resize(tm0.dim(0), npts * 3);
+
+	for(int i=0;i<tm0.dim(0);i++) {
+		for(int j=0, idx=0;j<npts;j++, idx+=3) {
+			int vidx = targets[j].second * 3;
+			tm0c(i, idx) = tm0(i, vidx);
+			tm0c(i, idx+1) = tm0(i, vidx+1);
+			tm0c(i, idx+2) = tm0(i, vidx+2);
+		}
+	}
+
+	tm1c.resize(tm1.dim(0), npts * 3);
+	for(int i=0;i<tm1.dim(0);i++) {
+		for(int j=0, idx=0;j<npts;j++, idx+=3) {
+			int vidx = targets[j].second * 3;
+			tm1c(i, idx) = tm1(i, vidx);
+			tm1c(i, idx+1) = tm1(i, vidx+1);
+			tm1c(i, idx+2) = tm1(i, vidx+2);
+		}
+	}
+
+	q.resize(npts*3);
+
+	for(int i=0, idx=0;i<npts;i++, idx+=3) {
+		int vidx = targets[i].second;
+		const Point3f& p = targets[i].first;	
+		q(idx) = p.x;
+		q(idx+1) = p.y;
+		q(idx+2) = p.z;
+	}
 }
