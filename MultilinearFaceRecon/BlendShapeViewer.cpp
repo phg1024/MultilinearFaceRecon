@@ -4,7 +4,7 @@
 BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	GL3DCanvas(parent)
 {
-	this->setSceneScale(2.0);
+	this->setSceneScale(3.0);
 
 	// load a dummy mesh
 	OBJLoader loader;
@@ -34,6 +34,9 @@ void BlendShapeViewer::paintGL() {
 
 	glColor4f(0, 0.5, 1.0, 1.0);
 	mesh.drawFrame();
+
+	glColor4f(0, 0, 0, 0.25);
+	targetMesh.drawFrame();
 
 	drawLandmarks();
 }
@@ -96,4 +99,11 @@ void BlendShapeViewer::bindTargetMesh( const string& filename )
 	}
 
 	recon.bindTarget(pts);
+}
+
+void BlendShapeViewer::fit()
+{
+	recon.fit();
+	updateMeshWithReconstructor();
+	update();
 }

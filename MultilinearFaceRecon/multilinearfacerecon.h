@@ -16,6 +16,7 @@ public:
 
 private slots:
 	void loadTargetMesh();
+	void fit();
 
 private:
 	Ui::MultilinearFaceReconClass ui;

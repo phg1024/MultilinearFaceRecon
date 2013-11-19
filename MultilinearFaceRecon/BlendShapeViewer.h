@@ -12,6 +12,7 @@ public:
 	~BlendShapeViewer(void);
 
 	void bindTargetMesh(const string& filename);
+	void fit();
 
 protected:
 	virtual void initializeGL();

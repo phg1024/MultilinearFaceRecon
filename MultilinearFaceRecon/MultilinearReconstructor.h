@@ -2,6 +2,10 @@
 
 #include "Math/Tensor.hpp"
 #include "Geometry/point.hpp"
+#include "Geometry/matrix.hpp"
+#include "Geometry/geometryutils.hpp"
+#include <armadillo>
+using namespace arma;
 
 class MultilinearReconstructor
 {
@@ -23,6 +27,8 @@ public:
 		updateComputationTensor();
 	}
 
+	void fit();
+
 private:
 	void loadCoreTensor();
 	void createTemplateItem();
@@ -30,6 +36,15 @@ private:
 	void initializeWeights();
 
 	void updateComputationTensor();
+
+private:
+	friend void evalCost(float *p, float *hx, int m, int n, void* adata);
+
+	void transformMesh();
+
+	void fitRigidTransformation();
+	void fitIdentityWeights();
+	void fitExpressionWeights();
 
 private:
 	// the input core tensor
@@ -40,9 +55,10 @@ private:
 
 	// the tensor after mode product
 	Tensor2<float> tm0, tm1;
-
+		
 	// the tensor after mode product, after truncation
 	Tensor2<float> tm0c, tm1c;
+	
 	Tensor1<float> q;			// target point coordinates
 
 	// template face
@@ -50,6 +66,9 @@ private:
 
 	// fitted face
 	Tensor1<float> tmesh;
+	
+	fmat R;
+	fvec T;
 
 	// weights
 	Tensor1<float> Wid, Wexp;

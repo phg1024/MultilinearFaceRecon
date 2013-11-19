@@ -29,7 +29,14 @@
     </property>
     <addaction name="actionLoad_Target"/>
    </widget>
+   <widget class="QMenu" name="menuRun">
+    <property name="title">
+     <string>Run</string>
+    </property>
+    <addaction name="actionFit"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuRun"/>
   </widget>
   <widget class="QToolBar" name="mainToolBar">
    <attribute name="toolBarArea">
@@ -43,6 +50,11 @@
   <action name="actionLoad_Target">
    <property name="text">
     <string>Load Target</string>
+   </property>
+  </action>
+  <action name="actionFit">
+   <property name="text">
+    <string>Fit</string>
    </property>
   </action>
  </widget>
