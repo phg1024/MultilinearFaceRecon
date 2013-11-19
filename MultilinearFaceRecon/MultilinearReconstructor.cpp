@@ -112,15 +112,14 @@ void MultilinearReconstructor::updateTMC() {
 
 void MultilinearReconstructor::fit()
 {
-	const int MAXITERS = 1;
+	const int MAXITERS = 8;
 	int iters = 0;
 	bool converged = false;
-	converged &= fitRigidTransformation();
 	while( !converged && iters++ < MAXITERS ) {
 		converged = true;		
+		converged &= fitRigidTransformation();
 		converged &= fitIdentityWeights();
 		converged &= fitExpressionWeights();	
-
 		tplt = tm1.modeProduct(Wid, 0);
 		transformMesh();
 

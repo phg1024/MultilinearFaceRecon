@@ -11,6 +11,8 @@ BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	loader.load("../Data/shape_0.obj");
 	mesh.initWithLoader( loader );
 
+	targetSet = false;
+
 	loadLandmarks();
 
 	updateMeshWithReconstructor();
@@ -73,6 +75,17 @@ void BlendShapeViewer::drawLandmarks()
 		glVertex3f(v.x, v.y, v.z);
 	});
 	glEnd();
+
+	if( targetSet ) {
+		glPointSize(3.0);
+		glColor4f(0, 1, 0, 1);
+		glBegin(GL_POINTS);
+		for_each(landmarks.begin(), landmarks.end(), [&](int vidx){
+			const QuadMesh::vert_t& v = targetMesh.vertex(vidx);
+			glVertex3f(v.x, v.y, v.z);
+		});
+		glEnd();
+	}
 }
 
 void BlendShapeViewer::updateMeshWithReconstructor()
@@ -103,6 +116,7 @@ void BlendShapeViewer::bindTargetMesh( const string& filename )
 	}
 
 	recon.bindTarget(pts);
+	targetSet = true;
 }
 
 void BlendShapeViewer::fit()

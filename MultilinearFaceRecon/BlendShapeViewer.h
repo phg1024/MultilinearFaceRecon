@@ -31,6 +31,7 @@ private slots:
 	void updateMeshWithReconstructor();
 
 private:
+	bool targetSet;
 	QuadMesh mesh, targetMesh;
 	vector<int> landmarks;
 	MultilinearReconstructor recon;
