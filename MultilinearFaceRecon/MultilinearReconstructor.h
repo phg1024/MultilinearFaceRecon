@@ -48,7 +48,7 @@ private:
 	friend void evalCost3(float *p, float *hx, int m, int n, void* adata);
 
 	void transformMesh();
-	void computeError();
+	float computeError();
 
 	bool fitRigidTransformation(float cc = 1e-4);
 	bool fitIdentityWeights(float cc = 1e-4);

@@ -1,6 +1,10 @@
 #include "MultilinearReconstructor.h"
 #include "Utils/utility.hpp"
 #include "levmar.h"
+#include "Math/DenseVector.hpp"
+#include "Math/DenseMatrix.hpp"
+#include "Math/denseblas.h"
+#define USELEVMAR4WEIGHTS 0
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {
@@ -112,18 +116,18 @@ void MultilinearReconstructor::updateTMC() {
 
 void MultilinearReconstructor::fit()
 {
-	const int MAXITERS = 8;
+	const int MAXITERS = 16;
 	int iters = 0;
 	bool converged = false;
 	while( !converged && iters++ < MAXITERS ) {
-		converged = true;		
-		converged &= fitRigidTransformation();
-		converged &= fitIdentityWeights();
-		converged &= fitExpressionWeights();	
+		//converged = true;		
+		fitRigidTransformation();
+		fitIdentityWeights();
+		fitExpressionWeights();	
 		tplt = tm1.modeProduct(Wid, 0);
 		transformMesh();
 
-		computeError();
+		converged = computeError() < 1e-3;
 		emit oneiter();
 		QApplication::processEvents();
 
@@ -169,12 +173,14 @@ bool MultilinearReconstructor::fitRigidTransformation(float cc)
 	float diff = 0;
 	// set up the matrix and translation vector
 	Rmat = rotationMatrix(params[1], params[2], params[3]) * params[0];
+
 	for(int i=0;i<3;i++) {
 		for(int j=0;j<3;j++) {
 			diff += fabs(Rmat(i, j) - R(i, j));
 			R(i, j) = Rmat(i, j);
 		}
 	}
+
 	Tvec = Point3f(params[4], params[5], params[6]);
 	
 	diff += fabs(Tvec.x - T(0));
@@ -220,6 +226,7 @@ void evalCost2(float *p, float *hx, int m, int n, void* adata) {
 
 bool MultilinearReconstructor::fitIdentityWeights(float cc)
 {
+#if USELEVMAR4WEIGHTS
 	int nparams = core.dim(0);
 	vector<float> params(nparams);
 	int npts = targets.size();
@@ -234,6 +241,39 @@ bool MultilinearReconstructor::fitIdentityWeights(float cc)
 		//cout << params[i] << ' ';
 	}
 	//cout << endl;
+#else
+	// to use this method, the tensor tm1c must first be updated using the rotation matrix and translation vector
+	int nparams = core.dim(0);
+	vector<float> params(nparams);
+	// assemble the matrix
+	DenseMatrix<float> A(tm1c.dim(1), tm1c.dim(0));
+	DenseVector<float> b(targets.size() * 3);
+
+	for(int i=0;i<tm1c.dim(0);i++) {
+		for(int j=0;j<tm1c.dim(1);j++) {
+			A(j, i) = tm1c(i, j);
+		}
+	}
+
+	for(int i=0, idx=0;i<targets.size();i++, idx+=3) {
+		const Point3f& q = targets[i].first;
+		b(idx) = q.x;
+		b(idx+1) = q.y;
+		b(idx+2) = q.z;
+	}
+
+	int rtn = leastsquare<float>(A, b);
+	//debug("rtn", rtn);
+
+	//b.print("b");
+	float diff = 0;
+	for(int i=0;i<nparams;i++) {
+		diff += fabs(Wid(i) - b(i));
+		Wid(i) = b(i);		
+		//cout << params[i] << ' ';
+	}
+	//cout << endl;
+#endif
 
 	// update the mesh with identity weights
 	//tplt = tm1.modeProduct(Wid, 0);
@@ -280,6 +320,7 @@ void evalCost3(float *p, float *hx, int m, int n, void* adata) {
 
 bool MultilinearReconstructor::fitExpressionWeights(float cc)
 {
+#if USELEVMAR4WEIGHTS
 	// fix both rotation and identity weights, solve for expression weights
 	int nparams = core.dim(1);
 	vector<float> params(nparams);
@@ -296,7 +337,37 @@ bool MultilinearReconstructor::fitExpressionWeights(float cc)
 		//cout << params[i] << ' ';
 	}
 	//cout << endl;
+#else
+	int nparams = core.dim(1);
+	DenseMatrix<float> A(tm0c.dim(1), tm0c.dim(0));
+	DenseVector<float> b(targets.size()*3);
 
+	for(int i=0;i<tm0c.dim(0);i++) {
+		for(int j=0;j<tm0c.dim(1);j++) {
+			A(j, i) = tm0c(i, j);
+		}
+	}
+
+	for(int i=0, idx=0;i<targets.size();i++, idx+=3) {
+		const Point3f& q = targets[i].first;
+		b(idx) = q.x;
+		b(idx+1) = q.y;
+		b(idx+2) = q.z;
+	}
+
+	int rtn = leastsquare<float>(A, b);
+	//debug("rtn", rtn);
+
+	//b.print("b");
+	float diff = 0;
+	for(int i=0;i<nparams;i++) {
+		diff += fabs(Wexp(i) - b(i));
+		Wexp(i) = b(i);
+		//cout << params[i] << ' ';
+	}
+	//cout << endl;
+	//cout << endl;
+#endif
 	// update the mesh with identity weights
 	//tplt = tm0.modeProduct(Wexp, 0);
 	//tmesh = tplt;
@@ -344,7 +415,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<Point3f, int>>& pts
 	updateComputationTensor();
 }
 
-void MultilinearReconstructor::computeError()
+float MultilinearReconstructor::computeError()
 {
 	int npts = targets.size();
 	float E = 0;
@@ -355,4 +426,5 @@ void MultilinearReconstructor::computeError()
 	}
 
 	debug("Error", E);
+	return E;
 }
