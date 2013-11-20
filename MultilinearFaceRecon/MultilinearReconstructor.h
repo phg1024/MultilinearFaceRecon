@@ -41,9 +41,10 @@ private:
 	void initializeWeights();
 
 	void updateComputationTensor();
+	void updateCoreC();
+	void updateTMC();
 	void updateTM0C();
 	void updateTM1C();
-	void updateTMC();
 
 private:
 	friend void evalCost(float *p, float *hx, int m, int n, void* adata);
@@ -53,13 +54,19 @@ private:
 	void transformMesh();
 	float computeError();
 
-	void fitRigidTransformation(float cc = 1e-4);
-	void fitIdentityWeights(float cc = 1e-4);
-	void fitExpressionWeights(float cc = 1e-4);
+	bool fitRigidTransformation();
+	bool fitIdentityWeights();
+	bool fitExpressionWeights();
 
 private:
+	// convergence criteria
+	float cc;
+	float errorThreshold;
+
 	// the input core tensor
 	Tensor3<float> core;
+	// the truncated input core tensor
+	Tensor3<float> corec;
 
 	// the unfolded tensor
 	Tensor2<float> tu0, tu1;
@@ -67,8 +74,9 @@ private:
 	// the tensor after mode product
 	Tensor2<float> tm0, tm1;
 		
-	// the tensor after mode product, after truncation
+	// the tensor after mode product, with truncation
 	Tensor2<float> tm0c, tm1c;
+	// the tensor after 2 mode products, with truncation
 	Tensor1<float> tmc;
 	
 	Tensor1<float> q;			// target point coordinates
@@ -83,6 +91,10 @@ private:
 	fvec T;
 	Matrix3x3f Rmat;
 	Point3f Tvec;
+
+	// computation related
+	DenseMatrix<float> Aid, Aexp;
+	DenseVector<float> brhs;
 
 	// weights
 	Tensor1<float> Wid, Wexp;

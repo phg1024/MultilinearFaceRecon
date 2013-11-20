@@ -6,14 +6,14 @@
 MultilinearReconstructor::MultilinearReconstructor(void)
 {
 	loadCoreTensor();
-	unfoldTensor();
 	initializeWeights();
 	createTemplateItem();
 
 	R = fmat(3, 3);
 	T = fvec(3);
+	cc = 1e-6;
+	errorThreshold = 1e-3;
 }
-
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
 {
@@ -61,74 +61,61 @@ void MultilinearReconstructor::initializeWeights()
 	message("done.");
 }
 
-void MultilinearReconstructor::updateComputationTensor()
-{
-	updateTM0C();
-	updateTM1C();
-	updateTMC();
-}
-
 void MultilinearReconstructor::updateTM0C() {
-	// update tm0c
-	int npts = targets.size();
-	tm0c.resize(tm0.dim(0), npts * 3);
-	for(int i=0;i<tm0.dim(0);i++) {
-		for(int j=0, idx=0;j<npts;j++, idx+=3) {
-			int vidx = targets[j].second * 3;
-			tm0c(i, idx) = tm0(i, vidx);
-			tm0c(i, idx+1) = tm0(i, vidx+1);
-			tm0c(i, idx+2) = tm0(i, vidx+2);
+	int npts = tm0c.dim(1) / 3;
+	for(int i=0;i<tm0c.dim(0);i++) {
+		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
+			Point3f p(tm0c(i, vidx), tm0c(i, vidx+1), tm0c(i, vidx+2));
+			p = Rmat * p + Tvec;
+			tm0c(i, vidx) = p.x;
+			tm0c(i, vidx+1) = p.y;
+			tm0c(i, vidx+2) = p.z;
 		}
 	}
 }
 
 void MultilinearReconstructor::updateTM1C() {
-	// update tm1c
-	int npts = targets.size();
-
-	tm1c.resize(tm1.dim(0), npts * 3);
-	for(int i=0;i<tm1.dim(0);i++) {
-		for(int j=0, idx=0;j<npts;j++, idx+=3) {
-			int vidx = targets[j].second * 3;
-			tm1c(i, idx) = tm1(i, vidx);
-			tm1c(i, idx+1) = tm1(i, vidx+1);
-			tm1c(i, idx+2) = tm1(i, vidx+2);
+	int npts = tm1c.dim(1) / 3;
+	for(int i=0;i<tm1c.dim(0);i++) {
+		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
+			Point3f p(tm1c(i, vidx), tm1c(i, vidx+1), tm1c(i, vidx+2));
+			p = Rmat * p + Tvec;
+			tm1c(i, vidx) = p.x;
+			tm1c(i, vidx+1) = p.y;
+			tm1c(i, vidx+2) = p.z;
 		}
-	}
-}
-
-void MultilinearReconstructor::updateTMC() {
-	// update tmc
-	int npts = targets.size();
-
-	tmc.resize(npts * 3);
-	for(int i=0;i<tmc.length();i++) {
-		float val = 0;
-		for(int j=0;j<tm1c.dim(0);j++) {
-			val += tm1c(j, i) * Wid(j);
-		}
-		tmc(i) = val;
 	}
 }
 
 void MultilinearReconstructor::fit()
 {
-	const int MAXITERS = 64;
+	if(targets.empty())
+	{
+		error("No target set!");
+		return;
+	}
+	const int MAXITERS = 128;
 	int iters = 0;
+	float E0 = 0;
 	bool converged = false;
 	while( !converged && iters++ < MAXITERS ) {
-		//converged = true;		
-		fitRigidTransformation();
-		fitIdentityWeights();
-		fitExpressionWeights();	
-		tplt = tm1.modeProduct(Wid, 0);
+		converged = true;
+		converged &= fitRigidTransformation();
+		updateTM1C();
+
+		converged &= fitIdentityWeights();
+		updateTM0C();
+
+		converged &= fitExpressionWeights();	
 		transformMesh();
 
-		converged = computeError() < 1e-3;
+		float E = computeError();
+		debug("iters", iters, "Error", E);
+
+		converged |= E < errorThreshold;		
+		E0 = E;
 		emit oneiter();
 		QApplication::processEvents();
-
-		//system("pause");
 	}
 	cout << "Total iterations = " << iters << endl;
 }
@@ -157,7 +144,7 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
-void MultilinearReconstructor::fitRigidTransformation(float cc)
+bool MultilinearReconstructor::fitRigidTransformation()
 {
 	float params[7] = {1.0, 0, 0, 0, 0, 0, 0};		/* scale, rx, ry, rz, tx, ty, tz */	
 	updateTMC();
@@ -165,21 +152,25 @@ void MultilinearReconstructor::fitRigidTransformation(float cc)
 	int npts = targets.size();
 	vector<float> meas(npts);
 	int iters = slevmar_dif(evalCost, params, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
-	cout << "finished in " << iters << " iterations." << endl;
+	//cout << "finished in " << iters << " iterations." << endl;
 
 	// set up the matrix and translation vector
 	Rmat = rotationMatrix(params[1], params[2], params[3]) * params[0];
-
+	float diff = 0;
 	for(int i=0;i<3;i++) {
 		for(int j=0;j<3;j++) {
-			R(i, j) = Rmat(i, j);
+			diff += fabs(R(i, j) - Rmat(i, j));
+			R(i, j) = Rmat(i, j);			
 		}
 	}
 
 	Tvec = Point3f(params[4], params[5], params[6]);	
+	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = params[4], T(1) = params[5], T(2) = params[6];
+
 	//cout << R << endl;
 	//cout << T << endl;
+	return diff / 7 < cc;
 }
 
 void evalCost2(float *p, float *hx, int m, int n, void* adata) {
@@ -212,7 +203,7 @@ void evalCost2(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
-void MultilinearReconstructor::fitIdentityWeights(float cc)
+bool MultilinearReconstructor::fitIdentityWeights()
 {
 #if USELEVMAR4WEIGHTS
 	int nparams = core.dim(0);
@@ -230,41 +221,34 @@ void MultilinearReconstructor::fitIdentityWeights(float cc)
 #else
 	// to use this method, the tensor tm1c must first be updated using the rotation matrix and translation vector
 	int nparams = core.dim(0);
-	vector<float> params(nparams);
-	// assemble the matrix
-	DenseMatrix<float> A(tm1c.dim(1), tm1c.dim(0));
-	DenseVector<float> b(q.length());
 
+	// assemble the matrix
 	for(int i=0;i<tm1c.dim(0);i++) {
 		for(int j=0;j<tm1c.dim(1);j++) {
-			A(j, i) = tm1c(i, j);
+			Aid(j, i) = tm1c(i, j);
 		}
 	}
 
 	for(int i=0;i<q.length();i++) {
-		b(i) = q(i);
+		brhs(i) = q(i);
 	}
 
-	int rtn = leastsquare<float>(A, b);
+	int rtn = leastsquare<float>(Aid, brhs);
 	//debug("rtn", rtn);
-
+	float diff = 0;
 	//b.print("b");
 	for(int i=0;i<nparams;i++) {
-		Wid(i) = b(i);		
+		diff += fabs(Wid(i) - brhs(i));
+		Wid(i) = brhs(i);		
 		//cout << params[i] << ' ';
 	}
 	//cout << endl;
 #endif
 
-	// update the mesh with identity weights
-	//tplt = tm1.modeProduct(Wid, 0);
-	//tmesh = tplt;
-	//transformMesh();
-
 	// also update the tensor after mode product
-	tm0 = core.modeProduct(Wid, 0);
+	tm0c = corec.modeProduct(Wid, 0);
 
-	updateTM0C();
+	return diff / nparams < cc;
 }
 
 void evalCost3(float *p, float *hx, int m, int n, void* adata) {
@@ -297,7 +281,7 @@ void evalCost3(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
-void MultilinearReconstructor::fitExpressionWeights(float cc)
+bool MultilinearReconstructor::fitExpressionWeights()
 {
 #if USELEVMAR4WEIGHTS
 	// fix both rotation and identity weights, solve for expression weights
@@ -316,40 +300,41 @@ void MultilinearReconstructor::fitExpressionWeights(float cc)
 	//cout << endl;
 #else
 	int nparams = core.dim(1);
-	DenseMatrix<float> A(tm0c.dim(1), tm0c.dim(0));
-	DenseVector<float> b(q.length());
+
 	for(int i=0;i<tm0c.dim(0);i++) {
 		for(int j=0;j<tm0c.dim(1);j++) {
-			A(j, i) = tm0c(i, j);
+			Aexp(j, i) = tm0c(i, j);
 		}
 	}
 	
 	for(int i=0;i<q.length();i++) {
-		b(i) = q(i);
+		brhs(i) = q(i);
 	}
 
-	int rtn = leastsquare<float>(A, b);
+	int rtn = leastsquare<float>(Aexp, brhs);
 	//debug("rtn", rtn);
 
 	//b.print("b");
+	float diff = 0;
 	for(int i=0;i<nparams;i++) {
-		Wexp(i) = b(i);
+		diff += abs(Wexp(i) - brhs(i));
+		Wexp(i) = brhs(i);
 		//cout << params[i] << ' ';
 	}
 	//cout << endl;
 	//cout << endl;
 #endif
-	// update the mesh with identity weights
-	//tplt = tm0.modeProduct(Wexp, 0);
-	//tmesh = tplt;
 
 	// also update the tensor after mode product
-	tm1 = core.modeProduct(Wexp, 1);
-	updateTM1C();
+	tm1c = corec.modeProduct(Wexp, 1);
+
+	return diff / nparams < cc;
 }
 
 void MultilinearReconstructor::transformMesh()
 {
+	tplt = core.modeProduct(Wexp, 1).modeProduct(Wid, 0);
+
 	int nverts = tplt.length()/3;
 	fmat pt(3, nverts);
 	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
@@ -384,6 +369,38 @@ void MultilinearReconstructor::bindTarget( const vector<pair<Point3f, int>>& pts
 	updateComputationTensor();
 }
 
+void MultilinearReconstructor::updateComputationTensor()
+{
+	updateCoreC();
+	tm0c = corec.modeProduct(Wid, 0);
+	tm1c = corec.modeProduct(Wexp, 1);
+	updateTMC();
+
+	Aid = DenseMatrix<float>::zeros(tm1c.dim(1), tm1c.dim(0));
+	Aexp = DenseMatrix<float>::zeros(tm0c.dim(1), tm0c.dim(0));
+	brhs.resize(targets.size()*3);
+}
+
+// build a truncated version of the core
+void MultilinearReconstructor::updateCoreC() {
+	corec.resize(core.dim(0), core.dim(1), targets.size()*3);
+
+	for(int i=0;i<core.dim(0);i++) {
+		for(int j=0;j<core.dim(1);j++) {
+			for(int k=0, idx=0;k<targets.size();k++, idx+=3) {
+				int vidx = targets[k].second * 3;
+				corec(i, j, idx) = core(i, j, vidx);
+				corec(i, j, idx+1) = core(i, j, vidx+1);
+				corec(i, j, idx+2) = core(i, j, vidx+2);
+			}
+		}
+	}
+}
+
+void MultilinearReconstructor::updateTMC() {
+	tmc = tm1c.modeProduct(Wid, 0);
+}
+
 float MultilinearReconstructor::computeError()
 {
 	int npts = targets.size();
@@ -393,7 +410,5 @@ float MultilinearReconstructor::computeError()
 		Point3f p(tmesh(vidx), tmesh(vidx+1), tmesh(vidx+2));
 		E += p.squaredDistanceTo(targets[i].first);
 	}
-
-	debug("Error", E);
 	return E;
 }
