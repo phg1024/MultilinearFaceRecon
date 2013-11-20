@@ -6,6 +6,9 @@
 #include "Geometry/point.hpp"
 #include "Geometry/matrix.hpp"
 #include "Geometry/geometryutils.hpp"
+#include "levmar.h"
+#include "Math/DenseVector.hpp"
+#include "Math/DenseMatrix.hpp"
 #include <armadillo>
 using namespace arma;
 
@@ -50,9 +53,9 @@ private:
 	void transformMesh();
 	float computeError();
 
-	bool fitRigidTransformation(float cc = 1e-4);
-	bool fitIdentityWeights(float cc = 1e-4);
-	bool fitExpressionWeights(float cc = 1e-4);
+	void fitRigidTransformation(float cc = 1e-4);
+	void fitIdentityWeights(float cc = 1e-4);
+	void fitExpressionWeights(float cc = 1e-4);
 
 private:
 	// the input core tensor

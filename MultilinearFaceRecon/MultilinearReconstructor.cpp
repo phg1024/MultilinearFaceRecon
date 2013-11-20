@@ -1,8 +1,5 @@
 #include "MultilinearReconstructor.h"
 #include "Utils/utility.hpp"
-#include "levmar.h"
-#include "Math/DenseVector.hpp"
-#include "Math/DenseMatrix.hpp"
 #include "Math/denseblas.h"
 #define USELEVMAR4WEIGHTS 0
 
@@ -116,7 +113,7 @@ void MultilinearReconstructor::updateTMC() {
 
 void MultilinearReconstructor::fit()
 {
-	const int MAXITERS = 16;
+	const int MAXITERS = 64;
 	int iters = 0;
 	bool converged = false;
 	while( !converged && iters++ < MAXITERS ) {
@@ -160,7 +157,7 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
-bool MultilinearReconstructor::fitRigidTransformation(float cc)
+void MultilinearReconstructor::fitRigidTransformation(float cc)
 {
 	float params[7] = {1.0, 0, 0, 0, 0, 0, 0};		/* scale, rx, ry, rz, tx, ty, tz */	
 	updateTMC();
@@ -170,28 +167,19 @@ bool MultilinearReconstructor::fitRigidTransformation(float cc)
 	int iters = slevmar_dif(evalCost, params, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
 	cout << "finished in " << iters << " iterations." << endl;
 
-	float diff = 0;
 	// set up the matrix and translation vector
 	Rmat = rotationMatrix(params[1], params[2], params[3]) * params[0];
 
 	for(int i=0;i<3;i++) {
 		for(int j=0;j<3;j++) {
-			diff += fabs(Rmat(i, j) - R(i, j));
 			R(i, j) = Rmat(i, j);
 		}
 	}
 
-	Tvec = Point3f(params[4], params[5], params[6]);
-	
-	diff += fabs(Tvec.x - T(0));
-	diff += fabs(Tvec.y - T(1));
-	diff += fabs(Tvec.z - T(2));
-
+	Tvec = Point3f(params[4], params[5], params[6]);	
 	T(0) = params[4], T(1) = params[5], T(2) = params[6];
 	//cout << R << endl;
 	//cout << T << endl;
-
-	return (diff / 7.0 < cc);
 }
 
 void evalCost2(float *p, float *hx, int m, int n, void* adata) {
@@ -224,7 +212,7 @@ void evalCost2(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
-bool MultilinearReconstructor::fitIdentityWeights(float cc)
+void MultilinearReconstructor::fitIdentityWeights(float cc)
 {
 #if USELEVMAR4WEIGHTS
 	int nparams = core.dim(0);
@@ -234,9 +222,7 @@ bool MultilinearReconstructor::fitIdentityWeights(float cc)
 	int iters = slevmar_dif(evalCost2, &(params[0]), &(meas[0]), nparams, npts, 1024, NULL, NULL, NULL, NULL, this);
 	cout << "finished in " << iters << " iterations." << endl;
 
-	float diff = 0;
 	for(int i=0;i<nparams;i++) {
-		diff += fabs(Wid(i) - params[i]);
 		Wid(i) = params[i];		
 		//cout << params[i] << ' ';
 	}
@@ -247,7 +233,7 @@ bool MultilinearReconstructor::fitIdentityWeights(float cc)
 	vector<float> params(nparams);
 	// assemble the matrix
 	DenseMatrix<float> A(tm1c.dim(1), tm1c.dim(0));
-	DenseVector<float> b(targets.size() * 3);
+	DenseVector<float> b(q.length());
 
 	for(int i=0;i<tm1c.dim(0);i++) {
 		for(int j=0;j<tm1c.dim(1);j++) {
@@ -255,20 +241,15 @@ bool MultilinearReconstructor::fitIdentityWeights(float cc)
 		}
 	}
 
-	for(int i=0, idx=0;i<targets.size();i++, idx+=3) {
-		const Point3f& q = targets[i].first;
-		b(idx) = q.x;
-		b(idx+1) = q.y;
-		b(idx+2) = q.z;
+	for(int i=0;i<q.length();i++) {
+		b(i) = q(i);
 	}
 
 	int rtn = leastsquare<float>(A, b);
 	//debug("rtn", rtn);
 
 	//b.print("b");
-	float diff = 0;
 	for(int i=0;i<nparams;i++) {
-		diff += fabs(Wid(i) - b(i));
 		Wid(i) = b(i);		
 		//cout << params[i] << ' ';
 	}
@@ -284,8 +265,6 @@ bool MultilinearReconstructor::fitIdentityWeights(float cc)
 	tm0 = core.modeProduct(Wid, 0);
 
 	updateTM0C();
-
-	return (diff / nparams < cc);
 }
 
 void evalCost3(float *p, float *hx, int m, int n, void* adata) {
@@ -318,7 +297,7 @@ void evalCost3(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
-bool MultilinearReconstructor::fitExpressionWeights(float cc)
+void MultilinearReconstructor::fitExpressionWeights(float cc)
 {
 #if USELEVMAR4WEIGHTS
 	// fix both rotation and identity weights, solve for expression weights
@@ -330,9 +309,7 @@ bool MultilinearReconstructor::fitExpressionWeights(float cc)
 
 	cout << "finished in " << iters << " iterations." << endl;
 
-	float diff = 0;
 	for(int i=0;i<nparams;i++) {
-		diff += fabs(Wexp(i) - params[i]);
 		Wexp(i) = params[i];
 		//cout << params[i] << ' ';
 	}
@@ -340,28 +317,22 @@ bool MultilinearReconstructor::fitExpressionWeights(float cc)
 #else
 	int nparams = core.dim(1);
 	DenseMatrix<float> A(tm0c.dim(1), tm0c.dim(0));
-	DenseVector<float> b(targets.size()*3);
-
+	DenseVector<float> b(q.length());
 	for(int i=0;i<tm0c.dim(0);i++) {
 		for(int j=0;j<tm0c.dim(1);j++) {
 			A(j, i) = tm0c(i, j);
 		}
 	}
-
-	for(int i=0, idx=0;i<targets.size();i++, idx+=3) {
-		const Point3f& q = targets[i].first;
-		b(idx) = q.x;
-		b(idx+1) = q.y;
-		b(idx+2) = q.z;
+	
+	for(int i=0;i<q.length();i++) {
+		b(i) = q(i);
 	}
 
 	int rtn = leastsquare<float>(A, b);
 	//debug("rtn", rtn);
 
 	//b.print("b");
-	float diff = 0;
 	for(int i=0;i<nparams;i++) {
-		diff += fabs(Wexp(i) - b(i));
 		Wexp(i) = b(i);
 		//cout << params[i] << ' ';
 	}
@@ -375,8 +346,6 @@ bool MultilinearReconstructor::fitExpressionWeights(float cc)
 	// also update the tensor after mode product
 	tm1 = core.modeProduct(Wexp, 1);
 	updateTM1C();
-
-	return (diff / nparams < cc);
 }
 
 void MultilinearReconstructor::transformMesh()
@@ -403,7 +372,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<Point3f, int>>& pts
 	int npts = targets.size();
 
 	// initialize q
-	q.resize(npts*3);
+	q.resize(npts*3);	
 	for(int i=0, idx=0;i<npts;i++, idx+=3) {
 		int vidx = targets[i].second;
 		const Point3f& p = targets[i].first;	
