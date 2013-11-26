@@ -135,10 +135,10 @@ void BlendShapeViewer::generatePrior() {
 	const string extension = ".obj";
 	const int totalTesters = 150;
 	const int totalMeshes = 47;
-	
+
 	vector<Tensor1<float>> Wids;
 	vector<Tensor1<float>> Wexps;
-		
+
 	for(int i=0;i<totalTesters;i++) {
 		for(int j=0;j<totalMeshes;j++) {
 			stringstream ss;
@@ -169,7 +169,7 @@ void BlendShapeViewer::generatePrior() {
 			Wexps.push_back(recon.expressionWeights());
 		}
 	}
-	
+
 	// write the fitted weights to files
 	write2file(Wids, "wid.txt");
 	write2file(Wexps, "wexp.txt");
@@ -181,6 +181,11 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e )
 	case Qt::Key_Space:
 		{
 			fit();
+			break;
+		}
+	case Qt::Key_P:
+		{
+			recon.togglePrior();
 			break;
 		}
 	}

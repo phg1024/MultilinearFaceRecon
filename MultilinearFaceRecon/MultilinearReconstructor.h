@@ -30,6 +30,9 @@ public:
 	void bindTarget(const vector<pair<Point3f, int>>& pts);
 	void init();
 	void fit();
+	void fit_withPrior();
+
+	void togglePrior();
 
 	const Tensor1<float>& expressionWeights() const { return Wexp; }
 	const Tensor1<float>& identityWeights() const { return Wid; }
@@ -60,13 +63,19 @@ private:
 
 	bool fitRigidTransformation();
 	bool fitIdentityWeights();
+	bool fitIdentityWeights_withPrior();
 	bool fitExpressionWeights();
+	bool fitExpressionWeights_withPrior();
 
 private:
 	// convergence criteria
 	float cc;
 	float errorThreshold;
-	static const int MAXITERS = 128;
+	static const int MAXITERS = 256;
+	bool usePrior;
+
+	// weights for prior
+	float w_data, w_prior;
 
 	// the input core tensor
 	Tensor3<float> core;
@@ -80,6 +89,8 @@ private:
 	Tensor2<float> tm0, tm1;
 		
 	// the tensor after mode product, with truncation
+	// tm0c: corec mode product with wid
+	// tm1c: corec mode product with wexp
 	Tensor2<float> tm0c, tm1c;
 	// the tensor after 2 mode products, with truncation; 
 	// tmc is the tensor before applying global transformation

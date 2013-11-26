@@ -12,11 +12,23 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	init();
 
 	cc = 1e-6;
-	errorThreshold = 1e-3;
+	errorThreshold = 1e-4;
+	usePrior = true;
+
+	w_data = 1.0;
+	w_prior = 1.0;
 }
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
 {
+}
+
+
+void MultilinearReconstructor::togglePrior()
+{
+	usePrior = !usePrior;
+	message((usePrior)?"Using prior":"Not using prior");
+	init();
 }
 
 
@@ -45,8 +57,11 @@ void MultilinearReconstructor::loadPrior()
 
 	fwid.close();
 
-	mu_wid.print("mean_wid");
-	sigma_wid.print("sigma_wid");
+	//mu_wid.print("mean_wid");
+	//sigma_wid.print("sigma_wid");
+
+	sigma_wid = arma::inv(sigma_wid);
+	mu_wid = sigma_wid * mu_wid;
 
 	const string& fnwexp = "../Data/wexp.bin";
 	ifstream fwexp(fnwexp, ios::in | ios::binary );
@@ -62,8 +77,11 @@ void MultilinearReconstructor::loadPrior()
 
 	fwexp.close();
 
-	mu_wexp.print("mean_wexp");
-	sigma_wexp.print("sigma_wexp");
+	//mu_wexp.print("mean_wexp");
+	//sigma_wexp.print("sigma_wexp");
+
+	sigma_wexp = arma::inv(sigma_wexp) * 0;//1e-20;
+	mu_wexp = sigma_wexp * mu_wexp;
 }
 
 void MultilinearReconstructor::loadCoreTensor()
@@ -95,11 +113,13 @@ void MultilinearReconstructor::initializeWeights()
 	float w0 = 1.0 / core.dim(0);
 	for(int i=0;i<Wid.length();i++) {
 		Wid(i) = w0;
+		//Wid(i) = mu_wid(i);
 	}
 
 	// use neutral face initially
 	for(int i=0;i<Wexp.length();i++) {
 		Wexp(i) = 0;
+		//Wexp(i) = mu_wexp(i);
 	}
 	Wexp(0) = 1.0;
 
@@ -152,6 +172,56 @@ void MultilinearReconstructor::fit()
 		transformTM0C();
 
 		converged &= fitExpressionWeights();	
+		// update tm1c with the new expression weights
+		// now the tensor is not updated with global rigid transformation
+		tm1c = corec.modeProduct(Wexp, 1);
+		// compute tmc from the new tm1c
+		updateTMC();
+
+		// uncomment to show the transformation process
+		//transformMesh();
+
+		float E = computeError();
+		debug("iters", iters, "Error", E);
+
+		converged |= E < errorThreshold;		
+		E0 = E;
+		//emit oneiter();
+		//QApplication::processEvents();
+	}
+	cout << "Total iterations = " << iters << endl;
+	transformMesh();
+	//emit oneiter();
+}
+
+void MultilinearReconstructor::fit_withPrior() {
+	init();
+
+	if(targets.empty())
+	{
+		error("No target set!");
+		return;
+	}
+	int iters = 0;
+	float E0 = 0;
+	bool converged = false;
+	while( !converged && iters++ < MAXITERS ) {
+		converged = true;
+		converged &= fitRigidTransformation();
+
+		// apply the new global transformation to tm1c
+		// because tm1c is required in fitting identity weights
+		transformTM1C();
+
+		converged &= fitIdentityWeights_withPrior();
+		// update tm0c with the new identity weights
+		// now the tensor is not updated with global rigid transformation
+		tm0c = corec.modeProduct(Wid, 0);
+		// apply the global transformation to tm0c
+		// because tm0c is required in fitting expression weights
+		transformTM0C();
+
+		converged &= fitExpressionWeights_withPrior();	
 		// update tm1c with the new expression weights
 		// now the tensor is not updated with global rigid transformation
 		tm1c = corec.modeProduct(Wexp, 1);
@@ -257,6 +327,58 @@ void evalCost2(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
+bool MultilinearReconstructor::fitIdentityWeights_withPrior()
+{
+#if USELEVMAR4WEIGHTS
+	int nparams = core.dim(0);
+	vector<float> params(nparams);
+	int npts = targets.size();
+	vector<float> meas(npts);
+	int iters = slevmar_dif(evalCost2, &(params[0]), &(meas[0]), nparams, npts, 1024, NULL, NULL, NULL, NULL, this);
+	cout << "finished in " << iters << " iterations." << endl;
+
+	for(int i=0;i<nparams;i++) {
+		Wid(i) = params[i];		
+		//cout << params[i] << ' ';
+	}
+	//cout << endl;
+#else
+	// to use this method, the tensor tm1c must first be updated using the rotation matrix and translation vector
+	int nparams = core.dim(0);	
+
+	// assemble the matrix, fill in the upper part
+	// the lower part is already filled in
+	for(int i=0;i<tm1c.dim(0);i++) {
+		for(int j=0;j<tm1c.dim(1);j++) {
+			Aid(j, i) = tm1c(i, j) * w_data;
+		}
+	}
+	// assemble the right hand side, fill in the upper part as usual
+	for(int i=0;i<q.length();i++) {
+		brhs(i) = q(i) * w_data;
+	}
+	// fill in the lower part with the mean vector of identity weights
+	int ndim_id = sigma_wid.size();
+	for(int i=0, idx=q.length();i<ndim_id;i++,idx++) {
+		brhs(idx) = sigma_wid(i) * w_prior;
+	}
+
+	int rtn = leastsquare<float>(Aid, brhs);
+	//debug("rtn", rtn);
+	float diff = 0;
+	//b.print("b");
+	for(int i=0;i<nparams;i++) {
+		diff += fabs(Wid(i) - brhs(i));
+		Wid(i) = brhs(i);		
+		//cout << params[i] << ' ';
+	}
+	//cout << endl;
+#endif
+
+	return diff / nparams < cc;
+}
+
+
 bool MultilinearReconstructor::fitIdentityWeights()
 {
 #if USELEVMAR4WEIGHTS
@@ -330,6 +452,61 @@ void evalCost3(float *p, float *hx, int m, int n, void* adata) {
 
 		hx[i] = pp.distanceTo(q);
 	}
+}
+
+bool MultilinearReconstructor::fitExpressionWeights_withPrior()
+{
+#if USELEVMAR4WEIGHTS
+	// fix both rotation and identity weights, solve for expression weights
+	int nparams = core.dim(1);
+	vector<float> params(nparams);
+	int npts = targets.size();
+	vector<float> meas(npts);
+	int iters = slevmar_dif(evalCost3, &(params[0]), &(meas[0]), nparams, npts, 1024, NULL, NULL, NULL, NULL, this);
+
+	cout << "finished in " << iters << " iterations." << endl;
+
+	for(int i=0;i<nparams;i++) {
+		Wexp(i) = params[i];
+		//cout << params[i] << ' ';
+	}
+	//cout << endl;
+#else
+	int nparams = core.dim(1);
+
+	// fill in the upper part of the matrix, the lower part is already filled
+	for(int i=0;i<tm0c.dim(0);i++) {
+		for(int j=0;j<tm0c.dim(1);j++) {
+			Aexp(j, i) = tm0c(i, j) * w_data;
+		}
+	}
+
+	// fill in the upper part of the right hand side
+	for(int i=0;i<q.length();i++) {
+		brhs(i) = q(i) * w_data;
+	}
+
+	// fill in the lower part with the mean vector of expression weights
+	int ndim_exp = sigma_wexp.size();
+	for(int i=0, idx=q.length();i<ndim_exp;i++,idx++) {
+		brhs(idx) = sigma_wexp(i) * w_prior;
+	}
+
+	int rtn = leastsquare<float>(Aexp, brhs);
+	//debug("rtn", rtn);
+
+	//b.print("b");
+	float diff = 0;
+	for(int i=0;i<nparams;i++) {
+		diff += abs(Wexp(i) - brhs(i));
+		Wexp(i) = brhs(i);
+		//cout << params[i] << ' ';
+	}
+	//cout << endl;
+	//cout << endl;
+#endif
+
+	return diff / nparams < cc;
 }
 
 bool MultilinearReconstructor::fitExpressionWeights()
@@ -422,9 +599,35 @@ void MultilinearReconstructor::updateComputationTensor()
 	tm1c = corec.modeProduct(Wexp, 1);
 	updateTMC();
 
-	Aid = DenseMatrix<float>::zeros(tm1c.dim(1), tm1c.dim(0));
-	Aexp = DenseMatrix<float>::zeros(tm0c.dim(1), tm0c.dim(0));
-	brhs.resize(targets.size()*3);
+	if( usePrior ) {
+		int ndim_id = mu_wid.size();
+		int ndim_exp = mu_wexp.size();
+
+		// extend the matrix with the prior term
+		Aid = DenseMatrix<float>::zeros(tm1c.dim(1) + ndim_id, tm1c.dim(0));
+		Aexp = DenseMatrix<float>::zeros(tm0c.dim(1) + ndim_exp, tm0c.dim(0));
+
+		// fill in the covariance matrices now, no need to fill them in each time
+		for(int j=0;j<Aid.cols();j++) {
+			for(int i=0, ridx=tm1c.dim(1);i<ndim_id;i++, ridx++) {
+				Aid(ridx, j) = sigma_wid(i, j) * w_prior;
+			}
+		}
+
+		for(int j=0;j<Aexp.cols();j++) {
+			for(int i=0, ridx=tm0c.dim(1);i<ndim_exp;i++, ridx++) {
+				Aexp(ridx, j) = sigma_wexp(i, j) * w_prior;
+			}
+		}
+
+		// take the larger size for the right hand side vector
+		brhs.resize(targets.size()*3 + std::max(ndim_id, ndim_exp));
+	}
+	else {
+		Aid = DenseMatrix<float>::zeros(tm1c.dim(1), tm1c.dim(0));
+		Aexp = DenseMatrix<float>::zeros(tm0c.dim(1), tm0c.dim(0));
+		brhs.resize(targets.size()*3);
+	}
 }
 
 // build a truncated version of the core
