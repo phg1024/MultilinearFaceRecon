@@ -173,7 +173,6 @@ void BlendShapeViewer::generatePrior() {
 	// write the fitted weights to files
 	write2file(Wids, "wid.txt");
 	write2file(Wexps, "wexp.txt");
-
 }
 
 void BlendShapeViewer::keyPressEvent( QKeyEvent *e )

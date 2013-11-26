@@ -8,6 +8,7 @@
 MultilinearReconstructor::MultilinearReconstructor(void)
 {
 	loadCoreTensor();
+	loadPrior();
 	init();
 
 	cc = 1e-6;
@@ -16,6 +17,53 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
 {
+}
+
+
+void MultilinearReconstructor::loadPrior()
+{
+	// the prior data is stored in the following format
+	// the matrices are stored in column major order
+	
+	// ndims
+	// mean vector
+	// covariance matrix
+	
+	cout << "loading prior data ..." << endl;
+	const string& fnwid  = "../Data/wid.bin";
+	ifstream fwid(fnwid, ios::in | ios::binary );
+
+	int ndims;
+	fwid.read(reinterpret_cast<char*>(&ndims), sizeof(int));
+	cout << "identity prior dim = " << ndims << endl;
+
+	mu_wid.resize(ndims);
+	sigma_wid.resize(ndims, ndims);
+
+	fwid.read(reinterpret_cast<char*>(mu_wid.memptr()), sizeof(float)*ndims);
+	fwid.read(reinterpret_cast<char*>(sigma_wid.memptr()), sizeof(float)*ndims*ndims);
+
+	fwid.close();
+
+	mu_wid.print("mean_wid");
+	sigma_wid.print("sigma_wid");
+
+	const string& fnwexp = "../Data/wexp.bin";
+	ifstream fwexp(fnwexp, ios::in | ios::binary );
+
+	fwexp.read(reinterpret_cast<char*>(&ndims), sizeof(int));
+	cout << "expression prior dim = " << ndims << endl;
+
+	mu_wexp.resize(ndims);
+	sigma_wexp.resize(ndims, ndims);
+
+	fwexp.read(reinterpret_cast<char*>(mu_wexp.memptr()), sizeof(float)*ndims);
+	fwexp.read(reinterpret_cast<char*>(sigma_wexp.memptr()), sizeof(float)*ndims*ndims);
+
+	fwexp.close();
+
+	mu_wexp.print("mean_wexp");
+	sigma_wexp.print("sigma_wexp");
 }
 
 void MultilinearReconstructor::loadCoreTensor()

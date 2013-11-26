@@ -38,7 +38,7 @@ signals:
 	void oneiter();
 
 private:
-	void loadTargetMesh();
+	void loadPrior();
 	void loadCoreTensor();
 	void createTemplateItem();
 	void unfoldTensor();
@@ -104,6 +104,10 @@ private:
 
 	// weights
 	Tensor1<float> Wid, Wexp;
+
+	// weights prior
+	fvec mu_wid, mu_wexp;
+	fmat sigma_wid, sigma_wexp;
 
 	// target vertices
 	vector<int> landmarks;
