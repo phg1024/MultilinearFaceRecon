@@ -28,13 +28,17 @@ public:
 	}
 
 	void bindTarget(const vector<pair<Point3f, int>>& pts);
-
+	void init();
 	void fit();
+
+	const Tensor1<float>& expressionWeights() const { return Wexp; }
+	const Tensor1<float>& identityWeights() const { return Wid; }
 
 signals:
 	void oneiter();
 
 private:
+	void loadTargetMesh();
 	void loadCoreTensor();
 	void createTemplateItem();
 	void unfoldTensor();
@@ -43,8 +47,8 @@ private:
 	void updateComputationTensor();
 	void updateCoreC();
 	void updateTMC();
-	void updateTM0C();
-	void updateTM1C();
+	void transformTM0C();
+	void transformTM1C();
 
 private:
 	friend void evalCost(float *p, float *hx, int m, int n, void* adata);
@@ -62,6 +66,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold;
+	static const int MAXITERS = 128;
 
 	// the input core tensor
 	Tensor3<float> core;
@@ -76,7 +81,8 @@ private:
 		
 	// the tensor after mode product, with truncation
 	Tensor2<float> tm0c, tm1c;
-	// the tensor after 2 mode products, with truncation
+	// the tensor after 2 mode products, with truncation; 
+	// tmc is the tensor before applying global transformation
 	Tensor1<float> tmc;
 	
 	Tensor1<float> q;			// target point coordinates
@@ -100,6 +106,7 @@ private:
 	Tensor1<float> Wid, Wexp;
 
 	// target vertices
+	vector<int> landmarks;
 	vector<pair<Point3f, int>> targets;
 };
 

@@ -14,6 +14,7 @@ public:
 
 	void bindTargetMesh(const string& filename);
 	void fit();
+	void generatePrior();
 
 protected:
 	virtual void initializeGL();
@@ -29,6 +30,7 @@ private:
 
 private slots:
 	void updateMeshWithReconstructor();
+	
 
 private:
 	bool targetSet;

@@ -1,5 +1,6 @@
 #include "BlendShapeViewer.h"
 #include "Utils/utility.hpp"
+#include "Utils/fileutils.h"
 
 BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	GL3DCanvas(parent)
@@ -58,6 +59,7 @@ bool BlendShapeViewer::loadLandmarks()
 		}
 		message("landmarks loaded.");
 		cout << "total landmarks = " << landmarks.size() << endl;
+
 		return true;
 	}
 	else {
@@ -122,6 +124,56 @@ void BlendShapeViewer::bindTargetMesh( const string& filename )
 void BlendShapeViewer::fit()
 {
 	recon.fit();
+	updateMeshWithReconstructor();
+}
+
+void BlendShapeViewer::generatePrior() {
+	const string path = "C:\\Users\\PhG\\Desktop\\Data\\FaceWarehouse_Data_0\\";
+	const string foldername = "Tester_";
+	const string meshFolder = "Blendshape";
+	const string meshname = "shape_";	
+	const string extension = ".obj";
+	const int totalTesters = 150;
+	const int totalMeshes = 47;
+	
+	vector<Tensor1<float>> Wids;
+	vector<Tensor1<float>> Wexps;
+		
+	for(int i=0;i<totalTesters;i++) {
+		for(int j=0;j<totalMeshes;j++) {
+			stringstream ss;
+			ss << path << foldername << (i+1) << "\\" << meshFolder + "\\" + meshname << j << extension;
+
+			string filename = ss.str();
+
+			message("Fitting " + filename);
+
+			OBJLoader loader;
+			loader.load(filename);
+			targetMesh.initWithLoader( loader );
+			targetSet = true;
+
+			// generate target points 	
+			vector<pair<Point3f, int>> pts;
+			for(int i=0;i<landmarks.size();i++) {
+				int vidx = landmarks[i];
+				const Point3f& vi = targetMesh.vertex(vidx);
+				pts.push_back(make_pair(vi, vidx));
+			}
+			recon.bindTarget(pts);
+			recon.fit();
+			updateMeshWithReconstructor();
+			QApplication::processEvents();
+
+			Wids.push_back(recon.identityWeights());
+			Wexps.push_back(recon.expressionWeights());
+		}
+	}
+	
+	// write the fitted weights to files
+	write2file(Wids, "wid.txt");
+	write2file(Wexps, "wexp.txt");
+
 }
 
 void BlendShapeViewer::keyPressEvent( QKeyEvent *e )

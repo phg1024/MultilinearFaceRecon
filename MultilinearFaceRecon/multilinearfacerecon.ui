@@ -34,6 +34,7 @@
      <string>Run</string>
     </property>
     <addaction name="actionFit"/>
+    <addaction name="actionGenerate_Prior"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuRun"/>
@@ -55,6 +56,11 @@
   <action name="actionFit">
    <property name="text">
     <string>Fit</string>
+   </property>
+  </action>
+  <action name="actionGenerate_Prior">
+   <property name="text">
+    <string>Generate Prior</string>
    </property>
   </action>
  </widget>

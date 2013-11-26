@@ -1,16 +1,15 @@
 #include "MultilinearReconstructor.h"
 #include "Utils/utility.hpp"
 #include "Math/denseblas.h"
+#include "Geometry/MeshLoader.h"
+#include "Geometry/Mesh.h"
 #define USELEVMAR4WEIGHTS 0
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {
 	loadCoreTensor();
-	initializeWeights();
-	createTemplateItem();
+	init();
 
-	R = fmat(3, 3);
-	T = fvec(3);
 	cc = 1e-6;
 	errorThreshold = 1e-3;
 }
@@ -61,63 +60,70 @@ void MultilinearReconstructor::initializeWeights()
 	message("done.");
 }
 
-void MultilinearReconstructor::updateTM0C() {
-	int npts = tm0c.dim(1) / 3;
-	for(int i=0;i<tm0c.dim(0);i++) {
-		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
-			Point3f p(tm0c(i, vidx), tm0c(i, vidx+1), tm0c(i, vidx+2));
-			p = Rmat * p + Tvec;
-			tm0c(i, vidx) = p.x;
-			tm0c(i, vidx+1) = p.y;
-			tm0c(i, vidx+2) = p.z;
-		}
-	}
-}
+void MultilinearReconstructor::init()
+{
+	initializeWeights();
+	createTemplateItem();
+	
+	R = fmat(3, 3);
+	R(0, 0) = 1.0, R(1, 1) = 1.0, R(2, 2) = 1.0;
+	T = fvec(3);
 
-void MultilinearReconstructor::updateTM1C() {
-	int npts = tm1c.dim(1) / 3;
-	for(int i=0;i<tm1c.dim(0);i++) {
-		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
-			Point3f p(tm1c(i, vidx), tm1c(i, vidx+1), tm1c(i, vidx+2));
-			p = Rmat * p + Tvec;
-			tm1c(i, vidx) = p.x;
-			tm1c(i, vidx+1) = p.y;
-			tm1c(i, vidx+2) = p.z;
-		}
-	}
+	Rmat = Matrix3x3f::identity();
+	Tvec = Point3f::zero();
+
+	updateComputationTensor();
 }
 
 void MultilinearReconstructor::fit()
 {
+	init();
+
 	if(targets.empty())
 	{
 		error("No target set!");
 		return;
 	}
-	const int MAXITERS = 128;
 	int iters = 0;
 	float E0 = 0;
 	bool converged = false;
 	while( !converged && iters++ < MAXITERS ) {
 		converged = true;
 		converged &= fitRigidTransformation();
-		updateTM1C();
+
+		// apply the new global transformation to tm1c
+		// because tm1c is required in fitting identity weights
+		transformTM1C();
 
 		converged &= fitIdentityWeights();
-		updateTM0C();
+		// update tm0c with the new identity weights
+		// now the tensor is not updated with global rigid transformation
+		tm0c = corec.modeProduct(Wid, 0);
+		// apply the global transformation to tm0c
+		// because tm0c is required in fitting expression weights
+		transformTM0C();
 
 		converged &= fitExpressionWeights();	
-		transformMesh();
+		// update tm1c with the new expression weights
+		// now the tensor is not updated with global rigid transformation
+		tm1c = corec.modeProduct(Wexp, 1);
+		// compute tmc from the new tm1c
+		updateTMC();
+
+		// uncomment to show the transformation process
+		//transformMesh();
 
 		float E = computeError();
 		debug("iters", iters, "Error", E);
 
 		converged |= E < errorThreshold;		
 		E0 = E;
-		emit oneiter();
-		QApplication::processEvents();
+		//emit oneiter();
+		//QApplication::processEvents();
 	}
 	cout << "Total iterations = " << iters << endl;
+	transformMesh();
+	//emit oneiter();
 }
 
 void evalCost(float *p, float *hx, int m, int n, void* adata) {
@@ -134,6 +140,7 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	Point3f T(tx, ty, tz);
 	Matrix3x3f R = rotationMatrix(rx, ry, rz) * s;
 
+	// apply the new global transformation
 	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
 		Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
 		const Point3f& q = targets[i].first;
@@ -147,7 +154,6 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 bool MultilinearReconstructor::fitRigidTransformation()
 {
 	float params[7] = {1.0, 0, 0, 0, 0, 0, 0};		/* scale, rx, ry, rz, tx, ty, tz */	
-	updateTMC();
 
 	int npts = targets.size();
 	vector<float> meas(npts);
@@ -245,9 +251,6 @@ bool MultilinearReconstructor::fitIdentityWeights()
 	//cout << endl;
 #endif
 
-	// also update the tensor after mode product
-	tm0c = corec.modeProduct(Wid, 0);
-
 	return diff / nparams < cc;
 }
 
@@ -325,9 +328,6 @@ bool MultilinearReconstructor::fitExpressionWeights()
 	//cout << endl;
 #endif
 
-	// also update the tensor after mode product
-	tm1c = corec.modeProduct(Wexp, 1);
-
 	return diff / nparams < cc;
 }
 
@@ -365,8 +365,6 @@ void MultilinearReconstructor::bindTarget( const vector<pair<Point3f, int>>& pts
 		q(idx+1) = p.y;
 		q(idx+2) = p.z;
 	}
-
-	updateComputationTensor();
 }
 
 void MultilinearReconstructor::updateComputationTensor()
@@ -397,6 +395,34 @@ void MultilinearReconstructor::updateCoreC() {
 	}
 }
 
+// transform TM0C with global rigid transformation
+void MultilinearReconstructor::transformTM0C() {
+	int npts = tm0c.dim(1) / 3;
+	for(int i=0;i<tm0c.dim(0);i++) {
+		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
+			Point3f p(tm0c(i, vidx), tm0c(i, vidx+1), tm0c(i, vidx+2));
+			p = Rmat * p + Tvec;
+			tm0c(i, vidx) = p.x;
+			tm0c(i, vidx+1) = p.y;
+			tm0c(i, vidx+2) = p.z;
+		}
+	}
+}
+
+// transform TM1C with global rigid transformation
+void MultilinearReconstructor::transformTM1C() {
+	int npts = tm1c.dim(1) / 3;
+	for(int i=0;i<tm1c.dim(0);i++) {
+		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
+			Point3f p(tm1c(i, vidx), tm1c(i, vidx+1), tm1c(i, vidx+2));
+			p = Rmat * p + Tvec;
+			tm1c(i, vidx) = p.x;
+			tm1c(i, vidx+1) = p.y;
+			tm1c(i, vidx+2) = p.z;
+		}
+	}
+}
+
 void MultilinearReconstructor::updateTMC() {
 	tmc = tm1c.modeProduct(Wid, 0);
 }
@@ -406,8 +432,9 @@ float MultilinearReconstructor::computeError()
 	int npts = targets.size();
 	float E = 0;
 	for(int i=0;i<npts;i++) {
-		int vidx = targets[i].second * 3;
-		Point3f p(tmesh(vidx), tmesh(vidx+1), tmesh(vidx+2));
+		int vidx = i * 3;
+		Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
+		p = Rmat * p + Tvec;
 		E += p.squaredDistanceTo(targets[i].first);
 	}
 	return E;
