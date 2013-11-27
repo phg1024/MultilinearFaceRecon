@@ -130,11 +130,13 @@ void BlendShapeViewer::fit()
 void BlendShapeViewer::generatePrior() {
 	const string path = "C:\\Users\\PhG\\Desktop\\Data\\FaceWarehouse_Data_0\\";
 	const string foldername = "Tester_";
-	const string meshFolder = "Blendshape";
-	const string meshname = "shape_";	
+	//const string meshFolder = "Blendshape";
+	const string meshFolder = "TrainingPose";
+	//const string meshname = "shape_";
+	const string meshname = "pose_";
 	const string extension = ".obj";
 	const int totalTesters = 150;
-	const int totalMeshes = 47;
+	const int totalMeshes = 20;
 
 	vector<Tensor1<float>> Wids;
 	vector<Tensor1<float>> Wexps;
@@ -186,6 +188,22 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e )
 	case Qt::Key_P:
 		{
 			recon.togglePrior();
+			break;
+		}
+	case Qt::Key_E:
+		{
+			message("Please input expression prior weight:");
+			float w;
+			cin >> w;
+			recon.expPriorWeights(w);
+			break;
+		}
+	case Qt::Key_I: 
+		{
+			message("Please input identity prior weight:");
+			float w;
+			cin >> w;
+			recon.idPriorWeight(w);
 			break;
 		}
 	}

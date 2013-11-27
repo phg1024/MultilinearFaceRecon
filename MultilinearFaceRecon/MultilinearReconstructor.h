@@ -37,6 +37,11 @@ public:
 	const Tensor1<float>& expressionWeights() const { return Wexp; }
 	const Tensor1<float>& identityWeights() const { return Wid; }
 
+	float expPriorWeights() const { return w_prior_exp; }
+	void expPriorWeights(float val) { w_prior_exp = val; }
+	float idPriorWeight() const { return w_prior_id; }
+	void idPriorWeight(float val) { w_prior_id = val; }
+
 signals:
 	void oneiter();
 
@@ -71,11 +76,11 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold;
-	static const int MAXITERS = 256;
+	static const int MAXITERS = 128;
 	bool usePrior;
 
 	// weights for prior
-	float w_data, w_prior;
+	float w_data, w_prior_id, w_prior_exp;
 
 	// the input core tensor
 	Tensor3<float> core;

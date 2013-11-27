@@ -16,7 +16,8 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	usePrior = true;
 
 	w_data = 1.0;
-	w_prior = 1.0;
+	w_prior_id = 1e-2;
+	w_prior_exp = 1e-6;
 }
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
@@ -42,7 +43,7 @@ void MultilinearReconstructor::loadPrior()
 	// covariance matrix
 	
 	cout << "loading prior data ..." << endl;
-	const string& fnwid  = "../Data/wid.bin";
+	const string fnwid  = "../Data/wid_trainingdata.bin";
 	ifstream fwid(fnwid, ios::in | ios::binary );
 
 	int ndims;
@@ -63,7 +64,7 @@ void MultilinearReconstructor::loadPrior()
 	sigma_wid = arma::inv(sigma_wid);
 	mu_wid = sigma_wid * mu_wid;
 
-	const string& fnwexp = "../Data/wexp.bin";
+	const string fnwexp = "../Data/wexp_trainingdata.bin";
 	ifstream fwexp(fnwexp, ios::in | ios::binary );
 
 	fwexp.read(reinterpret_cast<char*>(&ndims), sizeof(int));
@@ -80,7 +81,7 @@ void MultilinearReconstructor::loadPrior()
 	//mu_wexp.print("mean_wexp");
 	//sigma_wexp.print("sigma_wexp");
 
-	sigma_wexp = arma::inv(sigma_wexp) * 0;//1e-20;
+	sigma_wexp = arma::inv(sigma_wexp);
 	mu_wexp = sigma_wexp * mu_wexp;
 }
 
@@ -353,6 +354,13 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 			Aid(j, i) = tm1c(i, j) * w_data;
 		}
 	}
+	
+	for(int j=0;j<Aid.cols();j++) {
+		for(int i=0, ridx=tm1c.dim(1);i<nparams;i++, ridx++) {
+			Aid(ridx, j) = sigma_wid(i, j) * w_prior_id;
+		}
+	}
+
 	// assemble the right hand side, fill in the upper part as usual
 	for(int i=0;i<q.length();i++) {
 		brhs(i) = q(i) * w_data;
@@ -360,7 +368,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 	// fill in the lower part with the mean vector of identity weights
 	int ndim_id = sigma_wid.size();
 	for(int i=0, idx=q.length();i<ndim_id;i++,idx++) {
-		brhs(idx) = sigma_wid(i) * w_prior;
+		brhs(idx) = sigma_wid(i) * w_prior_id;
 	}
 
 	int rtn = leastsquare<float>(Aid, brhs);
@@ -481,6 +489,12 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 		}
 	}
 
+	for(int j=0;j<Aexp.cols();j++) {
+		for(int i=0, ridx=tm0c.dim(1);i<nparams;i++, ridx++) {
+			Aexp(ridx, j) = sigma_wexp(i, j) * w_prior_exp;
+		}
+	}
+
 	// fill in the upper part of the right hand side
 	for(int i=0;i<q.length();i++) {
 		brhs(i) = q(i) * w_data;
@@ -489,7 +503,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	// fill in the lower part with the mean vector of expression weights
 	int ndim_exp = sigma_wexp.size();
 	for(int i=0, idx=q.length();i<ndim_exp;i++,idx++) {
-		brhs(idx) = sigma_wexp(i) * w_prior;
+		brhs(idx) = sigma_wexp(i) * w_prior_exp;
 	}
 
 	int rtn = leastsquare<float>(Aexp, brhs);
@@ -610,13 +624,13 @@ void MultilinearReconstructor::updateComputationTensor()
 		// fill in the covariance matrices now, no need to fill them in each time
 		for(int j=0;j<Aid.cols();j++) {
 			for(int i=0, ridx=tm1c.dim(1);i<ndim_id;i++, ridx++) {
-				Aid(ridx, j) = sigma_wid(i, j) * w_prior;
+				Aid(ridx, j) = sigma_wid(i, j) * w_prior_id;
 			}
 		}
 
 		for(int j=0;j<Aexp.cols();j++) {
 			for(int i=0, ridx=tm0c.dim(1);i<ndim_exp;i++, ridx++) {
-				Aexp(ridx, j) = sigma_wexp(i, j) * w_prior;
+				Aexp(ridx, j) = sigma_wexp(i, j) * w_prior_exp;
 			}
 		}
 
