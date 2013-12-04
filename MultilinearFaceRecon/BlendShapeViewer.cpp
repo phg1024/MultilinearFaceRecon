@@ -177,6 +177,24 @@ void BlendShapeViewer::generatePrior() {
 	write2file(Wexps, "wexp.txt");
 }
 
+QImage toQImage(unsigned char* data, int w, int h)
+{
+	QImage qimg(w, h, QImage::Format_ARGB32);
+	for(int i=0, idx=0;i<h;i++)
+	{
+		for(int j=0;j<w;j++, idx+=4)
+		{
+			unsigned char r = data[idx+2];
+			unsigned char g = data[idx+1];
+			unsigned char b = data[idx];
+			unsigned char a = 255;
+			QRgb qp = qRgba(r, g, b, a);
+			qimg.setPixel(j, i, qp);
+		}
+	}
+	return qimg;
+}
+
 void BlendShapeViewer::keyPressEvent( QKeyEvent *e )
 {
 	switch( e->key() ) {
@@ -204,6 +222,19 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e )
 			float w;
 			cin >> w;
 			recon.idPriorWeight(w);
+			break;
+		}
+	case Qt::Key_S:
+		{
+			kman.updateStream();
+			vector<unsigned char> rgb = kman.getRGBData();
+			vector<unsigned char> depth = kman.getDepthData();
+
+			QImage rgbimg = toQImage(&(rgb[0]), 640, 480);
+			QImage depthimg = toQImage(&(depth[0]), 640, 480);
+
+			rgbimg.save("rgb.png");
+			depthimg.save("depth.png");
 			break;
 		}
 	}

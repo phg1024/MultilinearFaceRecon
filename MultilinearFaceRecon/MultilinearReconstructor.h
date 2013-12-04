@@ -12,6 +12,8 @@
 #include <armadillo>
 using namespace arma;
 
+using namespace PhGUtils;
+
 class MultilinearReconstructor : public QObject
 {
 	Q_OBJECT
