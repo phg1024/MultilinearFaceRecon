@@ -8,7 +8,7 @@ BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	this->setSceneScale(3.0);
 
 	// load a dummy mesh
-	OBJLoader loader;
+	PhGUtils::OBJLoader loader;
 	loader.load("../Data/shape_0.obj");
 	mesh.initWithLoader( loader );
 
@@ -57,7 +57,7 @@ bool BlendShapeViewer::loadLandmarks()
 			fin >> idx;
 			landmarks.push_back(idx);
 		}
-		message("landmarks loaded.");
+		PhGUtils::message("landmarks loaded.");
 		cout << "total landmarks = " << landmarks.size() << endl;
 
 		return true;
@@ -72,7 +72,7 @@ void BlendShapeViewer::drawLandmarks() {
 	glColor4f(1, 0, 0, 1);
 	glBegin(GL_POINTS);
 	for_each(landmarks.begin(), landmarks.end(), [&](int vidx){
-		const QuadMesh::vert_t& v = mesh.vertex(vidx);
+		const PhGUtils::QuadMesh::vert_t& v = mesh.vertex(vidx);
 		glVertex3f(v.x, v.y, v.z);
 	});
 	glEnd();
@@ -82,7 +82,7 @@ void BlendShapeViewer::drawLandmarks() {
 		glColor4f(0, 1, 0, 1);
 		glBegin(GL_POINTS);
 		for_each(landmarks.begin(), landmarks.end(), [&](int vidx){
-			const QuadMesh::vert_t& v = targetMesh.vertex(vidx);
+			const PhGUtils::QuadMesh::vert_t& v = targetMesh.vertex(vidx);
 			glVertex3f(v.x, v.y, v.z);
 		});
 		glEnd();
@@ -102,15 +102,15 @@ void BlendShapeViewer::updateMeshWithReconstructor() {
 }
 
 void BlendShapeViewer::bindTargetMesh( const string& filename ) {
-	OBJLoader loader;
+	PhGUtils::OBJLoader loader;
 	loader.load(filename);
 	targetMesh.initWithLoader( loader );
 
 	// generate target points 
-	vector<pair<Point3f, int>> pts;
+	vector<pair<PhGUtils::Point3f, int>> pts;
 	for(int i=0;i<landmarks.size();i++) {
 		int vidx = landmarks[i];
-		const Point3f& vi = targetMesh.vertex(vidx);
+		const PhGUtils::Point3f& vi = targetMesh.vertex(vidx);
 		pts.push_back(make_pair(vi, vidx));
 	}
 
@@ -144,18 +144,18 @@ void BlendShapeViewer::generatePrior() {
 
 			string filename = ss.str();
 
-			message("Fitting " + filename);
+			PhGUtils::message("Fitting " + filename);
 
-			OBJLoader loader;
+			PhGUtils::OBJLoader loader;
 			loader.load(filename);
 			targetMesh.initWithLoader( loader );
 			targetSet = true;
 
 			// generate target points 	
-			vector<pair<Point3f, int>> pts;
+			vector<pair<PhGUtils::Point3f, int>> pts;
 			for(int i=0;i<landmarks.size();i++) {
 				int vidx = landmarks[i];
-				const Point3f& vi = targetMesh.vertex(vidx);
+				const PhGUtils::Point3f& vi = targetMesh.vertex(vidx);
 				pts.push_back(make_pair(vi, vidx));
 			}
 			recon.bindTarget(pts);
@@ -169,8 +169,8 @@ void BlendShapeViewer::generatePrior() {
 	}
 
 	// write the fitted weights to files
-	write2file(Wids, "wid.txt");
-	write2file(Wexps, "wexp.txt");
+	PhGUtils::write2file(Wids, "wid.txt");
+	PhGUtils::write2file(Wexps, "wexp.txt");
 }
 
 QImage toQImage(const unsigned char* data, int w, int h) {
@@ -203,7 +203,7 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 		}
 	case Qt::Key_E:
 		{
-			message("Please input expression prior weight:");
+			PhGUtils::message("Please input expression prior weight:");
 			float w;
 			cin >> w;
 			recon.expPriorWeights(w);
@@ -211,7 +211,7 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 		}
 	case Qt::Key_I: 
 		{
-			message("Please input identity prior weight:");
+			PhGUtils::message("Please input identity prior weight:");
 			float w;
 			cin >> w;
 			recon.idPriorWeight(w);

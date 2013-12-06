@@ -9,6 +9,7 @@
 #include "Kinect/StreamViewer.h"
 
 #include "BlendShapeViewer.h"
+#include "AAMWrapper.h"
 
 class MultilinearFaceRecon : public QMainWindow
 {
@@ -33,7 +34,8 @@ private:
 
 private:
 	QTimer timer;
-	KinectManager kman;
+	PhGUtils::KinectManager kman;
+	AAMWrapper aam;
 	BlendShapeViewer* viewer;
 	shared_ptr<StreamViewer> colorView, depthView;
 };

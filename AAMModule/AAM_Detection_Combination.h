@@ -15,9 +15,22 @@ class AAM_Detection_Combination
 {
 public:
 	int currentShapePtsNum;
-	vector<float> trackWithData(const unsigned char* cimg, const unsigned char* dimg) {
+	vector<float> trackWithData(const unsigned char* cimg, const unsigned char* dimg, int w, int h) {
 
 		cv::Mat m_img, depthImg;
+		m_img.create(h, w, CV_8UC4);
+		memcpy(m_img.ptr<BYTE>(), cimg, sizeof(unsigned char)*w*h);
+		depthImg.zeros(h, w, CV_32FC1);
+		const float standardDepth = 750.0;
+		for (int i=0;i<depthImg.rows;i++)
+		{
+			for (int j=0;j<depthImg.cols;j++)
+			{
+				int tmp=(depthImg.at<Vec3b>(i,j)[0]<<16|depthImg.at<Vec3b>(i,j)[1]<<8|depthImg.at<Vec3b>(i,j)[2]<<0);
+				depthImg.at<float>(i,j)=tmp/standardDepth;
+
+			}
+		}
 
 		int curStatus=0;
 

@@ -30,7 +30,7 @@ MultilinearFaceRecon::~MultilinearFaceRecon()
 }
 
 void MultilinearFaceRecon::setupKinectManager() {
-	kman.setMode( KinectManager::WarpDepth );
+	kman.setMode( PhGUtils::KinectManager::WarpDepth );
 	
 	// 25 frames per second
 	timer.setInterval(40);
@@ -65,4 +65,7 @@ void MultilinearFaceRecon::updateKinectStreams()
 	kman.updateStream();
 	colorView->bindStreamData(&(kman.getRGBData()[0]), kman.getWidth(), kman.getHeight());
 	depthView->bindStreamData(&(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
+
+	vector<float> f = aam.track(&(kman.getRGBData()[0]), &(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
+
 }

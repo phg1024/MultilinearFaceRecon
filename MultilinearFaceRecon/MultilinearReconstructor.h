@@ -10,9 +10,6 @@
 #include "Math/DenseVector.hpp"
 #include "Math/DenseMatrix.hpp"
 #include <armadillo>
-using namespace arma;
-
-using namespace PhGUtils;
 
 class MultilinearReconstructor : public QObject
 {
@@ -34,7 +31,7 @@ public:
 	// for 3D points
 
 	// for reconstruction with 3D locations of feature points
-	void bindTarget(const vector<pair<Point3f, int>>& pts);
+	void bindTarget(const vector<pair<PhGUtils::Point3f, int>>& pts);
 	void init();
 	void fit();
 	void fit_withPrior();
@@ -116,24 +113,24 @@ private:
 	// fitted face
 	Tensor1<float> tmesh;
 	
-	fmat R;
-	fvec T;
-	Matrix3x3f Rmat;
-	Point3f Tvec;
+	arma::fmat R;
+	arma::fvec T;
+	PhGUtils::Matrix3x3f Rmat;
+	PhGUtils::Point3f Tvec;
 
 	// computation related
-	DenseMatrix<float> Aid, Aexp;
-	DenseVector<float> brhs;
+	PhGUtils::DenseMatrix<float> Aid, Aexp;
+	PhGUtils::DenseVector<float> brhs;
 
 	// weights
 	Tensor1<float> Wid, Wexp;
 
 	// weights prior
-	fvec mu_wid, mu_wexp;
-	fmat sigma_wid, sigma_wexp;
+	arma::fvec mu_wid, mu_wexp;
+	arma::fmat sigma_wid, sigma_wexp;
 
 	// target vertices
 	vector<int> landmarks;
-	vector<pair<Point3f, int>> targets;
+	vector<pair<PhGUtils::Point3f, int>> targets;
 };
 

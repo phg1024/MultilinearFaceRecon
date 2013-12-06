@@ -32,3 +32,8 @@ void AAMWrapper::setup() {
 
 	engine=new AAM_Detection_Combination(1,0.005,0.001,0,colorRT_model,depthRT_model,AAMModelPath,alignedShapeDir,true);
 }
+
+vector<float> AAMWrapper::track( const unsigned char* cimg, const unsigned char* dimg, int w, int h )
+{
+	return engine->trackWithData(cimg, dimg, w, h);
+}

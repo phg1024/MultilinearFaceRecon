@@ -12,7 +12,7 @@ public:
 	~AAMWrapper(void);
 
 	// tracking interface
-	void track();
+	vector<float> track(const unsigned char* cimg, const unsigned char* dimg, int w, int h);
 
 protected:
 	void setup();

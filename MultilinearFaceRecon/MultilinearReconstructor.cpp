@@ -28,7 +28,7 @@ MultilinearReconstructor::~MultilinearReconstructor(void)
 void MultilinearReconstructor::togglePrior()
 {
 	usePrior = !usePrior;
-	message((usePrior)?"Using prior":"Not using prior");
+	PhGUtils::message((usePrior)?"Using prior":"Not using prior");
 	init();
 }
 
@@ -99,15 +99,15 @@ void MultilinearReconstructor::unfoldTensor()
 
 void MultilinearReconstructor::createTemplateItem()
 {
-	message("creating template face ...");
+	PhGUtils::message("creating template face ...");
 	tplt = tm1.modeProduct(Wid, 0);
 	tmesh = tplt;
-	message("done.");
+	PhGUtils::message("done.");
 }
 
 void MultilinearReconstructor::initializeWeights()
 {
-	message("initializing weights ...");
+	PhGUtils::message("initializing weights ...");
 	Wid.resize(core.dim(0));
 	Wexp.resize(core.dim(1));
 
@@ -126,7 +126,7 @@ void MultilinearReconstructor::initializeWeights()
 
 	tm0 = core.modeProduct(Wid, 0);
 	tm1 = core.modeProduct(Wexp, 1);
-	message("done.");
+	PhGUtils::message("done.");
 }
 
 void MultilinearReconstructor::init()
@@ -134,12 +134,12 @@ void MultilinearReconstructor::init()
 	initializeWeights();
 	createTemplateItem();
 	
-	R = fmat(3, 3);
+	R = arma::fmat(3, 3);
 	R(0, 0) = 1.0, R(1, 1) = 1.0, R(2, 2) = 1.0;
-	T = fvec(3);
+	T = arma::fvec(3);
 
-	Rmat = Matrix3x3f::identity();
-	Tvec = Point3f::zero();
+	Rmat = PhGUtils::Matrix3x3f::identity();
+	Tvec = PhGUtils::Point3f::zero();
 
 	updateComputationTensor();
 }
@@ -150,7 +150,7 @@ void MultilinearReconstructor::fit()
 
 	if(targets.empty())
 	{
-		error("No target set!");
+		PhGUtils::error("No target set!");
 		return;
 	}
 	int iters = 0;
@@ -183,7 +183,7 @@ void MultilinearReconstructor::fit()
 		//transformMesh();
 
 		float E = computeError();
-		debug("iters", iters, "Error", E);
+		PhGUtils::debug("iters", iters, "Error", E);
 
 		converged |= E < errorThreshold;		
 		E0 = E;
@@ -200,7 +200,7 @@ void MultilinearReconstructor::fit_withPrior() {
 
 	if(targets.empty())
 	{
-		error("No target set!");
+		PhGUtils::error("No target set!");
 		return;
 	}
 	int iters = 0;
@@ -233,7 +233,7 @@ void MultilinearReconstructor::fit_withPrior() {
 		//transformMesh();
 
 		float E = computeError();
-		debug("iters", iters, "Error", E);
+		PhGUtils::debug("iters", iters, "Error", E);
 
 		converged |= E < errorThreshold;		
 		E0 = E;
@@ -256,15 +256,15 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	auto tmc = recon->tmc;
 
 	// set up rotation matrix and translation vector
-	Point3f T(tx, ty, tz);
-	Matrix3x3f R = rotationMatrix(rx, ry, rz) * s;
+	PhGUtils::Point3f T(tx, ty, tz);
+	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz) * s;
 
 	// apply the new global transformation
 	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
-		Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
-		const Point3f& q = targets[i].first;
+		PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
+		const PhGUtils::Point3f& q = targets[i].first;
 
-		Point3f pp = R * p + T;
+		PhGUtils::Point3f pp = R * p + T;
 
 		hx[i] = pp.distanceTo(q);
 	}
@@ -280,7 +280,7 @@ bool MultilinearReconstructor::fitRigidTransformation()
 	//cout << "finished in " << iters << " iterations." << endl;
 
 	// set up the matrix and translation vector
-	Rmat = rotationMatrix(params[1], params[2], params[3]) * params[0];
+	Rmat = PhGUtils::rotationMatrix(params[1], params[2], params[3]) * params[0];
 	float diff = 0;
 	for(int i=0;i<3;i++) {
 		for(int j=0;j<3;j++) {
@@ -289,7 +289,7 @@ bool MultilinearReconstructor::fitRigidTransformation()
 		}
 	}
 
-	Tvec = Point3f(params[4], params[5], params[6]);	
+	Tvec = PhGUtils::Point3f(params[4], params[5], params[6]);	
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = params[4], T(1) = params[5], T(2) = params[6];
 
@@ -309,8 +309,8 @@ void evalCost2(float *p, float *hx, int m, int n, void* adata) {
 	auto tm1c = recon->tm1c;
 
 	// set up rotation matrix and translation vector
-	const Point3f& T = recon->Tvec;
-	const Matrix3x3f& R = recon->Rmat;
+	const PhGUtils::Point3f& T = recon->Tvec;
+	const PhGUtils::Matrix3x3f& R = recon->Rmat;
 
 	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
 		float x = 0, y = 0, z = 0;
@@ -319,10 +319,10 @@ void evalCost2(float *p, float *hx, int m, int n, void* adata) {
 			y += tm1c(j, vidx+1) * p[j];
 			z += tm1c(j, vidx+2) * p[j];
 		}
-		Point3f p(x, y, z);
-		const Point3f& q = targets[i].first;
+		PhGUtils::Point3f p(x, y, z);
+		const PhGUtils::Point3f& q = targets[i].first;
 
-		Point3f pp = R * p + T;
+		PhGUtils::Point3f pp = R * p + T;
 
 		hx[i] = pp.distanceTo(q);
 	}
@@ -443,8 +443,8 @@ void evalCost3(float *p, float *hx, int m, int n, void* adata) {
 	auto tm0c = recon->tm0c;
 
 	// set up rotation matrix and translation vector
-	const Point3f& T = recon->Tvec;
-	const Matrix3x3f& R = recon->Rmat;
+	const PhGUtils::Point3f& T = recon->Tvec;
+	const PhGUtils::Matrix3x3f& R = recon->Rmat;
 
 	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
 		float x = 0, y = 0, z = 0;
@@ -453,10 +453,10 @@ void evalCost3(float *p, float *hx, int m, int n, void* adata) {
 			y += tm0c(j, vidx+1) * p[j];
 			z += tm0c(j, vidx+2) * p[j];
 		}
-		Point3f p(x, y, z);
-		const Point3f& q = targets[i].first;
+		PhGUtils::Point3f p(x, y, z);
+		const PhGUtils::Point3f& q = targets[i].first;
 
-		Point3f pp = R * p + T;
+		PhGUtils::Point3f pp = R * p + T;
 
 		hx[i] = pp.distanceTo(q);
 	}
@@ -575,14 +575,14 @@ void MultilinearReconstructor::transformMesh()
 	tplt = core.modeProduct(Wexp, 1).modeProduct(Wid, 0);
 
 	int nverts = tplt.length()/3;
-	fmat pt(3, nverts);
+	arma::fmat pt(3, nverts);
 	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
 		pt(0, i) = tplt(idx);
 		pt(1, i) = tplt(idx+1);
 		pt(2, i) = tplt(idx+2);
 	}
 
-	fmat pt_trans =  R * pt;
+	arma::fmat pt_trans =  R * pt;
 	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
 		tmesh(idx) = pt_trans(0, i) + T(0);
 		tmesh(idx+1) = pt_trans(1, i) + T(1);
@@ -590,7 +590,7 @@ void MultilinearReconstructor::transformMesh()
 	}
 }
 
-void MultilinearReconstructor::bindTarget( const vector<pair<Point3f, int>>& pts )
+void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, int>>& pts )
 {
 	targets = pts;
 	int npts = targets.size();
@@ -599,7 +599,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<Point3f, int>>& pts
 	q.resize(npts*3);	
 	for(int i=0, idx=0;i<npts;i++, idx+=3) {
 		int vidx = targets[i].second;
-		const Point3f& p = targets[i].first;	
+		const PhGUtils::Point3f& p = targets[i].first;	
 		q(idx) = p.x;
 		q(idx+1) = p.y;
 		q(idx+2) = p.z;
@@ -618,8 +618,8 @@ void MultilinearReconstructor::updateComputationTensor()
 		int ndim_exp = mu_wexp.size();
 
 		// extend the matrix with the prior term
-		Aid = DenseMatrix<float>::zeros(tm1c.dim(1) + ndim_id, tm1c.dim(0));
-		Aexp = DenseMatrix<float>::zeros(tm0c.dim(1) + ndim_exp, tm0c.dim(0));
+		Aid = PhGUtils::DenseMatrix<float>::zeros(tm1c.dim(1) + ndim_id, tm1c.dim(0));
+		Aexp = PhGUtils::DenseMatrix<float>::zeros(tm0c.dim(1) + ndim_exp, tm0c.dim(0));
 
 		// fill in the covariance matrices now, no need to fill them in each time
 		for(int j=0;j<Aid.cols();j++) {
@@ -638,8 +638,8 @@ void MultilinearReconstructor::updateComputationTensor()
 		brhs.resize(targets.size()*3 + std::max(ndim_id, ndim_exp));
 	}
 	else {
-		Aid = DenseMatrix<float>::zeros(tm1c.dim(1), tm1c.dim(0));
-		Aexp = DenseMatrix<float>::zeros(tm0c.dim(1), tm0c.dim(0));
+		Aid = PhGUtils::DenseMatrix<float>::zeros(tm1c.dim(1), tm1c.dim(0));
+		Aexp = PhGUtils::DenseMatrix<float>::zeros(tm0c.dim(1), tm0c.dim(0));
 		brhs.resize(targets.size()*3);
 	}
 }
@@ -665,7 +665,7 @@ void MultilinearReconstructor::transformTM0C() {
 	int npts = tm0c.dim(1) / 3;
 	for(int i=0;i<tm0c.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
-			Point3f p(tm0c(i, vidx), tm0c(i, vidx+1), tm0c(i, vidx+2));
+			PhGUtils::Point3f p(tm0c(i, vidx), tm0c(i, vidx+1), tm0c(i, vidx+2));
 			p = Rmat * p + Tvec;
 			tm0c(i, vidx) = p.x;
 			tm0c(i, vidx+1) = p.y;
@@ -679,7 +679,7 @@ void MultilinearReconstructor::transformTM1C() {
 	int npts = tm1c.dim(1) / 3;
 	for(int i=0;i<tm1c.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
-			Point3f p(tm1c(i, vidx), tm1c(i, vidx+1), tm1c(i, vidx+2));
+			PhGUtils::Point3f p(tm1c(i, vidx), tm1c(i, vidx+1), tm1c(i, vidx+2));
 			p = Rmat * p + Tvec;
 			tm1c(i, vidx) = p.x;
 			tm1c(i, vidx+1) = p.y;
@@ -698,7 +698,7 @@ float MultilinearReconstructor::computeError()
 	float E = 0;
 	for(int i=0;i<npts;i++) {
 		int vidx = i * 3;
-		Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
+		PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
 		p = Rmat * p + Tvec;
 		E += p.squaredDistanceTo(targets[i].first);
 	}
