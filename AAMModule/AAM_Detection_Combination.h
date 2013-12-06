@@ -17,16 +17,19 @@ public:
 	int currentShapePtsNum;
 	vector<float> trackWithData(const unsigned char* cimg, const unsigned char* dimg, int w, int h) {
 
-		cv::Mat m_img, depthImg;
+		cv::Mat m_img, gimg, depthImg;
 		m_img.create(h, w, CV_8UC4);
 		memcpy(m_img.ptr<BYTE>(), cimg, sizeof(unsigned char)*w*h);
-		depthImg.zeros(h, w, CV_32FC1);
+		// convert to gray image
+		cvtColor(m_img, gimg,CV_RGB2GRAY);
+
+		depthImg = cv::Mat::zeros(h, w, CV_32FC1);
 		const float standardDepth = 750.0;
-		for (int i=0;i<depthImg.rows;i++)
+		for (int i=0, idx=0;i<depthImg.rows;i++)
 		{
-			for (int j=0;j<depthImg.cols;j++)
+			for (int j=0;j<depthImg.cols;j++,idx+=4)
 			{
-				int tmp=(depthImg.at<Vec3b>(i,j)[0]<<16|depthImg.at<Vec3b>(i,j)[1]<<8|depthImg.at<Vec3b>(i,j)[2]<<0);
+				int tmp=(dimg[idx]<<16|dimg[idx+1]<<8|dimg[idx+2]<<0);
 				depthImg.at<float>(i,j)=tmp/standardDepth;
 
 			}
@@ -34,10 +37,14 @@ public:
 
 		int curStatus=0;
 
-		bool isSucceed=track_combine(m_img,depthImg,curStatus, 0,640,0,480, true);
+		currentShapePtsNum = 0;
+		bool isSucceed=track_combine(gimg,depthImg,curStatus, 0,640,0,480, true);
 
 		// return the content in currentShape
-		return vector<float>(currentShape, currentShape + currentShapePtsNum * 2);
+		if( isSucceed )
+			return vector<float>(currentShape, currentShape + currentShapePtsNum * 2);
+		else
+			return vector<float>();
 	}
 
 public:

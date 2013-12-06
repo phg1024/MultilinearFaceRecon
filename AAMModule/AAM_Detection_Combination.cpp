@@ -5123,7 +5123,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 	
 
 	//Step 1: transfer the data to gpu
-	cout << "transferring data to gpu ..." << endl;
+	//cout << "transferring data to gpu ..." << endl;
 	#pragma omp parallel for
 	for (int i=0;i<depthImg.rows;i++)
 	{

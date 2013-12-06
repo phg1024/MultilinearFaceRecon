@@ -173,21 +173,6 @@ void BlendShapeViewer::generatePrior() {
 	PhGUtils::write2file(Wexps, "wexp.txt");
 }
 
-QImage toQImage(const unsigned char* data, int w, int h) {
-	QImage qimg(w, h, QImage::Format_ARGB32);
-	for(int i=0, idx=0;i<h;i++) {
-		for(int j=0;j<w;j++, idx+=4)
-		{
-			unsigned char r = data[idx+2];
-			unsigned char g = data[idx+1];
-			unsigned char b = data[idx];
-			unsigned char a = 255;
-			QRgb qp = qRgba(r, g, b, a);
-			qimg.setPixel(j, i, qp);
-		}
-	}
-	return qimg;
-}
 
 void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 	switch( e->key() ) {

@@ -1,5 +1,6 @@
 #include "multilinearfacerecon.h"
 #include <QFileDialog>
+#include "Utils/utility.hpp"
 
 MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	: QMainWindow(parent)
@@ -66,6 +67,12 @@ void MultilinearFaceRecon::updateKinectStreams()
 	colorView->bindStreamData(&(kman.getRGBData()[0]), kman.getWidth(), kman.getHeight());
 	depthView->bindStreamData(&(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
 
-	vector<float> f = aam.track(&(kman.getRGBData()[0]), &(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
+	//QImage rgbimg = PhGUtils::toQImage(&(kman.getRGBData()[0]), kman.getWidth(), kman.getHeight());
+	//QImage depthimg = PhGUtils::toQImage(&(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
 
+	//rgbimg.save("rgb.png");
+	//depthimg.save("depth.png");
+
+	vector<float> f = aam.track(&(kman.getRGBData()[0]), &(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
+	colorView->bindLandmarks(f);
 }
