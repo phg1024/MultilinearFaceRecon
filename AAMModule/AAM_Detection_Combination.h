@@ -14,6 +14,20 @@ using namespace std;
 class AAM_Detection_Combination
 {
 public:
+	int currentShapePtsNum;
+	vector<float> trackWithData(const unsigned char* cimg, const unsigned char* dimg) {
+
+		cv::Mat m_img, depthImg;
+
+		int curStatus=0;
+
+		bool isSucceed=track_combine(m_img,depthImg,curStatus, 0,640,0,480, true);
+
+		// return the content in currentShape
+		return vector<float>(currentShape, currentShape + currentShapePtsNum * 2);
+	}
+
+public:
 	AAM_Detection_Combination(double _AAMWeight=1,double _RTWeight=0,double _PriorWeight=0,double _localWeight=0,string colorDir="",string depthDir="",string aammodelPath="",string alignedShapeDir="",bool _isAdpt=false);
 	//the absolute index of visible feature points
 	float *absInd;

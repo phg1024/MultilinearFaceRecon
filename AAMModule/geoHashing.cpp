@@ -36,6 +36,8 @@ GeoHashing::GeoHashing(Mat &shapes,float _dsize)
 	smallestY=-1200;
 
 	//read in the name
+	/* 
+	// it seems i don't actually need the names
 	char cname[2000];
 	ifstream in("D:\\Fuhao\\face dataset\\lfpw\\train_78\\selected\\imgList.txt",ios::in);
 	int totalNum;
@@ -46,6 +48,7 @@ GeoHashing::GeoHashing(Mat &shapes,float _dsize)
 		in.getline(cname,800);
 		nameList_hash[i]=cname;
 	}
+	*/
 
 	originalTrainingData=shapes;
 

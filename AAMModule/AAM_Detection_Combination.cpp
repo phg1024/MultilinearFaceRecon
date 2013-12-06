@@ -171,7 +171,9 @@ AAM_Detection_Combination::AAM_Detection_Combination(double _AAMWeight,double _R
 
 		host_preCalculatedConv=new float [MAX_LABEL_NUMBER*MPN*4];
 
+		cout << "building hash table ..." << endl;
 		buildHashTabel(shapes);
+		cout << "done" << endl;
 
 		state=1;
 		hasVelocity=false;
@@ -623,8 +625,7 @@ void AAM_Detection_Combination::searchPics(string listName)
 				{
 					for (int j=0;j<depthImg.cols;j++)
 					{
-						if (depthImg.at<float>(i,j)!=0)
-						{
+						if (depthImg.at<float>(i,j)!=0) {
 							depthImg.at<float>(i,j)/=standardDepth;
 							////bad values
 							//if (colorImg.at<float>(i,j)<0.1||colorImg.at<float>(i,j)>10)
@@ -633,15 +634,12 @@ void AAM_Detection_Combination::searchPics(string listName)
 							//	colorImg.at<float>(i,j)=0;
 							//}
 						}
-
 					}
 				}
 			}
 		}
 		cout<<"after reading depth\n";
 		//depthImg-=46.0f/standardDepth;
-
-
 
 		
 		////face detection here
@@ -650,24 +648,26 @@ void AAM_Detection_Combination::searchPics(string listName)
 		if (ll==startNum||initial)
 		{
 
-			IplImage *img=&((IplImage)colorImgBackUP);
-			CvSeq* faces = cvHaarDetectObjects( img, face_cascade, faces_storage,
-				1.1, 2, 0/*CV_HAAR_DO_CANNY_PRUNING*/,
-				cvSize(30, 30) );
+			
+			//IplImage *img=&((IplImage)colorImgBackUP);
+			//CvSeq* faces = cvHaarDetectObjects( img, face_cascade, faces_storage,
+			//	1.1, 2, 0/*CV_HAAR_DO_CANNY_PRUNING*/,
+			//	cvSize(30, 30) );
 
-			//printf( "detection time = %gms\n", t/((double)cvGetTickFrequency()*1000.) );
-			for( int i = 0; i < (faces ? faces->total : 0); i++ )
-			{
-				CvRect* r = (CvRect*)cvGetSeqElem( faces, i );
+			////printf( "detection time = %gms\n", t/((double)cvGetTickFrequency()*1000.) );
+			//for( int i = 0; i < (faces ? faces->total : 0); i++ )
+			//{
+			//	CvRect* r = (CvRect*)cvGetSeqElem( faces, i );
 
-				if (r->width>50)
-				{
-					startX=r->x;
-					startY=r->y;
-					endX=startX+r->width;
-					endY=startY+r->width+15;
-				}
-			}
+			//	if (r->width>50)
+			//	{
+			//		startX=r->x;
+			//		startY=r->y;
+			//		endX=startX+r->width;
+			//		endY=startY+r->width+15;
+			//	}
+			//}
+			
 
 			startX=0;endX=500;
 			startY=0;endY=500;
@@ -739,6 +739,8 @@ void AAM_Detection_Combination::searchPics(string listName)
 			//startX=274;
 			//endY=358;
 		}
+
+		//cout << "Check point 1" << endl;
 
 		//use the groundtruth
 		if(AAM_exp->showSingleStep)
@@ -5121,7 +5123,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 	
 
 	//Step 1: transfer the data to gpu
-
+	cout << "transferring data to gpu ..." << endl;
 	#pragma omp parallel for
 	for (int i=0;i<depthImg.rows;i++)
 	{
@@ -5550,7 +5552,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 	//status=iterate_combination(colorImg.cols,colorImg.rows,0,0,currentShape,isAAMOnly&&!bigChange,showNN);
 
 	lastlastTheta=lastTheta;
-	status=iterate_combination(colorImg.cols,colorImg.rows,0,0,lastTheta,currentShape,isAAMOnly,showNN);
+	status=iterate_combination(colorImg.cols,colorImg.rows,0,0,lastTheta,currentShape, currentShapePtsNum, isAAMOnly,showNN);
 
 	////obtain the theta using eye angle
 	//Point2f lEye=Point2f((currentShape[18]+currentShape[22])/2.0f,(currentShape[18+ptsNum]+currentShape[22+ptsNum])/2.0f);
@@ -5972,7 +5974,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 
 	//step .3: optimization on GPU
 	
-	iterate_combination(colorImg.cols,colorImg.rows,0,0,lastTheta,currentShape,isAAMOnly&&!bigChange,showNN);
+	iterate_combination(colorImg.cols,colorImg.rows,0,0,lastTheta,currentShape, currentShapePtsNum, isAAMOnly&&!bigChange,showNN);
 
 	//update v
 	if (initialPara)
@@ -6209,7 +6211,9 @@ void AAM_Detection_Combination::buildHashTabel(Mat &shape)
 	int cfullPtsNum=shape.rows/2;
 
 	Mat cfullData;
+	cout << "transpose" << endl;
 	transpose(shape,cfullData);
+	cout << "done" << endl;
 
 	/*float tmpVal;
 	Mat cfullData=Mat::zeros(cshapeNum,cfullPtsNum*2,CV_64FC1);
@@ -6233,9 +6237,14 @@ void AAM_Detection_Combination::buildHashTabel(Mat &shape)
 	}
 
 	//	geoHashingMatrix *test=new geoHashingMatrix(data,0.8);
+	cout << "creating geo hashing ..." << endl;
 	geohashSearch=new GeoHashing(data,0.8);
+	cout << "done" << endl;
 	//geohashSearch->buildHashTabel(geohashSearch->basisNum,geohashSearch->basisTabel,data);
+
+	cout << "building hash table vector ..." << endl;
 	geohashSearch->buildHashTabelVec(geohashSearch->basisNum,geohashSearch->basisTabel,data);
+	cout << "done" << endl;
 }
 
 

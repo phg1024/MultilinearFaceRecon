@@ -5324,8 +5324,9 @@ __global__ void vectorAdd(float *A,float *B,float weight1,float weight2,int tota
 	}
 }
 
-extern "C" int iterate_combination(int width,int height,int currentFrame,int startFrame,float &resultTheta,float *finalShape,bool isAAMOnly,bool showNN,bool updateOnly)
+extern "C" int iterate_combination(int width,int height,int currentFrame,int startFrame,float &resultTheta,float *finalShape, int& finalShapePtsNum, bool isAAMOnly,bool showNN,bool updateOnly)
 {
+	// Peihong	This is where the code crashes
 	//cout<<"in the cuda AAM\n";
 	//return;
 	int status=0;
@@ -5587,9 +5588,11 @@ extern "C" int iterate_combination(int width,int height,int currentFrame,int sta
 			if((errorSum<0.1&&abs(lastError-errorSum)<0.00001)||times>MaxIterNum)
 			{
 
+				// copy the results back to host
 				CUDA_CALL(cudaMemcpy(finalShape, data->cu_currentShape, data->ptsNum*2*sizeof(float), cudaMemcpyDeviceToHost ));
 
 				saveIterationResult(finalShape,data->ptsNum);
+				finalShapePtsNum = data->ptsNum;
 
 				if (data->isAdptive)
 				{

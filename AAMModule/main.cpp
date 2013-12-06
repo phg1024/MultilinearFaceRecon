@@ -89,6 +89,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	//AAM_Detection_Combination *engine=new AAM_Detection_Combination(1,0.05,0.001,0);
 	
 	//AAM_Detection_Combination *engine=new AAM_Detection_Combination(1,0,0,0);
+
+	string datapath = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\model\\";
 	string searchPicDir;
 	string savePrefix;
 	string AAMSearchPrefix;
@@ -105,7 +107,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	//searchPicDir="D:\\Fuhao\\face dataset\\train_RBGD_enlarged_030813\\Zain\\Zain_imglist.txt";
 	//savePrefix="ZainEXP";
 
-	searchPicDir="D:\\Fuhao\\face dataset\\kinect sequences\\ICCV comparison\\DougTalking_KSeq\\imglist.txt";
+	searchPicDir=datapath + "imgList.txt";
 	savePrefix="DougTalking_AAM_Sin";
 
 	//searchPicDir="D:\\Fuhao\\face dataset\\train_RBGD_enlarged_030813\\Zain\\Zain_imglist.txt";
@@ -189,8 +191,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	//searchPicDir="D:\\Fuhao\\face dataset new\\Biwi\\kinect_head_pose_db\\21\\imglist.txt";
 	//savePrefix="21_Adapt";
 
-	searchPicDir="D:\\Fuhao\\face dataset\\kinect sequences\\Tiana_KSeq\\imglist.txt";
-	savePrefix="Tiana_Adapt";
+	/*searchPicDir="D:\\Fuhao\\face dataset\\kinect sequences\\Tiana_KSeq\\imglist.txt";
+	savePrefix="Tiana_Adapt";*/
 
 	//searchPicDir="D:\\Fuhao\\face dataset\\kinect sequences\\Tiana_RotTest\\imglist.txt";
 	//savePrefix="Tiana_RotTest";
@@ -200,8 +202,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	//colorRT_model="D:\\Fuhao\\face dataset\\train_RGBD_finalEnlarged\\NoKaitlin\\trainedTree_15_12_56_22_1.txt";
 	//depthRT_model="D:\\Fuhao\\face dataset\\train_RGBD_finalEnlarged\\NoKaitlin\\trainedTree_15_12_56_22_0.txt";
 
-	colorRT_model="D:\\Fuhao\\face dataset\\train_RGBD_finalEnlarged_Reflectory\\trainedTree_15_12_56_22_1.txt";
-	depthRT_model="D:\\Fuhao\\face dataset\\train_RGBD_finalEnlarged_Reflectory\\trainedTree_15_12_64_22_0.txt";
+	colorRT_model= datapath + "trainedTree_15_12_56_22_1.txt";
+	depthRT_model= datapath + "trainedTree_15_12_64_22_0.txt";
 
 
 	/*colorRT_model="D:\\Fuhao\\face dataset\\train_RBGD_enlarged_030813\\NoGarrett\\trainedTree_15_12_56_22_1.txt";
@@ -222,8 +224,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	//alignedShapeDir="D:\\Fuhao\\face dataset\\lfpw\\train_78\\selected\\allignedshape_91_90.txt";
 
 	//full complete
-	AAMModelPath="D:\\Fuhao\\face dataset\\train AAM finalEnlarged_Fed_Rhema\\trainedResault_90_90.txt";
-	alignedShapeDir="D:\\Fuhao\\face dataset\\train AAM finalEnlarged_Fed_Rhema\\allignedshape_90_90.txt";
+	AAMModelPath= datapath + "trainedResult_90_90.txt";
+	alignedShapeDir= datapath + "allignedshape_90_90.txt";
 	if (argc>3)
 	{
 		searchPicDir=(argv[1]);

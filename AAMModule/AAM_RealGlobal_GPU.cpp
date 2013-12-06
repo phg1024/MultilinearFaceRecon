@@ -287,7 +287,7 @@ extern "C" void saveIterationResult(float *pts,int ptsNum)
 	//dataDirGPU="D:\\Fuhao\\Siggraph\\2013 data\\SDKcomparison\\Muscle 0\\kinect Studio Format\\seq_1\\";
 			//string baseName="D:\\Fuhao\\cvpr\\video comparison\\";
 			//string baseName="D:\\Fuhao\\cvpr\\pub video results\\";
-			string baseName="D:\\Fuhao\\cvpr\\video comparison final\\";
+			string baseName="C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\results\\";
 			int lastInd=dataPureName.find_last_of('\\');
 			string fullname;
 			fullname=baseName+dataPureName.substr(lastInd,dataPureName.length()-lastInd)+".jpg";
@@ -331,16 +331,18 @@ void AAM_RealGlobal_GPU::setSaveName(char* name)
 
 void AAM_RealGlobal_GPU::prepareForTracking()
 {
+	cout << "preparing for tracking ..." << endl;
 	shape_dim-=4;
 
 	//get all needed data ready
 	precompute();
 
+	cout << "done precompute." << endl;
 	//preProcess_GPU();
 
 	//now we are using combination framework, so use the combination preprocess routine
 	preProcess_GPU_combination();
-
+	cout << "done preprocess gpu comb" << endl;
 }
 
 AAM_RealGlobal_GPU::AAM_RealGlobal_GPU(double _search_test,double _AAM_weight,double _priorweight,double _localPCAWeight,bool _isApt)

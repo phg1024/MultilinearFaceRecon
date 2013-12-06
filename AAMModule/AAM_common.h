@@ -1,10 +1,8 @@
 #ifndef AAM_COMMON_H
 #define AAM_COMMON_H
 
-
+#define NOMINMAX
 #include <Windows.h>
-#undef min
-#undef max
 
 
 #include "opencv\cv.h"

@@ -172,20 +172,12 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="AAM_Detection_Combination_CUDA.cu">
-      <Filter>CUDA Files</Filter>
-    </None>
-    <None Include="AAM_RealGlobal_CUDA.cu">
-      <Filter>CUDA Files</Filter>
-    </None>
-    <None Include="MM.cu">
-      <Filter>CUDA Files</Filter>
-    </None>
-    <None Include="RandomizedTree.cu">
-      <Filter>CUDA Files</Filter>
-    </None>
+    <ResourceCompile Include="AAMModule.rc" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="AAMModule.rc" />
+    <CudaCompile Include="AAM_RealGlobal_CUDA.cu" />
+    <CudaCompile Include="MM.cu" />
+    <CudaCompile Include="RandomizedTree.cu" />
+    <CudaCompile Include="AAM_Detection_Combination_CUDA.cu" />
   </ItemGroup>
 </Project>

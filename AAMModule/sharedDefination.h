@@ -116,7 +116,7 @@ extern "C" void setShowSingle(bool);
 extern "C" void setupConv(int width, int height,int windowSize,int **shapeLoc,vector<int> &indList,float *);
 extern "C" void setupConv_featurePts(int width, int height,int windowSize,float **shapeLoc,vector<int> &indList,float *absVisibleIndex);
 
-extern "C" int iterate_combination(int width,int height,int currentFrame,int startFrame,float &theta,float *shape=NULL,bool isAAMOnly=false,bool showNN=false,bool updateOnly=false);
+extern "C" int iterate_combination(int width,int height,int currentFrame,int startFrame,float &theta,float *shape, int& shapePtsNum, bool isAAMOnly=false,bool showNN=false,bool updateOnly=false);
 extern "C" void setupWeight(double AAMWeight,double RTweight,double priorWeight,double localWeight=0);
 
 extern "C" void setupUsedIndex(int *,int);
