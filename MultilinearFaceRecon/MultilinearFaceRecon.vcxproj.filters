@@ -68,6 +68,9 @@
     <ClCompile Include="GeneratedFiles\Release\moc_BlendShapeViewer.cpp">
       <Filter>Generated Files\Release</Filter>
     </ClCompile>
+    <ClCompile Include="AAMWrapper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="multilinearfacerecon.h">
@@ -89,6 +92,9 @@
   <ItemGroup>
     <ClInclude Include="GeneratedFiles\ui_multilinearfacerecon.h">
       <Filter>Generated Files</Filter>
+    </ClInclude>
+    <ClInclude Include="AAMWrapper.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

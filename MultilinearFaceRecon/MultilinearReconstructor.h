@@ -29,6 +29,11 @@ public:
 		return tmesh;
 	}
 
+	// for reconstruction with 2D feature points, first obtain
+	// corresponding 3D locations, then use the reconstruction
+	// for 3D points
+
+	// for reconstruction with 3D locations of feature points
 	void bindTarget(const vector<pair<Point3f, int>>& pts);
 	void init();
 	void fit();

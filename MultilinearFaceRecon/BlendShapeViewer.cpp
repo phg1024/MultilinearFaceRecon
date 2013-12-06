@@ -67,8 +67,7 @@ bool BlendShapeViewer::loadLandmarks()
 	}
 }
 
-void BlendShapeViewer::drawLandmarks()
-{
+void BlendShapeViewer::drawLandmarks() {
 	glPointSize(3.0);
 	glColor4f(1, 0, 0, 1);
 	glBegin(GL_POINTS);
@@ -90,8 +89,7 @@ void BlendShapeViewer::drawLandmarks()
 	}
 }
 
-void BlendShapeViewer::updateMeshWithReconstructor()
-{
+void BlendShapeViewer::updateMeshWithReconstructor() {
 	cout << "updating mesh with recon ..." << endl;
 	// set the vertices of mesh with the template mesh in the reconstructor
 	const Tensor1<float>& tplt = recon.currentMesh();
@@ -103,8 +101,7 @@ void BlendShapeViewer::updateMeshWithReconstructor()
 	update();
 }
 
-void BlendShapeViewer::bindTargetMesh( const string& filename )
-{
+void BlendShapeViewer::bindTargetMesh( const string& filename ) {
 	OBJLoader loader;
 	loader.load(filename);
 	targetMesh.initWithLoader( loader );
@@ -121,8 +118,7 @@ void BlendShapeViewer::bindTargetMesh( const string& filename )
 	targetSet = true;
 }
 
-void BlendShapeViewer::fit()
-{
+void BlendShapeViewer::fit() {
 	recon.fit();
 	updateMeshWithReconstructor();
 }
@@ -177,11 +173,9 @@ void BlendShapeViewer::generatePrior() {
 	write2file(Wexps, "wexp.txt");
 }
 
-QImage toQImage(unsigned char* data, int w, int h)
-{
+QImage toQImage(const unsigned char* data, int w, int h) {
 	QImage qimg(w, h, QImage::Format_ARGB32);
-	for(int i=0, idx=0;i<h;i++)
-	{
+	for(int i=0, idx=0;i<h;i++) {
 		for(int j=0;j<w;j++, idx+=4)
 		{
 			unsigned char r = data[idx+2];
@@ -195,8 +189,7 @@ QImage toQImage(unsigned char* data, int w, int h)
 	return qimg;
 }
 
-void BlendShapeViewer::keyPressEvent( QKeyEvent *e )
-{
+void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 	switch( e->key() ) {
 	case Qt::Key_Space:
 		{
@@ -222,19 +215,6 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e )
 			float w;
 			cin >> w;
 			recon.idPriorWeight(w);
-			break;
-		}
-	case Qt::Key_S:
-		{
-			kman.updateStream();
-			vector<unsigned char> rgb = kman.getRGBData();
-			vector<unsigned char> depth = kman.getDepthData();
-
-			QImage rgbimg = toQImage(&(rgb[0]), 640, 480);
-			QImage depthimg = toQImage(&(depth[0]), 640, 480);
-
-			rgbimg.save("rgb.png");
-			depthimg.save("depth.png");
 			break;
 		}
 	}

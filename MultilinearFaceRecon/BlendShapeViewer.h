@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Kinect/KinectManager.h"
 #include "OpenGL/gl3dcanvas.h"
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
@@ -30,13 +29,11 @@ private:
 	bool loadLandmarks();
 
 private slots:
-	void updateMeshWithReconstructor();
-	
+	void updateMeshWithReconstructor();	
 
 private:
 	bool targetSet;
 	QuadMesh mesh, targetMesh;
 	vector<int> landmarks;
 	MultilinearReconstructor recon;
-	KinectManager kman;
 };
