@@ -19,9 +19,9 @@ public:
 
 		cv::Mat m_img, gimg, depthImg;
 		m_img.create(h, w, CV_8UC4);
-		memcpy(m_img.ptr<BYTE>(), cimg, sizeof(unsigned char)*w*h);
+		memcpy(m_img.ptr<BYTE>(), cimg, sizeof(unsigned char)*w*h*4);
 		// convert to gray image
-		cvtColor(m_img, gimg,CV_RGB2GRAY);
+		cvtColor(m_img, gimg,CV_BGR2GRAY);
 
 		depthImg = cv::Mat::zeros(h, w, CV_32FC1);
 		const float standardDepth = 750.0;
@@ -31,7 +31,6 @@ public:
 			{
 				int tmp=(dimg[idx]<<16|dimg[idx+1]<<8|dimg[idx+2]<<0);
 				depthImg.at<float>(i,j)=tmp/standardDepth;
-
 			}
 		}
 

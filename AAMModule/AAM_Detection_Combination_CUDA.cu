@@ -5591,7 +5591,8 @@ extern "C" int iterate_combination(int width,int height,int currentFrame,int sta
 				// copy the results back to host
 				CUDA_CALL(cudaMemcpy(finalShape, data->cu_currentShape, data->ptsNum*2*sizeof(float), cudaMemcpyDeviceToHost ));
 
-				saveIterationResult(finalShape,data->ptsNum);
+				// Peihong commented out this, because we do not need to save the result
+				//saveIterationResult(finalShape,data->ptsNum);
 				finalShapePtsNum = data->ptsNum;
 
 				if (data->isAdptive)
