@@ -90,7 +90,6 @@ void MultilinearFaceRecon::updateKinectStreams()
 
 	// get the 3D landmarks and feed to recon manager
 	int npts = f.size()/2;
-	const float scalingFactor = 1.0 / 750.0;
 	vector<PhGUtils::Point3f> lms(npts);
 	for(int i=0;i<npts;i++) {
 		int u = f[i];
@@ -101,8 +100,12 @@ void MultilinearFaceRecon::updateKinectStreams()
 
 		float X, Y, Z;
 		PhGUtils::colorToWorld(u, v, d, X, Y, Z);
-		//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
-		lms[i] = PhGUtils::Point3f(X, Y, Z) * scalingFactor;
+		PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
+		
+		lms[i] = PhGUtils::Point3f(X, Y, Z);
+		
+		// minus one is a hack to bring the model nearer
+		//lms[i].z += 1.0;
 	}
 	viewer->bindTargetLandmarks(lms);
 	viewer->fit();
@@ -111,7 +114,6 @@ void MultilinearFaceRecon::updateKinectStreams()
 void MultilinearFaceRecon::toggleKinectInput()
 {
 	useKinectInput = !useKinectInput;
-
 	if( useKinectInput ) timer.start();
 	else timer.stop();
 }
@@ -120,4 +122,5 @@ void MultilinearFaceRecon::resetAAM()
 {
 	timer.stop();
 	aam.reset();
+	timer.start();
 }

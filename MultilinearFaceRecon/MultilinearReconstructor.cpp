@@ -18,9 +18,9 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	usePrior = true;
 
 	w_data = 1.0;
-	w_prior_id = 1e-2;
-	w_prior_exp = 1e-3;
-	w_boundary = 1e-4;
+	w_prior_id = 0.01;
+	w_prior_exp = 0.01;
+	w_boundary = 1e-8;
 }
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
@@ -137,6 +137,10 @@ void MultilinearReconstructor::init()
 	initializeWeights();
 	createTemplateItem();
 	
+	RTparams[0] = 1.0;
+	RTparams[1] = 0; RTparams[2] = 0; RTparams[3] = 0;
+	RTparams[4] = meanX; RTparams[5] = meanY; RTparams[6] = meanZ;
+
 	R = arma::fmat(3, 3);
 	R(0, 0) = 1.0, R(1, 1) = 1.0, R(2, 2) = 1.0;
 	T = arma::fvec(3);
@@ -239,15 +243,16 @@ void MultilinearReconstructor::fit_withPrior() {
 		// now the tensor is not updated with global rigid transformation
 		tm1c = corec.modeProduct(Wexp, 1);
 		
+		
 		// compute tmc from the new tm1c
 		updateTMC();
 
 		// uncomment to show the transformation process
 		//transformMesh();
-		//cout << Rmat << endl;
-		//cout << Tvec << endl;
+		Rmat.print("R");
+		Tvec.print("T");
 		float E = computeError();
-		//PhGUtils::debug("iters", iters, "Error", E);
+		PhGUtils::debug("iters", iters, "Error", E);
 
 		converged |= E < errorThreshold;		
 		E0 = E;
@@ -287,16 +292,14 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 }
 
 bool MultilinearReconstructor::fitRigidTransformation()
-{
-	float params[7] = {1.0, 0, 0, 0, 0, 0, 0};		/* scale, rx, ry, rz, tx, ty, tz */	
-
+{	
 	int npts = targets.size();
 	vector<float> meas(npts);
-	int iters = slevmar_dif(evalCost, params, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
-	//cout << "finished in " << iters << " iterations." << endl;
+	int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	cout << "rigid fitting finished in " << iters << " iterations." << endl;
 
 	// set up the matrix and translation vector
-	Rmat = PhGUtils::rotationMatrix(params[1], params[2], params[3]) * params[0];
+	Rmat = PhGUtils::rotationMatrix(RTparams[1], RTparams[2], RTparams[3]) * RTparams[0];
 	float diff = 0;
 	for(int i=0;i<3;i++) {
 		for(int j=0;j<3;j++) {
@@ -305,9 +308,9 @@ bool MultilinearReconstructor::fitRigidTransformation()
 		}
 	}
 
-	Tvec = PhGUtils::Point3f(params[4], params[5], params[6]);	
+	Tvec = PhGUtils::Point3f(RTparams[4], RTparams[5], RTparams[6]);	
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
-	T(0) = params[4], T(1) = params[5], T(2) = params[6];
+	T(0) = RTparams[4], T(1) = RTparams[5], T(2) = RTparams[6];
 
 	//cout << R << endl;
 	//cout << T << endl;
@@ -613,6 +616,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 	int npts = targets.size();	
 	const float DEPTH_THRES = 1e-6;
 	int validCount = 0;
+	meanZ = 0;
 	// initialize q
 	q.resize(npts*3);	
 	for(int i=0, idx=0;i<npts;i++, idx+=3) {
@@ -622,12 +626,22 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		q(idx+1) = p.y;
 		q(idx+2) = p.z;
 
+		int isValid = (fabs(p.z) > DEPTH_THRES)?1:0;
+
+		meanX += p.x * isValid;
+		meanY += p.y * isValid;
+		meanZ += p.z * isValid;
+
 		// set the landmark weights
 		w_landmarks[idx] = w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (i<64 || i>74)?1.0:w_boundary;
 		// the valid mask
-		w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (fabs(p.z) > DEPTH_THRES)?1.0:0.0;
-		validCount += (fabs(p.z) > DEPTH_THRES)?1:0;
+		w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = isValid;
+		validCount += isValid;
 	}
+
+	meanX /= validCount;
+	meanY /= validCount;
+	meanZ /= validCount;
 
 	//PhGUtils::debug("valid landmarks", validCount);
 }

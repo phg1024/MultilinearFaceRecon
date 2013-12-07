@@ -80,7 +80,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold;
-	static const int MAXITERS = 8;
+	static const int MAXITERS = 32;
 	bool usePrior;
 
 	// weights for prior
@@ -114,6 +114,9 @@ private:
 	// fitted face
 	Tensor1<float> tmesh;
 	
+	float RTparams[7]; /* scale, rx, ry, rz, tx, ty, tz */	
+	// used to avoid local minima
+	float meanX, meanY, meanZ;
 	arma::fmat R;
 	arma::fvec T;
 	PhGUtils::Matrix3x3f Rmat;

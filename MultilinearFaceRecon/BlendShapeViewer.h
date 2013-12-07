@@ -5,7 +5,7 @@
 #include "Geometry/Mesh.h"
 #include "MultilinearReconstructor.h"
 
-class BlendShapeViewer : GL3DCanvas
+class BlendShapeViewer : public GL3DCanvas
 {
 	Q_OBJECT
 public:

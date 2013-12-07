@@ -347,8 +347,5 @@ vector<float> AAMWrapper::track( const unsigned char* cimg, const unsigned char*
 
 void AAMWrapper::reset()
 {
-	if( engine != nullptr ) {
-		delete engine;
-	}
-	setup();
+	initial = true;
 }
