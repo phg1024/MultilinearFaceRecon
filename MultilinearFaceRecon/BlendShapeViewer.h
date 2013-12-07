@@ -35,6 +35,8 @@ private slots:
 private:
 	bool targetSet;
 	PhGUtils::QuadMesh mesh, targetMesh;
+
+	vector<PhGUtils::Point3f> targetLandmarks;
 	vector<int> landmarks;
 	MultilinearReconstructor recon;
 };

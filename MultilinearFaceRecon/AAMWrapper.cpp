@@ -65,6 +65,8 @@ vector<float> AAMWrapper::track( const unsigned char* cimg, const unsigned char*
 			}
 		}
 
+		medianBlur(depthImg,depthImg,3);
+
 		/*
 		// for debug
 		namedWindow("1",0);
@@ -341,4 +343,12 @@ vector<float> AAMWrapper::track( const unsigned char* cimg, const unsigned char*
 			cout << "Failed." << endl;
 			return vector<float>();
 		}
+}
+
+void AAMWrapper::reset()
+{
+	if( engine != nullptr ) {
+		delete engine;
+	}
+	setup();
 }

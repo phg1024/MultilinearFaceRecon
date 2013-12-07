@@ -36,6 +36,7 @@
     <addaction name="actionFit"/>
     <addaction name="actionGenerate_Prior"/>
     <addaction name="actionStart_Kinect"/>
+    <addaction name="actionReset_Tracking"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuRun"/>
@@ -67,6 +68,11 @@
   <action name="actionStart_Kinect">
    <property name="text">
     <string>Start Kinect</string>
+   </property>
+  </action>
+  <action name="actionReset_Tracking">
+   <property name="text">
+    <string>Reset Tracking</string>
    </property>
   </action>
  </widget>

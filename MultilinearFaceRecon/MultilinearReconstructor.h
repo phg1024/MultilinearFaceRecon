@@ -80,11 +80,12 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold;
-	static const int MAXITERS = 32;
+	static const int MAXITERS = 8;
 	bool usePrior;
 
 	// weights for prior
 	float w_data, w_prior_id, w_prior_exp;
+	float w_boundary;
 
 	// the input core tensor
 	Tensor3<float> core;
@@ -131,6 +132,6 @@ private:
 
 	// target vertices	
 	vector<pair<PhGUtils::Point3f, int>> targets;
-	vector<int> validLandmarks;
+	vector<float> w_landmarks;
 };
 

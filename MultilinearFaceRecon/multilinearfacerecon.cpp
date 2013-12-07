@@ -21,6 +21,7 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	connect(ui.actionFit, SIGNAL(triggered()), this, SLOT(fit()));
 	connect(ui.actionGenerate_Prior, SIGNAL(triggered()), this, SLOT(generatePrior()));
 	connect(ui.actionStart_Kinect, SIGNAL(triggered()), this, SLOT(toggleKinectInput()));
+	connect(ui.actionReset_Tracking, SIGNAL(triggered()), this, SLOT(resetAAM()));
 
 	// timer for kinect input
 	connect(&timer, SIGNAL(timeout()), this, SLOT(updateKinectStreams()));
@@ -70,6 +71,7 @@ void MultilinearFaceRecon::updateKinectStreams()
 	int w = kman.getWidth(), h = kman.getHeight();
 	const vector<unsigned char>& colordata = kman.getRGBData();
 	const vector<unsigned char>& depthdata = kman.getDepthData();
+	const vector<USHORT>& depthvalues = kman.getDepthValues();
 
 	colorView->bindStreamData(&(colordata[0]), w, h);
 	depthView->bindStreamData(&(depthdata[0]), w, h);
@@ -88,19 +90,19 @@ void MultilinearFaceRecon::updateKinectStreams()
 
 	// get the 3D landmarks and feed to recon manager
 	int npts = f.size()/2;
+	const float scalingFactor = 1.0 / 750.0;
 	vector<PhGUtils::Point3f> lms(npts);
 	for(int i=0;i<npts;i++) {
-		int x = f[i];
-		// flip it vertically
-		int y = f[i+npts];
-		int idx = (y*w+x)*4;
-		float z = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+		int u = f[i];
+		// flip y coordinates
+		int v = h - 1 - f[i+npts];
+		int idx = (v*w+u)*4;
+		float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
 		float X, Y, Z;
-		PhGUtils::depthToWorld(w - 1 - x, h - 1 - y, z, X, Y, Z);
-		//PhGUtils::debug("x", x, "y", y, "z", z);
-		//PhGUtils::debug("X", X, "Y", Y, "Z", Z);
-		lms[i] = PhGUtils::Point3f(X, Y, Z);
+		PhGUtils::colorToWorld(u, v, d, X, Y, Z);
+		//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
+		lms[i] = PhGUtils::Point3f(X, Y, Z) * scalingFactor;
 	}
 	viewer->bindTargetLandmarks(lms);
 	viewer->fit();
@@ -112,4 +114,10 @@ void MultilinearFaceRecon::toggleKinectInput()
 
 	if( useKinectInput ) timer.start();
 	else timer.stop();
+}
+
+void MultilinearFaceRecon::resetAAM()
+{
+	timer.stop();
+	aam.reset();
 }

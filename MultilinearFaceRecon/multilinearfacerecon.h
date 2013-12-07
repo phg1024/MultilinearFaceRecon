@@ -21,6 +21,7 @@ public:
 
 public slots:
 	void toggleKinectInput();
+	void resetAAM();
 
 private:
 	void setupStreamViews();

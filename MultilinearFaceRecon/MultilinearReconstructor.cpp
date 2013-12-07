@@ -11,7 +11,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	loadPrior();
 	init();
 
-	validLandmarks.resize(512);
+	w_landmarks.resize(512);
 
 	cc = 1e-6;
 	errorThreshold = 1e-4;
@@ -20,6 +20,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	w_data = 1.0;
 	w_prior_id = 1e-2;
 	w_prior_exp = 1e-3;
+	w_boundary = 1e-4;
 }
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
@@ -220,6 +221,7 @@ void MultilinearReconstructor::fit_withPrior() {
 		converged = true;
 		converged &= fitRigidTransformation();
 
+		
 		// apply the new global transformation to tm1c
 		// because tm1c is required in fitting identity weights
 		transformTM1C();
@@ -236,14 +238,16 @@ void MultilinearReconstructor::fit_withPrior() {
 		// update tm1c with the new expression weights
 		// now the tensor is not updated with global rigid transformation
 		tm1c = corec.modeProduct(Wexp, 1);
+		
 		// compute tmc from the new tm1c
 		updateTMC();
 
 		// uncomment to show the transformation process
 		//transformMesh();
-
+		//cout << Rmat << endl;
+		//cout << Tvec << endl;
 		float E = computeError();
-		PhGUtils::debug("iters", iters, "Error", E);
+		//PhGUtils::debug("iters", iters, "Error", E);
 
 		converged |= E < errorThreshold;		
 		E0 = E;
@@ -265,7 +269,7 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	int npts = targets.size();
 	auto tmc = recon->tmc;
 
-	auto validLandmarks = recon->validLandmarks;
+	auto w_landmarks = recon->w_landmarks;
 
 	// set up rotation matrix and translation vector
 	PhGUtils::Point3f T(tx, ty, tz);
@@ -278,7 +282,7 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 
 		PhGUtils::Point3f pp = R * p + T;
 
-		hx[i] = pp.distanceTo(q) * validLandmarks[i];
+		hx[i] = pp.distanceTo(q) * w_landmarks[vidx];
 	}
 }
 
@@ -363,7 +367,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 	// the lower part is already filled in
 	for(int i=0;i<tm1c.dim(0);i++) {
 		for(int j=0;j<tm1c.dim(1);j++) {
-			Aid(j, i) = tm1c(i, j) * w_data * validLandmarks[j];
+			Aid(j, i) = tm1c(i, j) * w_data * w_landmarks[j];
 		}
 	}
 	
@@ -375,7 +379,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 
 	// assemble the right hand side, fill in the upper part as usual
 	for(int i=0;i<q.length();i++) {
-		brhs(i) = q(i) * w_data * validLandmarks[i];
+		brhs(i) = q(i) * w_data * w_landmarks[i];
 	}
 	// fill in the lower part with the mean vector of identity weights
 	int ndim_id = mu_wid.size();
@@ -497,7 +501,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	// fill in the upper part of the matrix, the lower part is already filled
 	for(int i=0;i<tm0c.dim(0);i++) {
 		for(int j=0;j<tm0c.dim(1);j++) {
-			Aexp(j, i) = tm0c(i, j) * w_data * validLandmarks[j];
+			Aexp(j, i) = tm0c(i, j) * w_data * w_landmarks[j];
 		}
 	}
 
@@ -510,7 +514,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 
 	// fill in the upper part of the right hand side
 	for(int i=0;i<q.length();i++) {
-		brhs(i) = q(i) * w_data * validLandmarks[i];
+		brhs(i) = q(i) * w_data * w_landmarks[i];
 	}
 
 	// fill in the lower part with the mean vector of expression weights
@@ -608,6 +612,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 	targets = pts;
 	int npts = targets.size();	
 	const float DEPTH_THRES = 1e-6;
+	int validCount = 0;
 	// initialize q
 	q.resize(npts*3);	
 	for(int i=0, idx=0;i<npts;i++, idx+=3) {
@@ -617,9 +622,14 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		q(idx+1) = p.y;
 		q(idx+2) = p.z;
 
-		// set the valid mask
-		validLandmarks[idx] = validLandmarks[idx+1] = validLandmarks[idx+2] = (p.z > DEPTH_THRES)?1:0;
+		// set the landmark weights
+		w_landmarks[idx] = w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (i<64 || i>74)?1.0:w_boundary;
+		// the valid mask
+		w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (fabs(p.z) > DEPTH_THRES)?1.0:0.0;
+		validCount += (fabs(p.z) > DEPTH_THRES)?1:0;
 	}
+
+	//PhGUtils::debug("valid landmarks", validCount);
 }
 
 void MultilinearReconstructor::updateComputationTensor()
@@ -716,7 +726,7 @@ float MultilinearReconstructor::computeError()
 		int vidx = i * 3;
 		PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
 		p = Rmat * p + Tvec;
-		E += p.squaredDistanceTo(targets[i].first);
+		E += p.squaredDistanceTo(targets[i].first) * w_landmarks[vidx];
 	}
 	return E;
 }

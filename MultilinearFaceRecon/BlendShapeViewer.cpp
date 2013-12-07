@@ -5,7 +5,7 @@
 BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	GL3DCanvas(parent)
 {
-	this->setSceneScale(3.0);
+	this->setSceneScale(1.0);
 
 	// load a dummy mesh
 	PhGUtils::OBJLoader loader;
@@ -81,9 +81,8 @@ void BlendShapeViewer::drawLandmarks() {
 		glPointSize(3.0);
 		glColor4f(0, 1, 0, 1);
 		glBegin(GL_POINTS);
-		for_each(landmarks.begin(), landmarks.end(), [&](int vidx){
-			const PhGUtils::QuadMesh::vert_t& v = targetMesh.vertex(vidx);
-			glVertex3f(v.x, v.y, v.z);
+		for_each(targetLandmarks.begin(), targetLandmarks.end(), [&](const PhGUtils::Point3f p){
+			glVertex3f(p.x, p.y, p.z);
 		});
 		glEnd();
 	}
@@ -103,6 +102,7 @@ void BlendShapeViewer::updateMeshWithReconstructor() {
 
 void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms )
 {
+	targetLandmarks = lms;
 	vector<pair<PhGUtils::Point3f, int>> pts;
 	for(int i=0;i<landmarks.size();i++) {
 		int vidx = landmarks[i];
@@ -110,7 +110,7 @@ void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms
 	}
 
 	recon.bindTarget(pts);
-	targetSet = false;
+	targetSet = true;
 }
 
 void BlendShapeViewer::bindTargetMesh( const string& filename ) {
@@ -120,10 +120,12 @@ void BlendShapeViewer::bindTargetMesh( const string& filename ) {
 
 	// generate target points 
 	vector<pair<PhGUtils::Point3f, int>> pts;
+	targetLandmarks.resize(landmarks.size());
 	for(int i=0;i<landmarks.size();i++) {
 		int vidx = landmarks[i];
 		const PhGUtils::Point3f& vi = targetMesh.vertex(vidx);
 		pts.push_back(make_pair(vi, vidx));
+		targetLandmarks[i] = vi;
 	}
 
 	recon.bindTarget(pts);
@@ -187,6 +189,8 @@ void BlendShapeViewer::generatePrior() {
 
 
 void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
+	GL3DCanvas::keyPressEvent(e);
+
 	switch( e->key() ) {
 	case Qt::Key_Space:
 		{

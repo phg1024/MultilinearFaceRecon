@@ -11,6 +11,7 @@ public:
 	AAMWrapper(void);
 	~AAMWrapper(void);
 
+	void reset();
 	// tracking interface
 	vector<float> track(const unsigned char* cimg, const unsigned char* dimg, int w, int h);
 
