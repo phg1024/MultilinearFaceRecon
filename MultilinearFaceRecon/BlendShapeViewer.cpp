@@ -101,6 +101,18 @@ void BlendShapeViewer::updateMeshWithReconstructor() {
 	update();
 }
 
+void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms )
+{
+	vector<pair<PhGUtils::Point3f, int>> pts;
+	for(int i=0;i<landmarks.size();i++) {
+		int vidx = landmarks[i];
+		pts.push_back(make_pair(lms[i], vidx));
+	}
+
+	recon.bindTarget(pts);
+	targetSet = false;
+}
+
 void BlendShapeViewer::bindTargetMesh( const string& filename ) {
 	PhGUtils::OBJLoader loader;
 	loader.load(filename);

@@ -11,13 +11,15 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	loadPrior();
 	init();
 
+	validLandmarks.resize(512);
+
 	cc = 1e-6;
 	errorThreshold = 1e-4;
 	usePrior = true;
 
 	w_data = 1.0;
 	w_prior_id = 1e-2;
-	w_prior_exp = 1e-6;
+	w_prior_exp = 1e-3;
 }
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
@@ -146,6 +148,12 @@ void MultilinearReconstructor::init()
 
 void MultilinearReconstructor::fit()
 {
+	if( usePrior ) {
+		fit_withPrior();
+		return;
+	}
+
+	cout << "simple fit" << endl;
 	init();
 
 	if(targets.empty())
@@ -196,6 +204,8 @@ void MultilinearReconstructor::fit()
 }
 
 void MultilinearReconstructor::fit_withPrior() {
+	cout << "fit with prior" << endl;
+
 	init();
 
 	if(targets.empty())
@@ -255,6 +265,8 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	int npts = targets.size();
 	auto tmc = recon->tmc;
 
+	auto validLandmarks = recon->validLandmarks;
+
 	// set up rotation matrix and translation vector
 	PhGUtils::Point3f T(tx, ty, tz);
 	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz) * s;
@@ -266,7 +278,7 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 
 		PhGUtils::Point3f pp = R * p + T;
 
-		hx[i] = pp.distanceTo(q);
+		hx[i] = pp.distanceTo(q) * validLandmarks[i];
 	}
 }
 
@@ -351,7 +363,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 	// the lower part is already filled in
 	for(int i=0;i<tm1c.dim(0);i++) {
 		for(int j=0;j<tm1c.dim(1);j++) {
-			Aid(j, i) = tm1c(i, j) * w_data;
+			Aid(j, i) = tm1c(i, j) * w_data * validLandmarks[j];
 		}
 	}
 	
@@ -363,12 +375,12 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 
 	// assemble the right hand side, fill in the upper part as usual
 	for(int i=0;i<q.length();i++) {
-		brhs(i) = q(i) * w_data;
+		brhs(i) = q(i) * w_data * validLandmarks[i];
 	}
 	// fill in the lower part with the mean vector of identity weights
-	int ndim_id = sigma_wid.size();
+	int ndim_id = mu_wid.size();
 	for(int i=0, idx=q.length();i<ndim_id;i++,idx++) {
-		brhs(idx) = sigma_wid(i) * w_prior_id;
+		brhs(idx) = mu_wid(i) * w_prior_id;
 	}
 
 	int rtn = leastsquare<float>(Aid, brhs);
@@ -485,10 +497,11 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	// fill in the upper part of the matrix, the lower part is already filled
 	for(int i=0;i<tm0c.dim(0);i++) {
 		for(int j=0;j<tm0c.dim(1);j++) {
-			Aexp(j, i) = tm0c(i, j) * w_data;
+			Aexp(j, i) = tm0c(i, j) * w_data * validLandmarks[j];
 		}
 	}
 
+	// fill in the lower part
 	for(int j=0;j<Aexp.cols();j++) {
 		for(int i=0, ridx=tm0c.dim(1);i<nparams;i++, ridx++) {
 			Aexp(ridx, j) = sigma_wexp(i, j) * w_prior_exp;
@@ -497,13 +510,13 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 
 	// fill in the upper part of the right hand side
 	for(int i=0;i<q.length();i++) {
-		brhs(i) = q(i) * w_data;
+		brhs(i) = q(i) * w_data * validLandmarks[i];
 	}
 
 	// fill in the lower part with the mean vector of expression weights
-	int ndim_exp = sigma_wexp.size();
+	int ndim_exp = mu_wexp.size();
 	for(int i=0, idx=q.length();i<ndim_exp;i++,idx++) {
-		brhs(idx) = sigma_wexp(i) * w_prior_exp;
+		brhs(idx) = mu_wexp(i) * w_prior_exp;
 	}
 
 	int rtn = leastsquare<float>(Aexp, brhs);
@@ -593,8 +606,8 @@ void MultilinearReconstructor::transformMesh()
 void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, int>>& pts )
 {
 	targets = pts;
-	int npts = targets.size();
-
+	int npts = targets.size();	
+	const float DEPTH_THRES = 1e-6;
 	// initialize q
 	q.resize(npts*3);	
 	for(int i=0, idx=0;i<npts;i++, idx+=3) {
@@ -603,6 +616,9 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		q(idx) = p.x;
 		q(idx+1) = p.y;
 		q(idx+2) = p.z;
+
+		// set the valid mask
+		validLandmarks[idx] = validLandmarks[idx+1] = validLandmarks[idx+2] = (p.z > DEPTH_THRES)?1:0;
 	}
 }
 

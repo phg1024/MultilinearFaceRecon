@@ -3,10 +3,10 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MultilinearFaceRecon", "MultilinearFaceRecon\MultilinearFaceRecon.vcxproj", "{B12702AD-ABFB-343A-A199-8E24837244A3}"
 	ProjectSection(ProjectDependencies) = postProject
-		{4AC53368-1848-4993-86A2-81EB393BFBA0} = {4AC53368-1848-4993-86A2-81EB393BFBA0}
+		{AD2EAA59-C552-49E2-A272-39E2384B37FA} = {AD2EAA59-C552-49E2-A272-39E2384B37FA}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AAMModule", "AAMModule\AAMModule.vcxproj", "{4AC53368-1848-4993-86A2-81EB393BFBA0}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AAMModule_Realtime", "AAMModule_Realtime\AAMModule_Realtime.vcxproj", "{AD2EAA59-C552-49E2-A272-39E2384B37FA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -22,12 +22,14 @@ Global
 		{B12702AD-ABFB-343A-A199-8E24837244A3}.Release|Win32.ActiveCfg = Release|x64
 		{B12702AD-ABFB-343A-A199-8E24837244A3}.Release|x64.ActiveCfg = Release|x64
 		{B12702AD-ABFB-343A-A199-8E24837244A3}.Release|x64.Build.0 = Release|x64
-		{4AC53368-1848-4993-86A2-81EB393BFBA0}.Debug|Win32.ActiveCfg = Debug|x64
-		{4AC53368-1848-4993-86A2-81EB393BFBA0}.Debug|x64.ActiveCfg = Debug|x64
-		{4AC53368-1848-4993-86A2-81EB393BFBA0}.Debug|x64.Build.0 = Debug|x64
-		{4AC53368-1848-4993-86A2-81EB393BFBA0}.Release|Win32.ActiveCfg = Release|x64
-		{4AC53368-1848-4993-86A2-81EB393BFBA0}.Release|x64.ActiveCfg = Release|x64
-		{4AC53368-1848-4993-86A2-81EB393BFBA0}.Release|x64.Build.0 = Release|x64
+		{AD2EAA59-C552-49E2-A272-39E2384B37FA}.Debug|Win32.ActiveCfg = Debug|Win32
+		{AD2EAA59-C552-49E2-A272-39E2384B37FA}.Debug|Win32.Build.0 = Debug|Win32
+		{AD2EAA59-C552-49E2-A272-39E2384B37FA}.Debug|x64.ActiveCfg = Debug|x64
+		{AD2EAA59-C552-49E2-A272-39E2384B37FA}.Debug|x64.Build.0 = Debug|x64
+		{AD2EAA59-C552-49E2-A272-39E2384B37FA}.Release|Win32.ActiveCfg = Release|Win32
+		{AD2EAA59-C552-49E2-A272-39E2384B37FA}.Release|Win32.Build.0 = Release|Win32
+		{AD2EAA59-C552-49E2-A272-39E2384B37FA}.Release|x64.ActiveCfg = Release|x64
+		{AD2EAA59-C552-49E2-A272-39E2384B37FA}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

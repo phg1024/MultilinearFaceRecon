@@ -35,6 +35,7 @@
     </property>
     <addaction name="actionFit"/>
     <addaction name="actionGenerate_Prior"/>
+    <addaction name="actionStart_Kinect"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuRun"/>
@@ -61,6 +62,11 @@
   <action name="actionGenerate_Prior">
    <property name="text">
     <string>Generate Prior</string>
+   </property>
+  </action>
+  <action name="actionStart_Kinect">
+   <property name="text">
+    <string>Start Kinect</string>
    </property>
   </action>
  </widget>

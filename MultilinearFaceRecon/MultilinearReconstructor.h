@@ -80,7 +80,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold;
-	static const int MAXITERS = 128;
+	static const int MAXITERS = 32;
 	bool usePrior;
 
 	// weights for prior
@@ -129,8 +129,8 @@ private:
 	arma::fvec mu_wid, mu_wexp;
 	arma::fmat sigma_wid, sigma_wexp;
 
-	// target vertices
-	vector<int> landmarks;
+	// target vertices	
 	vector<pair<PhGUtils::Point3f, int>> targets;
+	vector<int> validLandmarks;
 };
 

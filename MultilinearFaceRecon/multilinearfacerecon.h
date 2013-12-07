@@ -19,6 +19,9 @@ public:
 	MultilinearFaceRecon(QWidget *parent = 0);
 	~MultilinearFaceRecon();
 
+public slots:
+	void toggleKinectInput();
+
 private:
 	void setupStreamViews();
 	void setupKinectManager();
@@ -34,9 +37,12 @@ private:
 
 private:
 	QTimer timer;
+	BlendShapeViewer* viewer;
+
+	// kinect input related
+	bool useKinectInput;
 	PhGUtils::KinectManager kman;
 	AAMWrapper aam;
-	BlendShapeViewer* viewer;
 	shared_ptr<StreamViewer> colorView, depthView;
 };
 

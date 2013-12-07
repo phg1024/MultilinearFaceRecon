@@ -13,6 +13,7 @@ public:
 	~BlendShapeViewer(void);
 
 	void bindTargetMesh(const string& filename);
+	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts);
 	void fit();
 	void generatePrior();
 
