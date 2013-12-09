@@ -15,6 +15,12 @@ class MultilinearReconstructor : public QObject
 {
 	Q_OBJECT
 public:
+	enum FittingOption {
+		FIT_POSE,
+		FIT_IDENTITY,
+		FIT_ALL
+	};
+
 	MultilinearReconstructor(void);
 	~MultilinearReconstructor(void);
 
@@ -33,7 +39,7 @@ public:
 	// for reconstruction with 3D locations of feature points
 	void bindTarget(const vector<pair<PhGUtils::Point3f, int>>& pts);
 	void init();
-	void fit();
+	void fit(FittingOption ops = FIT_ALL);
 	void fit_withPrior();
 
 	void togglePrior();
@@ -70,7 +76,8 @@ private:
 	void transformMesh();
 	float computeError();
 
-	bool fitRigidTransformation();
+	bool fitRigidTransformationOnly();
+	bool fitRigidTransformationAndScale();
 	bool fitIdentityWeights();
 	bool fitIdentityWeights_withPrior();
 	bool fitExpressionWeights();
@@ -114,9 +121,10 @@ private:
 	// fitted face
 	Tensor1<float> tmesh;
 	
-	float RTparams[7]; /* scale, rx, ry, rz, tx, ty, tz */	
+	float RTparams[7]; /* sx, ry, rz, tx, ty, tz, scale */	
 	// used to avoid local minima
 	float meanX, meanY, meanZ;
+	float scale;
 	arma::fmat R;
 	arma::fvec T;
 	PhGUtils::Matrix3x3f Rmat;
@@ -136,5 +144,10 @@ private:
 	// target vertices	
 	vector<pair<PhGUtils::Point3f, int>> targets;
 	vector<float> w_landmarks;
+
+	// fitting control
+	static const int INITFRAMES = 5;
+	int frameCounter;
+	bool fitPose, fitIdentity, fitExpression;
 };
 

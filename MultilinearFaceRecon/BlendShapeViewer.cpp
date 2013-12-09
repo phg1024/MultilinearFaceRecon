@@ -1,10 +1,12 @@
 #include "BlendShapeViewer.h"
 #include "Utils/utility.hpp"
 #include "Utils/fileutils.h"
+#include "Kinect/KinectUtils.h"
 
 BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	GL3DCanvas(parent)
 {
+	this->resize(640, 480);
 	this->setSceneScale(1.0);
 
 	// load a dummy mesh
@@ -19,6 +21,9 @@ BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	updateMeshWithReconstructor();
 
 	connect(&recon, SIGNAL(oneiter()), this, SLOT(updateMeshWithReconstructor()));
+
+	mProj = PhGUtils::KinectColorProjection.transposed();
+	mMv = PhGUtils::Matrix4x4f::identity();
 }
 
 
@@ -37,6 +42,19 @@ void BlendShapeViewer::resizeGL(int w, int h) {
 void BlendShapeViewer::paintGL() {
 	GL3DCanvas::paintGL();
 
+	glPushMatrix();
+	
+	// setup the viewing matrices
+	glViewport(0, 0, 640, 480);
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glMultMatrixf(mProj.data());
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	glMultMatrixf(mMv.data());
+
 	glColor4f(0, 0.5, 1.0, 1.0);
 	mesh.drawFrame();
 
@@ -44,6 +62,8 @@ void BlendShapeViewer::paintGL() {
 	targetMesh.drawFrame();
 
 	drawLandmarks();
+
+	glPopMatrix();
 }
 
 bool BlendShapeViewer::loadLandmarks()
@@ -79,9 +99,19 @@ void BlendShapeViewer::drawLandmarks() {
 
 	if( targetSet ) {
 		glPointSize(3.0);
-		glColor4f(0, 1, 0, 1);
+
+		float minZ = numeric_limits<float>::max(), maxZ = -numeric_limits<float>::max();
+		for_each(targetLandmarks.begin(), targetLandmarks.end(), [&](const PhGUtils::Point3f p){
+			minZ = min(p.z, minZ);
+			maxZ = max(p.z, maxZ);
+		});
+		float diffZ = maxZ - minZ;
+		PhGUtils::debug("maxZ", maxZ, "minZ", minZ);
+
 		glBegin(GL_POINTS);
 		for_each(targetLandmarks.begin(), targetLandmarks.end(), [&](const PhGUtils::Point3f p){
+			float t = (p.z -minZ) / diffZ;
+			glColor4f(0, 1-t, t, 1);
 			glVertex3f(p.x, p.y, p.z);
 		});
 		glEnd();
@@ -132,8 +162,8 @@ void BlendShapeViewer::bindTargetMesh( const string& filename ) {
 	targetSet = true;
 }
 
-void BlendShapeViewer::fit() {
-	recon.fit();
+void BlendShapeViewer::fit(MultilinearReconstructor::FittingOption ops) {
+	recon.fit(ops);
 	updateMeshWithReconstructor();
 }
 

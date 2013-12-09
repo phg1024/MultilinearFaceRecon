@@ -14,7 +14,7 @@ public:
 
 	void bindTargetMesh(const string& filename);
 	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts);
-	void fit();
+	void fit(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void generatePrior();
 
 protected:
@@ -39,4 +39,6 @@ private:
 	vector<PhGUtils::Point3f> targetLandmarks;
 	vector<int> landmarks;
 	MultilinearReconstructor recon;
+
+	PhGUtils::Matrix4x4f mProj, mMv;
 };

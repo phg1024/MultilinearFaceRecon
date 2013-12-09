@@ -22,6 +22,7 @@ public:
 public slots:
 	void toggleKinectInput();
 	void resetAAM();
+	void reconstructionWithBatchInput();
 
 private:
 	void setupStreamViews();

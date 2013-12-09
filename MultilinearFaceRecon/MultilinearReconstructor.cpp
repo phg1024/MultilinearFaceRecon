@@ -9,6 +9,8 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 {
 	loadCoreTensor();
 	loadPrior();
+	initializeWeights();
+	createTemplateItem();
 	init();
 
 	w_landmarks.resize(512);
@@ -20,7 +22,8 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	w_data = 1.0;
 	w_prior_id = 0.01;
 	w_prior_exp = 0.01;
-	w_boundary = 1e-8;
+	w_boundary = 0;
+	frameCounter = 0;
 }
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
@@ -134,12 +137,13 @@ void MultilinearReconstructor::initializeWeights()
 
 void MultilinearReconstructor::init()
 {
-	initializeWeights();
-	createTemplateItem();
+	//initializeWeights();
+	//createTemplateItem();
 	
-	RTparams[0] = 1.0;
-	RTparams[1] = 0; RTparams[2] = 0; RTparams[3] = 0;
-	RTparams[4] = meanX; RTparams[5] = meanY; RTparams[6] = meanZ;
+	
+	RTparams[0] = 0; RTparams[1] = 0; RTparams[2] = 0;
+	RTparams[3] = meanX; RTparams[4] = meanY; RTparams[5] = meanZ;
+	RTparams[6] = 1.0;
 
 	R = arma::fmat(3, 3);
 	R(0, 0) = 1.0, R(1, 1) = 1.0, R(2, 2) = 1.0;
@@ -151,8 +155,33 @@ void MultilinearReconstructor::init()
 	updateComputationTensor();
 }
 
-void MultilinearReconstructor::fit()
+void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops )
 {
+	switch( ops ) {
+	case FIT_POSE:
+		{
+			fitPose = true;
+			fitIdentity = false;
+			fitExpression = false;
+			break;
+		}
+	case FIT_IDENTITY:
+		{
+			fitPose = true;
+			fitIdentity = true;
+			fitExpression = false;
+			break;
+		}
+	case FIT_ALL:
+		{
+			fitPose = true;
+			fitIdentity = true;
+			fitExpression = true;
+			break;
+		}
+	}
+	frameCounter++;
+
 	if( usePrior ) {
 		fit_withPrior();
 		return;
@@ -171,26 +200,37 @@ void MultilinearReconstructor::fit()
 	bool converged = false;
 	while( !converged && iters++ < MAXITERS ) {
 		converged = true;
-		converged &= fitRigidTransformation();
 
-		// apply the new global transformation to tm1c
-		// because tm1c is required in fitting identity weights
-		transformTM1C();
+		if( fitPose ) {
+			converged &= fitRigidTransformationAndScale();		
+		}
 
-		converged &= fitIdentityWeights();
-		// update tm0c with the new identity weights
-		// now the tensor is not updated with global rigid transformation
-		tm0c = corec.modeProduct(Wid, 0);
-		// apply the global transformation to tm0c
-		// because tm0c is required in fitting expression weights
-		transformTM0C();
+		if( fitIdentity ) {
+			// apply the new global transformation to tm1c
+			// because tm1c is required in fitting identity weights
+			transformTM1C();
+			converged &= fitIdentityWeights();
+			// update tm0c with the new identity weights
+			// now the tensor is not updated with global rigid transformation
+			tm0c = corec.modeProduct(Wid, 0);
+		}
 
-		converged &= fitExpressionWeights();	
-		// update tm1c with the new expression weights
-		// now the tensor is not updated with global rigid transformation
-		tm1c = corec.modeProduct(Wexp, 1);
+		if( fitExpression ) {
+			// apply the global transformation to tm0c
+			// because tm0c is required in fitting expression weights
+			transformTM0C();
+
+			converged &= fitExpressionWeights();	
+			// update tm1c with the new expression weights
+			// now the tensor is not updated with global rigid transformation
+			tm1c = corec.modeProduct(Wexp, 1);
+		}
+
 		// compute tmc from the new tm1c
-		updateTMC();
+		if( fitIdentity || fitExpression ) {
+			// compute tmc from the new tm1c
+			updateTMC();
+		}		
 
 		// uncomment to show the transformation process
 		//transformMesh();
@@ -223,29 +263,35 @@ void MultilinearReconstructor::fit_withPrior() {
 	bool converged = false;
 	while( !converged && iters++ < MAXITERS ) {
 		converged = true;
-		converged &= fitRigidTransformation();
 
-		
-		// apply the new global transformation to tm1c
-		// because tm1c is required in fitting identity weights
-		transformTM1C();
+		if( fitPose ) {
+			converged &= fitRigidTransformationAndScale();		
+		}
 
-		converged &= fitIdentityWeights_withPrior();
-		// update tm0c with the new identity weights
-		// now the tensor is not updated with global rigid transformation
-		tm0c = corec.modeProduct(Wid, 0);
-		// apply the global transformation to tm0c
-		// because tm0c is required in fitting expression weights
-		transformTM0C();
+		if( fitIdentity ) {
+			// apply the new global transformation to tm1c
+			// because tm1c is required in fitting identity weights
+			transformTM1C();
+			converged &= fitIdentityWeights_withPrior();
+			// update tm0c with the new identity weights
+			// now the tensor is not updated with global rigid transformation
+			tm0c = corec.modeProduct(Wid, 0);
+		}
 
-		converged &= fitExpressionWeights_withPrior();	
-		// update tm1c with the new expression weights
-		// now the tensor is not updated with global rigid transformation
-		tm1c = corec.modeProduct(Wexp, 1);
-		
+		if( fitExpression ) {
+			// apply the global transformation to tm0c
+			// because tm0c is required in fitting expression weights
+			transformTM0C();
+			converged &= fitExpressionWeights_withPrior();	
+			// update tm1c with the new expression weights
+			// now the tensor is not updated with global rigid transformation
+			tm1c = corec.modeProduct(Wexp, 1);
+		}	
 		
 		// compute tmc from the new tm1c
-		updateTMC();
+		if( fitIdentity || fitExpression ) {
+			updateTMC();
+		}		
 
 		// uncomment to show the transformation process
 		//transformMesh();
@@ -268,7 +314,7 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
-	s = p[0], rx = p[1], ry = p[2], rz = p[3], tx = p[4], ty = p[5], tz = p[6];
+	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
 
 	auto targets = recon->targets;
 	int npts = targets.size();
@@ -291,15 +337,16 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
-bool MultilinearReconstructor::fitRigidTransformation()
-{	
+bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	int npts = targets.size();
 	vector<float> meas(npts);
-	int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 7, npts, 512, NULL, NULL, NULL, NULL, this);
 	cout << "rigid fitting finished in " << iters << " iterations." << endl;
 
 	// set up the matrix and translation vector
-	Rmat = PhGUtils::rotationMatrix(RTparams[1], RTparams[2], RTparams[3]) * RTparams[0];
+	scale = max(RTparams[6], scale);
+	RTparams[6] = scale;
+	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
 	float diff = 0;
 	for(int i=0;i<3;i++) {
 		for(int j=0;j<3;j++) {
@@ -308,13 +355,40 @@ bool MultilinearReconstructor::fitRigidTransformation()
 		}
 	}
 
-	Tvec = PhGUtils::Point3f(RTparams[4], RTparams[5], RTparams[6]);	
+	Tvec = PhGUtils::Point3f(RTparams[3], RTparams[4], RTparams[5]);	
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
-	T(0) = RTparams[4], T(1) = RTparams[5], T(2) = RTparams[6];
+	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
+	scale = RTparams[6];
 
 	//cout << R << endl;
 	//cout << T << endl;
 	return diff / 7 < cc;
+}
+
+bool MultilinearReconstructor::fitRigidTransformationOnly()
+{	
+	int npts = targets.size();
+	vector<float> meas(npts);
+	int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 6, npts, 512, NULL, NULL, NULL, NULL, this);
+	cout << "rigid fitting finished in " << iters << " iterations." << endl;
+
+	// set up the matrix and translation vector
+	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * scale;
+	float diff = 0;
+	for(int i=0;i<3;i++) {
+		for(int j=0;j<3;j++) {
+			diff += fabs(R(i, j) - Rmat(i, j));
+			R(i, j) = Rmat(i, j);			
+		}
+	}
+
+	Tvec = PhGUtils::Point3f(RTparams[3], RTparams[4], RTparams[5]);	
+	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
+	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
+
+	//cout << R << endl;
+	//cout << T << endl;
+	return diff / 6 < cc;
 }
 
 void evalCost2(float *p, float *hx, int m, int n, void* adata) {
@@ -633,15 +707,14 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		meanZ += p.z * isValid;
 
 		// set the landmark weights
-		w_landmarks[idx] = w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (i<64 || i>74)?1.0:w_boundary;
-		// the valid mask
-		w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = isValid;
+		w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (i<64 || i>74)?isValid:isValid*w_boundary;
+
 		validCount += isValid;
 	}
 
-	meanX /= validCount;
-	meanY /= validCount;
-	meanZ /= validCount;
+	meanX = 0; //= validCount;
+	meanY = 0;//= validCount;
+	meanZ = 0; //= validCount;
 
 	//PhGUtils::debug("valid landmarks", validCount);
 }

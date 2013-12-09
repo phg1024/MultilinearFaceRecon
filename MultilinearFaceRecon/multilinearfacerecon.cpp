@@ -1,6 +1,7 @@
 #include "multilinearfacerecon.h"
 #include <QFileDialog>
 #include "Utils/utility.hpp"
+#include "Utils/stringutils.h"
 #include "Kinect/KinectUtils.h"
 
 MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
@@ -22,6 +23,7 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	connect(ui.actionGenerate_Prior, SIGNAL(triggered()), this, SLOT(generatePrior()));
 	connect(ui.actionStart_Kinect, SIGNAL(triggered()), this, SLOT(toggleKinectInput()));
 	connect(ui.actionReset_Tracking, SIGNAL(triggered()), this, SLOT(resetAAM()));
+	connect(ui.actionBatch_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithBatchInput()));
 
 	// timer for kinect input
 	connect(&timer, SIGNAL(timeout()), this, SLOT(updateKinectStreams()));
@@ -63,6 +65,71 @@ void MultilinearFaceRecon::fit() {
 
 void MultilinearFaceRecon::generatePrior() {
 	viewer->generatePrior();
+}
+
+void MultilinearFaceRecon::reconstructionWithBatchInput() {
+	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\images\\";
+	const string imageName = "DougTalkingComplete_KSeq_";
+	const int startIdx = 10000;
+	const int imageCount = 200;
+	const int endIdx = startIdx + imageCount;
+	const string colorPostfix = ".jpg";
+	const string depthPostfix = "_depth.png";
+
+	const int w = 640;
+	const int h = 480;
+
+	for(int imgidx=1;imgidx<imageCount;imgidx++) {
+		// process each image and perform reconstruction
+		string colorImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + colorPostfix;
+		string depthImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + depthPostfix;
+		vector<unsigned char> colordata = PhGUtils::fromQImage(colorImageName);
+		vector<unsigned char> depthdata = PhGUtils::fromQImage(depthImageName);
+
+		colorView->bindStreamData(&(colordata[0]), w, h);
+		depthView->bindStreamData(&(depthdata[0]), w, h);
+
+		//QImage rgbimg = PhGUtils::toQImage(&(kman.getRGBData()[0]), kman.getWidth(), kman.getHeight());
+		//QImage depthimg = PhGUtils::toQImage(&(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
+
+		//rgbimg.save("rgb.png");
+		//depthimg.save("depth.png");
+
+		vector<float> f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+		colorView->bindLandmarks(f);
+
+		// do not update the mesh if the landmarks are unknown
+		if( f.empty() ) continue;
+
+		// get the 3D landmarks and feed to recon manager
+		int npts = f.size()/2;
+		vector<PhGUtils::Point3f> lms(npts);
+		for(int i=0;i<npts;i++) {
+			int u = f[i];
+			// flip y coordinates
+			int v = f[i+npts];
+			int idx = (v*w+u)*4;
+			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+
+			float X, Y, Z;
+			PhGUtils::colorToWorld(u, v, d, X, Y, Z);
+			PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
+
+			lms[i] = PhGUtils::Point3f(X, Y, Z);
+
+			// minus one is a hack to bring the model nearer
+			//lms[i].z += 1.0;
+		}
+
+		viewer->bindTargetLandmarks(lms);
+		if( imgidx == 0 )
+			viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
+		else
+			viewer->fit(MultilinearReconstructor::FIT_POSE);
+
+		QApplication::processEvents();
+		::system("pause");
+	}
 }
 
 void MultilinearFaceRecon::updateKinectStreams()
