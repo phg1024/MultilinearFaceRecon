@@ -1,9 +1,13 @@
 #include "AAMWrapper.h"
+#include "Utils/Timer.h"
 
 
 AAMWrapper::AAMWrapper(void)
 {
+	PhGUtils::Timer t;
+	t.tic();
 	setup();
+	t.toc("AAM setup");
 }
 
 

@@ -44,6 +44,7 @@ private:
 	// kinect input related
 	bool useKinectInput;
 	PhGUtils::KinectManager kman;
+	int frameIdx;
 	AAMWrapper aam;
 	shared_ptr<StreamViewer> colorView, depthView;
 };

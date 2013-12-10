@@ -2,6 +2,7 @@
 #include <QFileDialog>
 #include "Utils/utility.hpp"
 #include "Utils/stringutils.h"
+#include "Utils/Timer.h"
 #include "Kinect/KinectUtils.h"
 
 MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
@@ -39,8 +40,8 @@ MultilinearFaceRecon::~MultilinearFaceRecon()
 void MultilinearFaceRecon::setupKinectManager() {
 	kman.setMode( PhGUtils::KinectManager::WarpDepth );
 	
-	// 25 frames per second
-	timer.setInterval(40);
+	// 30 frames per second
+	timer.setInterval(33);
 }
 
 void MultilinearFaceRecon::setupStreamViews() {
@@ -111,11 +112,8 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
-			float X, Y, Z;
-			PhGUtils::colorToWorld(u, v, d, X, Y, Z);
-			PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
-
-			lms[i] = PhGUtils::Point3f(X, Y, Z);
+			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
+			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 
 			// minus one is a hack to bring the model nearer
 			//lms[i].z += 1.0;
@@ -134,6 +132,9 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 
 void MultilinearFaceRecon::updateKinectStreams()
 {	
+	PhGUtils::Timer t, t2;
+	t2.tic();
+	t.tic();
 	kman.updateStream();
 	int w = kman.getWidth(), h = kman.getHeight();
 	const vector<unsigned char>& colordata = kman.getRGBData();
@@ -142,15 +143,18 @@ void MultilinearFaceRecon::updateKinectStreams()
 
 	colorView->bindStreamData(&(colordata[0]), w, h);
 	depthView->bindStreamData(&(depthdata[0]), w, h);
-
+	t.toc("Update views");
 	//QImage rgbimg = PhGUtils::toQImage(&(kman.getRGBData()[0]), kman.getWidth(), kman.getHeight());
 	//QImage depthimg = PhGUtils::toQImage(&(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
 
 	//rgbimg.save("rgb.png");
 	//depthimg.save("depth.png");
-
+	t.tic();
 	vector<float> f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+	t.toc("AAM");
+	t.tic();
 	colorView->bindLandmarks(f);
+	
 
 	// do not update the mesh if the landmarks are unknown
 	if( f.empty() ) return;
@@ -161,26 +165,30 @@ void MultilinearFaceRecon::updateKinectStreams()
 	for(int i=0;i<npts;i++) {
 		int u = f[i];
 		// flip y coordinates
-		int v = h - 1 - f[i+npts];
+		int v = f[i+npts];
 		int idx = (v*w+u)*4;
 		float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
-
-		float X, Y, Z;
-		PhGUtils::colorToWorld(u, v, d, X, Y, Z);
-		PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
-		
-		lms[i] = PhGUtils::Point3f(X, Y, Z);
+		PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
+		//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 		
 		// minus one is a hack to bring the model nearer
 		//lms[i].z += 1.0;
 	}
 	viewer->bindTargetLandmarks(lms);
-	viewer->fit();
+	if( frameIdx++ == 0 )
+		viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
+	else
+		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+
+	t.toc("Reconstruction total");
+	t2.toc();
+	PhGUtils::message("Frame rate = " + PhGUtils::toString(1.0 / t2.gap()) + " fps");
 }
 
 void MultilinearFaceRecon::toggleKinectInput()
 {
 	useKinectInput = !useKinectInput;
+	frameIdx = 0;
 	if( useKinectInput ) timer.start();
 	else timer.stop();
 }

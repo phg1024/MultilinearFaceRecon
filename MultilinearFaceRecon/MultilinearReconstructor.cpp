@@ -1,5 +1,6 @@
 #include "MultilinearReconstructor.h"
 #include "Utils/utility.hpp"
+#include "Utils/stringutils.h"
 #include "Math/denseblas.h"
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
@@ -20,9 +21,9 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	usePrior = true;
 
 	w_data = 1.0;
-	w_prior_id = 0.01;
-	w_prior_exp = 0.01;
-	w_boundary = 0;
+	w_prior_id = 1e-2;
+	w_prior_exp = 1e-2;
+	w_boundary = 1e-3;
 	frameCounter = 0;
 }
 
@@ -172,6 +173,13 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 			fitExpression = false;
 			break;
 		}
+	case FIT_POSE_AND_EXPRESSION:
+		{
+			fitPose = true;
+			fitIdentity = false;
+			fitExpression = true;
+			break;
+		}
 	case FIT_ALL:
 		{
 			fitPose = true;
@@ -187,7 +195,7 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 		return;
 	}
 
-	cout << "simple fit" << endl;
+	//cout << "simple fit" << endl;
 	init();
 
 	if(targets.empty())
@@ -209,13 +217,14 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 			// apply the new global transformation to tm1c
 			// because tm1c is required in fitting identity weights
 			transformTM1C();
+
 			converged &= fitIdentityWeights();
-			// update tm0c with the new identity weights
-			// now the tensor is not updated with global rigid transformation
-			tm0c = corec.modeProduct(Wid, 0);
 		}
 
 		if( fitExpression ) {
+			// update tm0c with the new identity weights
+			// now the tensor is not updated with global rigid transformation
+			tm0c = corec.modeProduct(Wid, 0);
 			// apply the global transformation to tm0c
 			// because tm0c is required in fitting expression weights
 			transformTM0C();
@@ -243,13 +252,13 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 		//emit oneiter();
 		//QApplication::processEvents();
 	}
-	cout << "Total iterations = " << iters << endl;
+	//cout << "Total iterations = " << iters << endl;
 	transformMesh();
 	//emit oneiter();
 }
 
 void MultilinearReconstructor::fit_withPrior() {
-	cout << "fit with prior" << endl;
+	//cout << "fit with prior" << endl;
 
 	init();
 
@@ -268,20 +277,22 @@ void MultilinearReconstructor::fit_withPrior() {
 			converged &= fitRigidTransformationAndScale();		
 		}
 
-		if( fitIdentity ) {
+		if( fitIdentity ) {			
 			// apply the new global transformation to tm1c
 			// because tm1c is required in fitting identity weights
 			transformTM1C();
 			converged &= fitIdentityWeights_withPrior();
-			// update tm0c with the new identity weights
-			// now the tensor is not updated with global rigid transformation
-			tm0c = corec.modeProduct(Wid, 0);
 		}
 
 		if( fitExpression ) {
+			// update tm0c with the new identity weights
+			// now the tensor is not updated with global rigid transformation
+			tm0c = corec.modeProduct(Wid, 0);
+
 			// apply the global transformation to tm0c
 			// because tm0c is required in fitting expression weights
 			transformTM0C();
+
 			converged &= fitExpressionWeights_withPrior();	
 			// update tm1c with the new expression weights
 			// now the tensor is not updated with global rigid transformation
@@ -295,17 +306,17 @@ void MultilinearReconstructor::fit_withPrior() {
 
 		// uncomment to show the transformation process
 		//transformMesh();
-		Rmat.print("R");
-		Tvec.print("T");
+		//Rmat.print("R");
+		//Tvec.print("T");
 		float E = computeError();
-		PhGUtils::debug("iters", iters, "Error", E);
+		//PhGUtils::debug("iters", iters, "Error", E);
 
 		converged |= E < errorThreshold;		
 		E0 = E;
 		//emit oneiter();
 		//QApplication::processEvents();
 	}
-	cout << "Total iterations = " << iters << endl;
+	//cout << "Total iterations = " << iters << endl;
 	transformMesh();
 	//emit oneiter();
 }
@@ -340,12 +351,10 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	int npts = targets.size();
 	vector<float> meas(npts);
-	int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 7, npts, 512, NULL, NULL, NULL, NULL, this);
-	cout << "rigid fitting finished in " << iters << " iterations." << endl;
+	int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// set up the matrix and translation vector
-	scale = max(RTparams[6], scale);
-	RTparams[6] = scale;
 	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
 	float diff = 0;
 	for(int i=0;i<3;i++) {
@@ -358,7 +367,6 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	Tvec = PhGUtils::Point3f(RTparams[3], RTparams[4], RTparams[5]);	
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
-	scale = RTparams[6];
 
 	//cout << R << endl;
 	//cout << T << endl;

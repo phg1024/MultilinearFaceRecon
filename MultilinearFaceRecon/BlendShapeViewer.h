@@ -24,7 +24,11 @@ protected:
 
 	virtual void keyPressEvent(QKeyEvent *e);
 
+	void enableLighting();
+	void disableLighting();
+
 	void drawLandmarks();
+	void drawGenreatedMesh();
 
 private:
 	bool loadLandmarks();

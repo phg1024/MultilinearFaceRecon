@@ -18,6 +18,7 @@ public:
 	enum FittingOption {
 		FIT_POSE,
 		FIT_IDENTITY,
+		FIT_POSE_AND_EXPRESSION,
 		FIT_ALL
 	};
 
@@ -87,7 +88,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold;
-	static const int MAXITERS = 32;
+	static const int MAXITERS = 16;
 	bool usePrior;
 
 	// weights for prior
