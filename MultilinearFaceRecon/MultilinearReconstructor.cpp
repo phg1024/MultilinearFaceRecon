@@ -20,7 +20,6 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	errorThreshold = 1e-4;
 	usePrior = true;
 
-	w_data = 1.0;
 	w_prior_id = 1e-2;
 	w_prior_exp = 1e-2;
 	w_boundary = 1e-3;
@@ -342,9 +341,10 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 		PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
 		const PhGUtils::Point3f& q = targets[i].first;
 
-		PhGUtils::Point3f pp = R * p + T;
+		//PhGUtils::Point3f pp = R * p + T;
+		PhGUtils::transformPoint( p.x, p.y, p.z, R, T );
 
-		hx[i] = pp.distanceTo(q) * w_landmarks[vidx];
+		hx[i] = p.distanceTo(q) * w_landmarks[vidx];
 	}
 }
 
@@ -364,7 +364,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 		}
 	}
 
-	Tvec = PhGUtils::Point3f(RTparams[3], RTparams[4], RTparams[5]);	
+	Tvec.x = RTparams[3], Tvec.y = RTparams[4], Tvec.z = RTparams[5];
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
 
@@ -452,7 +452,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 	// the lower part is already filled in
 	for(int i=0;i<tm1c.dim(0);i++) {
 		for(int j=0;j<tm1c.dim(1);j++) {
-			Aid(j, i) = tm1c(i, j) * w_data * w_landmarks[j];
+			Aid(j, i) = tm1c(i, j) * w_landmarks[j];
 		}
 	}
 	
@@ -464,7 +464,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 
 	// assemble the right hand side, fill in the upper part as usual
 	for(int i=0;i<q.length();i++) {
-		brhs(i) = q(i) * w_data * w_landmarks[i];
+		brhs(i) = q(i) * w_landmarks[i];
 	}
 	// fill in the lower part with the mean vector of identity weights
 	int ndim_id = mu_wid.size();
@@ -586,7 +586,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	// fill in the upper part of the matrix, the lower part is already filled
 	for(int i=0;i<tm0c.dim(0);i++) {
 		for(int j=0;j<tm0c.dim(1);j++) {
-			Aexp(j, i) = tm0c(i, j) * w_data * w_landmarks[j];
+			Aexp(j, i) = tm0c(i, j) * w_landmarks[j];
 		}
 	}
 
@@ -599,7 +599,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 
 	// fill in the upper part of the right hand side
 	for(int i=0;i<q.length();i++) {
-		brhs(i) = q(i) * w_data * w_landmarks[i];
+		brhs(i) = q(i) * w_landmarks[i];
 	}
 
 	// fill in the lower part with the mean vector of expression weights
@@ -786,11 +786,16 @@ void MultilinearReconstructor::transformTM0C() {
 	int npts = tm0c.dim(1) / 3;
 	for(int i=0;i<tm0c.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
+			// should change this to a fast version, don't create temporary object
+			/*
 			PhGUtils::Point3f p(tm0c(i, vidx), tm0c(i, vidx+1), tm0c(i, vidx+2));
 			p = Rmat * p + Tvec;
 			tm0c(i, vidx) = p.x;
 			tm0c(i, vidx+1) = p.y;
 			tm0c(i, vidx+2) = p.z;
+			*/
+
+			PhGUtils::transformPoint( tm0c(i, vidx), tm0c(i, vidx+1), tm0c(i, vidx+2), Rmat, Tvec );
 		}
 	}
 }
@@ -800,16 +805,24 @@ void MultilinearReconstructor::transformTM1C() {
 	int npts = tm1c.dim(1) / 3;
 	for(int i=0;i<tm1c.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
+			// should change this to a fast version, don't create temporary object
+
+			/*
 			PhGUtils::Point3f p(tm1c(i, vidx), tm1c(i, vidx+1), tm1c(i, vidx+2));
 			p = Rmat * p + Tvec;
+
 			tm1c(i, vidx) = p.x;
 			tm1c(i, vidx+1) = p.y;
 			tm1c(i, vidx+2) = p.z;
+			*/
+
+			PhGUtils::transformPoint( tm1c(i, vidx), tm1c(i, vidx+1), tm1c(i, vidx+2), Rmat, Tvec );
 		}
 	}
 }
 
 void MultilinearReconstructor::updateTMC() {
+	// !FIXME change this to use preallocated memory
 	tmc = tm1c.modeProduct(Wid, 0);
 }
 
@@ -819,8 +832,12 @@ float MultilinearReconstructor::computeError()
 	float E = 0;
 	for(int i=0;i<npts;i++) {
 		int vidx = i * 3;
+		// should change this to a fast version
 		PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
-		p = Rmat * p + Tvec;
+
+		/*p = Rmat * p + Tvec;*/		
+		PhGUtils::transformPoint(p.x, p.y, p.z, Rmat, Tvec);
+
 		E += p.squaredDistanceTo(targets[i].first) * w_landmarks[vidx];
 	}
 	return E;

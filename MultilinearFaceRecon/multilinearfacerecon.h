@@ -45,6 +45,7 @@ private:
 	bool useKinectInput;
 	PhGUtils::KinectManager kman;
 	int frameIdx;
+	vector<PhGUtils::Point3f> lms;		// landmarks got from AAM tracking
 	AAMWrapper aam;
 	shared_ptr<StreamViewer> colorView, depthView;
 };

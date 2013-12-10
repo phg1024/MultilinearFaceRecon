@@ -183,6 +183,7 @@ void BlendShapeViewer::updateMeshWithReconstructor() {
 	update();
 }
 
+// @note	lms may have larger size than landmarks, so always use the length of landmarks
 void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms )
 {
 	targetLandmarks = lms;

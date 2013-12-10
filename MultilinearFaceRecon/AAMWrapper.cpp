@@ -42,9 +42,11 @@ void AAMWrapper::setup() {
 	curStatus = 0;
 	startNum = 0;
 	isRecording = false;
+
+	f.reserve(256);
 }
 
-vector<float> AAMWrapper::track( const unsigned char* cimg, const unsigned char* dimg, int w, int h )
+const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigned char* dimg, int w, int h )
 {
 
 		/// realtime tracking related
@@ -340,12 +342,13 @@ vector<float> AAMWrapper::track( const unsigned char* cimg, const unsigned char*
 		if( isSecceed )		
 		{
 			cout << "Succeeded." << endl;
-			return vector<float>(lastShape, lastShape + cptsNum*2);
+			f.assign(lastShape, lastShape + cptsNum*2);
+			return f;
 		}
 		else
 		{
 			cout << "Failed." << endl;
-			return vector<float>();
+			return eptf;
 		}
 }
 

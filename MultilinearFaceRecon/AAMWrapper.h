@@ -13,7 +13,7 @@ public:
 
 	void reset();
 	// tracking interface
-	vector<float> track(const unsigned char* cimg, const unsigned char* dimg, int w, int h);
+	const vector<float>& track(const unsigned char* cimg, const unsigned char* dimg, int w, int h);
 
 protected:
 	void setup();
@@ -33,5 +33,9 @@ private:
 
 	float lastShape[200], currentShape[200];
 	vector<float> ptsList;
+
+	// returned points
+	vector<float> f;
+	vector<float> eptf;	// dummy
 };
 

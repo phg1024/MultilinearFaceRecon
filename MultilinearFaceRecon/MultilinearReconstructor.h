@@ -92,7 +92,7 @@ private:
 	bool usePrior;
 
 	// weights for prior
-	float w_data, w_prior_id, w_prior_exp;
+	float w_prior_id, w_prior_exp;
 	float w_boundary;
 
 	// the input core tensor

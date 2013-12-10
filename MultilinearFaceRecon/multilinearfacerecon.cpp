@@ -18,6 +18,7 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	this->setCentralWidget((QWidget*)viewer);
 
 	setupKinectManager();
+	lms.resize(128);
 
 	connect(ui.actionLoad_Target, SIGNAL(triggered()), this, SLOT(loadTargetMesh()));
 	connect(ui.actionFit, SIGNAL(triggered()), this, SLOT(fit()));
@@ -104,7 +105,6 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 
 		// get the 3D landmarks and feed to recon manager
 		int npts = f.size()/2;
-		vector<PhGUtils::Point3f> lms(npts);
 		for(int i=0;i<npts;i++) {
 			int u = f[i];
 			// flip y coordinates
@@ -150,7 +150,7 @@ void MultilinearFaceRecon::updateKinectStreams()
 	//rgbimg.save("rgb.png");
 	//depthimg.save("depth.png");
 	t.tic();
-	vector<float> f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+	const vector<float>& f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
 	t.toc("AAM");
 	t.tic();
 	colorView->bindLandmarks(f);
@@ -161,7 +161,6 @@ void MultilinearFaceRecon::updateKinectStreams()
 
 	// get the 3D landmarks and feed to recon manager
 	int npts = f.size()/2;
-	vector<PhGUtils::Point3f> lms(npts);
 	for(int i=0;i<npts;i++) {
 		int u = f[i];
 		// flip y coordinates
@@ -178,7 +177,7 @@ void MultilinearFaceRecon::updateKinectStreams()
 	if( frameIdx++ == 0 )
 		viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
 	else
-		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+		viewer->fit(MultilinearReconstructor::FIT_POSE);
 
 	t.toc("Reconstruction total");
 	t2.toc();
