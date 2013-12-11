@@ -174,10 +174,11 @@ void MultilinearFaceRecon::updateKinectStreams()
 		//lms[i].z += 1.0;
 	}
 	viewer->bindTargetLandmarks(lms);
-	if( frameIdx++ == 0 )
+	if( frameIdx++ == 0 ) {
 		viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
+	}
 	else
-		viewer->fit(MultilinearReconstructor::FIT_POSE);
+		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
 
 	t.toc("Reconstruction total");
 	t2.toc();

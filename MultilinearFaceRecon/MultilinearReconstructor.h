@@ -6,7 +6,15 @@
 #include "Geometry/point.hpp"
 #include "Geometry/matrix.hpp"
 #include "Geometry/geometryutils.hpp"
+
+// levmar header
 #include "levmar.h"
+
+// cminpack header
+#define __cminpack_float__
+#define CMINPACK_NO_DLL
+#include "../cminpack-1.3.2/cminpack.h"
+
 #include "Math/DenseVector.hpp"
 #include "Math/DenseMatrix.hpp"
 #include <armadillo>
@@ -43,6 +51,16 @@ public:
 	void fit(FittingOption ops = FIT_ALL);
 	void fit_withPrior();
 
+	// force update computation tensors
+	void updateTM0() {
+		tm0 = core.modeProduct(Wid, 0);
+		tplt = tm0.modeProduct(Wexp, 0);
+	}
+	void updateTM1() {
+		tm1 = core.modeProduct(Wexp, 1);
+		tplt = tm1.modeProduct(Wid, 0);
+	}
+
 	void togglePrior();
 
 	const Tensor1<float>& expressionWeights() const { return Wexp; }
@@ -70,11 +88,15 @@ private:
 	void transformTM1C();
 
 private:
+	friend int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cminpack_real__ *hx,
+		int iflag);
 	friend void evalCost(float *p, float *hx, int m, int n, void* adata);
 	friend void evalCost2(float *p, float *hx, int m, int n, void* adata);
 	friend void evalCost3(float *p, float *hx, int m, int n, void* adata);
 
 	void transformMesh();
+	void transformMesh_id();
+	void transformMesh_exp();
 	float computeError();
 
 	bool fitRigidTransformationOnly();
@@ -88,7 +110,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold;
-	static const int MAXITERS = 16;
+	static const int MAXITERS = 32;
 	bool usePrior;
 
 	// weights for prior

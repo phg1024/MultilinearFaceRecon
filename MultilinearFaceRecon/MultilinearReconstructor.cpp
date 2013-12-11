@@ -1,6 +1,7 @@
 #include "MultilinearReconstructor.h"
 #include "Utils/utility.hpp"
 #include "Utils/stringutils.h"
+#include "Utils/Timer.h"
 #include "Math/denseblas.h"
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
@@ -22,7 +23,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 
 	w_prior_id = 1e-2;
 	w_prior_exp = 1e-2;
-	w_boundary = 1e-3;
+	w_boundary = 1e-5;
 	frameCounter = 0;
 }
 
@@ -43,11 +44,11 @@ void MultilinearReconstructor::loadPrior()
 {
 	// the prior data is stored in the following format
 	// the matrices are stored in column major order
-	
+
 	// ndims
 	// mean vector
 	// covariance matrix
-	
+
 	cout << "loading prior data ..." << endl;
 	const string fnwid  = "../Data/wid_trainingdata.bin";
 	ifstream fwid(fnwid, ios::in | ios::binary );
@@ -139,8 +140,7 @@ void MultilinearReconstructor::init()
 {
 	//initializeWeights();
 	//createTemplateItem();
-	
-	
+
 	RTparams[0] = 0; RTparams[1] = 0; RTparams[2] = 0;
 	RTparams[3] = meanX; RTparams[4] = meanY; RTparams[5] = meanZ;
 	RTparams[6] = 1.0;
@@ -191,6 +191,10 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 
 	if( usePrior ) {
 		fit_withPrior();
+
+		if( ops == FIT_IDENTITY ) {
+			updateTM0();
+		}
 		return;
 	}
 
@@ -252,6 +256,18 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 		//QApplication::processEvents();
 	}
 	//cout << "Total iterations = " << iters << endl;
+
+	if( fitIdentity && !fitExpression ) 
+		tplt = tm1.modeProduct(Wid, 0);
+
+	if( fitExpression && !fitIdentity ) {
+		cout << tm0.dim(0) << ", " << tm0.dim(1) << endl;
+		tplt = tm0.modeProduct(Wexp, 0);
+	}
+
+	if( fitIdentity && fitExpression )
+		tplt = core.modeProduct(Wexp, 1).modeProduct(Wid, 0);
+
 	transformMesh();
 	//emit oneiter();
 }
@@ -266,6 +282,8 @@ void MultilinearReconstructor::fit_withPrior() {
 		PhGUtils::error("No target set!");
 		return;
 	}
+	PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform;
+
 	int iters = 0;
 	float E0 = 0;
 	bool converged = false;
@@ -273,17 +291,25 @@ void MultilinearReconstructor::fit_withPrior() {
 		converged = true;
 
 		if( fitPose ) {
+			timerRT.tic();
 			converged &= fitRigidTransformationAndScale();		
+			timerRT.toc();
 		}
 
 		if( fitIdentity ) {			
 			// apply the new global transformation to tm1c
 			// because tm1c is required in fitting identity weights
+			timerOther.tic();
 			transformTM1C();
+			timerOther.toc();
+
+			timerID.tic();
 			converged &= fitIdentityWeights_withPrior();
+			timerID.toc();
 		}
 
 		if( fitExpression ) {
+			timerOther.tic();
 			// update tm0c with the new identity weights
 			// now the tensor is not updated with global rigid transformation
 			tm0c = corec.modeProduct(Wid, 0);
@@ -291,18 +317,27 @@ void MultilinearReconstructor::fit_withPrior() {
 			// apply the global transformation to tm0c
 			// because tm0c is required in fitting expression weights
 			transformTM0C();
+			timerOther.toc();
 
+			timerExp.tic();
 			converged &= fitExpressionWeights_withPrior();	
+			timerExp.toc();
+
+			timerOther.tic();
 			// update tm1c with the new expression weights
 			// now the tensor is not updated with global rigid transformation
 			tm1c = corec.modeProduct(Wexp, 1);
+			timerOther.toc();
 		}	
-		
+
 		// compute tmc from the new tm1c
 		if( fitIdentity || fitExpression ) {
+			timerOther.tic();
 			updateTMC();
+			timerOther.toc();
 		}		
 
+		timerOther.tic();
 		// uncomment to show the transformation process
 		//transformMesh();
 		//Rmat.print("R");
@@ -312,12 +347,35 @@ void MultilinearReconstructor::fit_withPrior() {
 
 		converged |= E < errorThreshold;		
 		E0 = E;
+		timerOther.toc();
 		//emit oneiter();
 		//QApplication::processEvents();
 	}
 	//cout << "Total iterations = " << iters << endl;
+
+	timerTransform.tic();
+	if( fitIdentity && !fitExpression ) 
+		tplt = tm1.modeProduct(Wid, 0);
+
+	if( fitExpression && !fitIdentity ) {
+		cout << tm0.dim(0) << ", " << tm0.dim(1) << endl;
+		tplt = tm0.modeProduct(Wexp, 0);
+	}
+
+	if( fitIdentity && fitExpression )
+		tplt = core.modeProduct(Wexp, 1).modeProduct(Wid, 0);
+	timerTransform.toc();
+
+	timerTransform.tic();
 	transformMesh();
+	timerTransform.toc();
 	//emit oneiter();
+
+	PhGUtils::message("Time cost for pose fitting = " + PhGUtils::toString(timerRT.elapsed()) + " seconds.");
+	PhGUtils::message("Time cost for wid fitting = " + PhGUtils::toString(timerID.elapsed()) + " seconds.");
+	PhGUtils::message("Time cost for wexp fitting = " + PhGUtils::toString(timerExp.elapsed()) + " seconds.");
+	PhGUtils::message("Time cost for tensor transformation = " + PhGUtils::toString(timerTransform.elapsed()) + " seconds.");
+	PhGUtils::message("Time cost for other computation = " + PhGUtils::toString(timerOther.elapsed()) + " seconds.");
 }
 
 void evalCost(float *p, float *hx, int m, int n, void* adata) {
@@ -348,10 +406,50 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
+int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cminpack_real__ *hx,
+					  int iflag) 
+{
+	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+
+	float s, rx, ry, rz, tx, ty, tz;
+	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
+
+	auto targets = recon->targets;
+	int npts = targets.size();
+	auto tmc = recon->tmc;
+
+	auto w_landmarks = recon->w_landmarks;
+
+	// set up rotation matrix and translation vector
+	PhGUtils::Point3f T(tx, ty, tz);
+	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz) * s;
+
+	// apply the new global transformation
+	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
+		PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
+		const PhGUtils::Point3f& q = targets[i].first;
+
+		//PhGUtils::Point3f pp = R * p + T;
+		PhGUtils::transformPoint( p.x, p.y, p.z, R, T );
+
+		hx[i] = p.distanceTo(q) * w_landmarks[vidx];
+	}
+
+	return 0;
+}
+
 bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	int npts = targets.size();
 	vector<float> meas(npts);
+	vector<int> workspace(npts);
+	vector<float> w2(12*npts+32);
+
+	// use levmar
 	int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
+
+	// use minpack
+	//int iters = __cminpack_func__(lmdif1)(evalCost_minpack, this, npts, 7, RTparams, &(meas[0]), 1e-6, &(workspace[0]), &(w2[0]), w2.size());
 	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// set up the matrix and translation vector
@@ -455,7 +553,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 			Aid(j, i) = tm1c(i, j) * w_landmarks[j];
 		}
 	}
-	
+
 	for(int j=0;j<Aid.cols();j++) {
 		for(int i=0, ridx=tm1c.dim(1);i<nparams;i++, ridx++) {
 			Aid(ridx, j) = sigma_wid(i, j) * w_prior_id;
@@ -650,7 +748,7 @@ bool MultilinearReconstructor::fitExpressionWeights()
 			Aexp(j, i) = tm0c(i, j);
 		}
 	}
-	
+
 	for(int i=0;i<q.length();i++) {
 		brhs(i) = q(i);
 	}
@@ -672,11 +770,11 @@ bool MultilinearReconstructor::fitExpressionWeights()
 	return diff / nparams < cc;
 }
 
+// transforms the template mesh into a target mesh with rotation and translation
 void MultilinearReconstructor::transformMesh()
 {
-	tplt = core.modeProduct(Wexp, 1).modeProduct(Wid, 0);
-
 	int nverts = tplt.length()/3;
+	cout << nverts << endl;
 	arma::fmat pt(3, nverts);
 	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
 		pt(0, i) = tplt(idx);
@@ -684,6 +782,7 @@ void MultilinearReconstructor::transformMesh()
 		pt(2, i) = tplt(idx+2);
 	}
 
+	// batch rotation processing
 	arma::fmat pt_trans =  R * pt;
 	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
 		tmesh(idx) = pt_trans(0, i) + T(0);
@@ -756,7 +855,7 @@ void MultilinearReconstructor::updateComputationTensor()
 		}
 
 		// take the larger size for the right hand side vector
-		brhs.resize(targets.size()*3 + std::max(ndim_id, ndim_exp));
+		brhs.resize(targets.size()*3 + max(ndim_id, ndim_exp));
 	}
 	else {
 		Aid = PhGUtils::DenseMatrix<float>::zeros(tm1c.dim(1), tm1c.dim(0));
