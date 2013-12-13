@@ -21,9 +21,9 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	errorThreshold = 1e-4;
 	usePrior = true;
 
-	w_prior_id = 1e-2;
-	w_prior_exp = 1e-2;
-	w_boundary = 1e-5;
+	w_prior_id = 5e-2;
+	w_prior_exp = 5e-2;
+	w_boundary = 1e-6;
 	frameCounter = 0;
 }
 
@@ -395,17 +395,87 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz) * s;
 
 	// apply the new global transformation
-	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
-		PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
+	for(int i=0, vidx=0;i<npts;i++) {
+		//PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
+		float wpt = w_landmarks[vidx];
+		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
 		const PhGUtils::Point3f& q = targets[i].first;
 
 		//PhGUtils::Point3f pp = R * p + T;
-		PhGUtils::transformPoint( p.x, p.y, p.z, R, T );
+		PhGUtils::transformPoint( px, py, pz, R, T );
 
-		hx[i] = p.distanceTo(q) * w_landmarks[vidx];
+		//hx[i] = p.distanceTo(q) * w_landmarks[vidx];
+		float dx = px - q.x, dy = py - q.y, dz = pz - q.z;
+		hx[i] = (dx * dx + dy * dy + dz * dz) * wpt;
 	}
 }
 
+void evalJacobian(float *p, float *J, int m, int n, void *adata) {
+	// J is a n-by-m matrix
+	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+
+	float s, rx, ry, rz, tx, ty, tz;
+	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
+
+	auto targets = recon->targets;
+	int npts = targets.size();
+	auto tmc = recon->tmc;
+
+	auto w_landmarks = recon->w_landmarks;
+
+	// set up rotation matrix and translation vector
+	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz);
+	PhGUtils::Matrix3x3f Jx, Jy, Jz;
+	PhGUtils::jacobian_rotationMatrix(rx, ry, rz, Jx, Jy, Jz);
+
+	// apply the new global transformation
+	for(int i=0, vidx=0, jidx=0;i<npts;i++) {
+		float wpt = w_landmarks[vidx];
+
+		// point p
+		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
+		// point q
+		const PhGUtils::Point3f& q = targets[i].first;
+
+		// R * p
+		float rpx = px, rpy = py, rpz = pz;
+		PhGUtils::rotatePoint( rpx, rpy, rpz, R );
+
+		// s * R * p + t - q
+		float rkx = s * rpx + tx - q.x, rky = s * rpy + ty - q.y, rkz = s * rpz + tz - q.z;
+
+		float jpx, jpy, jpz;
+		jpx = px, jpy = py, jpz = pz;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jx );
+		// \frac{\partial r_i}{\partial \theta_x}
+		J[jidx++] = wpt * 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+
+		jpx = px, jpy = py, jpz = pz;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jy );
+		// \frac{\partial r_i}{\partial \theta_y}
+		J[jidx++] = wpt * 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+
+		jpx = px, jpy = py, jpz = pz;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jz );
+		// \frac{\partial r_i}{\partial \theta_z}
+		J[jidx++] = wpt * 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+
+		// \frac{\partial r_i}{\partial \t_x}
+		J[jidx++] = wpt * 2.0 * rkx;
+
+		// \frac{\partial r_i}{\partial \t_y}
+		J[jidx++] = wpt * 2.0 * rky;
+
+		// \frac{\partial r_i}{\partial \t_z}
+		J[jidx++] = wpt * 2.0 * rkz;
+
+		// \frac{\partial r_i}{\partial s}
+		J[jidx++] = wpt * 2.0 * (rpx * rkx + rpy * rky + rpz * rkz);
+	}
+}
+
+
+// function to evaluate residue when using cminpack
 int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cminpack_real__ *hx,
 					  int iflag) 
 {
@@ -445,7 +515,8 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	vector<float> w2(12*npts+32);
 
 	// use levmar
-	int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	//int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	int iters = slevmar_der(evalCost, evalJacobian, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
 	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// use minpack
