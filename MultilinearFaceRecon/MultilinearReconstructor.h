@@ -15,6 +15,8 @@
 #define CMINPACK_NO_DLL
 #include "../cminpack-1.3.2/cminpack.h"
 
+#include <cula.h>
+
 #include "Math/DenseVector.hpp"
 #include "Math/DenseMatrix.hpp"
 #include <armadillo>

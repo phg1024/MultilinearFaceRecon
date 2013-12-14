@@ -9,6 +9,13 @@
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {
+	// initialize CULA
+	culaStatus s = culaInitialize();
+	if(s != culaNoError)
+	{
+		printf("%s\n", culaGetStatusString(s));
+	}
+
 	loadCoreTensor();
 	loadPrior();
 	initializeWeights();
@@ -30,6 +37,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
 {
+	culaShutdown();
 }
 
 
@@ -316,6 +324,7 @@ void MultilinearReconstructor::fit_withPrior() {
 			// update tm0c with the new identity weights
 			// now the tensor is not updated with global rigid transformation
 			tm0c = corec.modeProduct(Wid, 0);
+			//corec.modeProduct(Wid, 0, tm0c);
 			timerOther.toc();
 		}
 
@@ -335,6 +344,7 @@ void MultilinearReconstructor::fit_withPrior() {
 			// update tm1c with the new expression weights
 			// now the tensor is not updated with global rigid transformation
 			tm1c = corec.modeProduct(Wexp, 1);
+			//corec.modeProduct(Wexp, 1, tm1c);
 			timerOther.toc();
 		}	
 
@@ -791,7 +801,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	//b.print("b");
 	float diff = 0;
 	for(int i=0;i<nparams;i++) {
-		diff += abs(Wexp(i) - brhs(i));
+		diff += fabs(Wexp(i) - brhs(i));
 		Wexp(i) = brhs(i);
 		//cout << params[i] << ' ';
 	}
@@ -838,7 +848,7 @@ bool MultilinearReconstructor::fitExpressionWeights()
 	//b.print("b");
 	float diff = 0;
 	for(int i=0;i<nparams;i++) {
-		diff += abs(Wexp(i) - brhs(i));
+		diff += fabs(Wexp(i) - brhs(i));
 		Wexp(i) = brhs(i);
 		//cout << params[i] << ' ';
 	}
@@ -965,7 +975,7 @@ void MultilinearReconstructor::updateComputationTensor()
 	tm0cRT = tm0c;
 	tm1c = corec.modeProduct(Wexp, 1);
 	tm1cRT = tm1c;
-	updateTMC();
+	tmc = tm1c.modeProduct(Wid, 0);
 }
 
 // build a truncated version of the core
@@ -1028,8 +1038,7 @@ void MultilinearReconstructor::transformTM1C() {
 }
 
 void MultilinearReconstructor::updateTMC() {
-	// !FIXME change this to use preallocated memory
-	tmc = tm1c.modeProduct(Wid, 0);
+	tm1c.modeProduct(Wid, 0, tmc);
 }
 
 float MultilinearReconstructor::computeError()
