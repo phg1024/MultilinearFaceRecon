@@ -121,9 +121,10 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 
 		viewer->bindTargetLandmarks(lms);
 		if( imgidx == 0 )
-			viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
+			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 		else
-			viewer->fit(MultilinearReconstructor::FIT_POSE);
+			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+			//viewer->fit(MultilinearReconstructor::FIT_POSE);
 
 		QApplication::processEvents();
 		::system("pause");
@@ -175,7 +176,7 @@ void MultilinearFaceRecon::updateKinectStreams()
 	}
 	viewer->bindTargetLandmarks(lms);
 	if( frameIdx++ == 0 ) {
-		viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
+		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 	}
 	else
 		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);

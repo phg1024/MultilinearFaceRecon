@@ -13,6 +13,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	loadPrior();
 	initializeWeights();
 	createTemplateItem();
+	//updateComputationTensor();
 	init();
 
 	w_landmarks.resize(512);
@@ -152,7 +153,9 @@ void MultilinearReconstructor::init()
 	Rmat = PhGUtils::Matrix3x3f::identity();
 	Tvec = PhGUtils::Point3f::zero();
 
-	updateComputationTensor();
+	//updateComputationTensor();
+
+	updateMatrices();
 }
 
 void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops )
@@ -165,7 +168,7 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 			fitExpression = false;
 			break;
 		}
-	case FIT_IDENTITY:
+	case FIT_POSE_AND_IDENTITY:
 		{
 			fitPose = true;
 			fitIdentity = true;
@@ -192,14 +195,14 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 	if( usePrior ) {
 		fit_withPrior();
 
-		if( ops == FIT_IDENTITY ) {
+		if( ops == FIT_POSE_AND_IDENTITY ) {
 			updateTM0();
 		}
 		return;
 	}
 
 	//cout << "simple fit" << endl;
-	init();
+	//init();
 
 	if(targets.empty())
 	{
@@ -222,12 +225,14 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 			transformTM1C();
 
 			converged &= fitIdentityWeights();
-		}
 
-		if( fitExpression ) {
 			// update tm0c with the new identity weights
 			// now the tensor is not updated with global rigid transformation
 			tm0c = corec.modeProduct(Wid, 0);
+		}
+
+		if( fitExpression ) {
+
 			// apply the global transformation to tm0c
 			// because tm0c is required in fitting expression weights
 			transformTM0C();
@@ -275,7 +280,7 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 void MultilinearReconstructor::fit_withPrior() {
 	//cout << "fit with prior" << endl;
 
-	init();
+	//init();
 
 	if(targets.empty())
 	{
@@ -306,13 +311,16 @@ void MultilinearReconstructor::fit_withPrior() {
 			timerID.tic();
 			converged &= fitIdentityWeights_withPrior();
 			timerID.toc();
-		}
 
-		if( fitExpression ) {
 			timerOther.tic();
 			// update tm0c with the new identity weights
 			// now the tensor is not updated with global rigid transformation
 			tm0c = corec.modeProduct(Wid, 0);
+			timerOther.toc();
+		}
+
+		if( fitExpression ) {
+			timerOther.tic();
 
 			// apply the global transformation to tm0c
 			// because tm0c is required in fitting expression weights
@@ -477,7 +485,7 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 
 // function to evaluate residue when using cminpack
 int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cminpack_real__ *hx,
-					  int iflag) 
+					 int iflag) 
 {
 	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
 
@@ -619,9 +627,9 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 
 	// assemble the matrix, fill in the upper part
 	// the lower part is already filled in
-	for(int i=0;i<tm1c.dim(0);i++) {
-		for(int j=0;j<tm1c.dim(1);j++) {
-			Aid(j, i) = tm1c(i, j) * w_landmarks[j];
+	for(int i=0;i<tm1cRT.dim(0);i++) {
+		for(int j=0;j<tm1cRT.dim(1);j++) {
+			Aid(j, i) = tm1cRT(i, j) * w_landmarks[j];
 		}
 	}
 
@@ -677,9 +685,9 @@ bool MultilinearReconstructor::fitIdentityWeights()
 	int nparams = core.dim(0);
 
 	// assemble the matrix
-	for(int i=0;i<tm1c.dim(0);i++) {
-		for(int j=0;j<tm1c.dim(1);j++) {
-			Aid(j, i) = tm1c(i, j);
+	for(int i=0;i<tm1cRT.dim(0);i++) {
+		for(int j=0;j<tm1cRT.dim(1);j++) {
+			Aid(j, i) = tm1cRT(i, j);
 		}
 	}
 
@@ -753,9 +761,9 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	int nparams = core.dim(1);
 
 	// fill in the upper part of the matrix, the lower part is already filled
-	for(int i=0;i<tm0c.dim(0);i++) {
-		for(int j=0;j<tm0c.dim(1);j++) {
-			Aexp(j, i) = tm0c(i, j) * w_landmarks[j];
+	for(int i=0;i<tm0cRT.dim(0);i++) {
+		for(int j=0;j<tm0cRT.dim(1);j++) {
+			Aexp(j, i) = tm0cRT(i, j) * w_landmarks[j];
 		}
 	}
 
@@ -814,9 +822,9 @@ bool MultilinearReconstructor::fitExpressionWeights()
 #else
 	int nparams = core.dim(1);
 
-	for(int i=0;i<tm0c.dim(0);i++) {
-		for(int j=0;j<tm0c.dim(1);j++) {
-			Aexp(j, i) = tm0c(i, j);
+	for(int i=0;i<tm0cRT.dim(0);i++) {
+		for(int j=0;j<tm0cRT.dim(1);j++) {
+			Aexp(j, i) = tm0cRT(i, j);
 		}
 	}
 
@@ -864,8 +872,29 @@ void MultilinearReconstructor::transformMesh()
 
 void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, int>>& pts )
 {
+	bool updateTC = false;
+		// check if the computation tensors need update
+	if( targets.size() != pts.size() )
+		updateTC = true;
+	else {
+		// check if the vertex indices are the same
+		for(int i=0;i<pts.size();i++) {
+			if( pts[i].second != targets[i].second ) {
+				updateTC = true;
+				break;
+			}
+		}
+	}
+
 	targets = pts;
-	int npts = targets.size();	
+	int npts = targets.size();
+
+	if( updateTC ) {
+		updateComputationTensor();
+		updateMatrices();
+	}
+
+
 	const float DEPTH_THRES = 1e-6;
 	int validCount = 0;
 	meanZ = 0;
@@ -897,13 +926,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 	//PhGUtils::debug("valid landmarks", validCount);
 }
 
-void MultilinearReconstructor::updateComputationTensor()
-{
-	updateCoreC();
-	tm0c = corec.modeProduct(Wid, 0);
-	tm1c = corec.modeProduct(Wexp, 1);
-	updateTMC();
-
+void MultilinearReconstructor::updateMatrices() {
 	if( usePrior ) {
 		int ndim_id = mu_wid.size();
 		int ndim_exp = mu_wexp.size();
@@ -935,6 +958,16 @@ void MultilinearReconstructor::updateComputationTensor()
 	}
 }
 
+void MultilinearReconstructor::updateComputationTensor()
+{
+	updateCoreC();
+	tm0c = corec.modeProduct(Wid, 0);
+	tm0cRT = tm0c;
+	tm1c = corec.modeProduct(Wexp, 1);
+	tm1cRT = tm1c;
+	updateTMC();
+}
+
 // build a truncated version of the core
 void MultilinearReconstructor::updateCoreC() {
 	corec.resize(core.dim(0), core.dim(1), targets.size()*3);
@@ -953,10 +986,12 @@ void MultilinearReconstructor::updateCoreC() {
 
 // transform TM0C with global rigid transformation
 void MultilinearReconstructor::transformTM0C() {
+	tm0cRT = tm0c;
 	int npts = tm0c.dim(1) / 3;
 	for(int i=0;i<tm0c.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
 			// should change this to a fast version, don't create temporary object
+
 			/*
 			PhGUtils::Point3f p(tm0c(i, vidx), tm0c(i, vidx+1), tm0c(i, vidx+2));
 			p = Rmat * p + Tvec;
@@ -965,7 +1000,8 @@ void MultilinearReconstructor::transformTM0C() {
 			tm0c(i, vidx+2) = p.z;
 			*/
 
-			PhGUtils::transformPoint( tm0c(i, vidx), tm0c(i, vidx+1), tm0c(i, vidx+2), Rmat, Tvec );
+			// store the rotated and translated tensor in tm0cRT
+			PhGUtils::transformPoint( tm0cRT(i, vidx), tm0cRT(i, vidx+1), tm0cRT(i, vidx+2), Rmat, Tvec );
 		}
 	}
 }
@@ -973,6 +1009,7 @@ void MultilinearReconstructor::transformTM0C() {
 // transform TM1C with global rigid transformation
 void MultilinearReconstructor::transformTM1C() {
 	int npts = tm1c.dim(1) / 3;
+	tm1cRT = tm1c;
 	for(int i=0;i<tm1c.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
 			// should change this to a fast version, don't create temporary object
@@ -985,8 +1022,7 @@ void MultilinearReconstructor::transformTM1C() {
 			tm1c(i, vidx+1) = p.y;
 			tm1c(i, vidx+2) = p.z;
 			*/
-
-			PhGUtils::transformPoint( tm1c(i, vidx), tm1c(i, vidx+1), tm1c(i, vidx+2), Rmat, Tvec );
+			PhGUtils::transformPoint( tm1cRT(i, vidx), tm1cRT(i, vidx+1), tm1cRT(i, vidx+2), Rmat, Tvec );
 		}
 	}
 }

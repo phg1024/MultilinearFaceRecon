@@ -25,7 +25,7 @@ class MultilinearReconstructor : public QObject
 public:
 	enum FittingOption {
 		FIT_POSE,
-		FIT_IDENTITY,
+		FIT_POSE_AND_IDENTITY,
 		FIT_POSE_AND_EXPRESSION,
 		FIT_ALL
 	};
@@ -82,6 +82,7 @@ private:
 	void initializeWeights();
 
 	void updateComputationTensor();
+	void updateMatrices();
 	void updateCoreC();
 	void updateTMC();
 	void transformTM0C();
@@ -111,7 +112,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold;
-	static const int MAXITERS = 8;	// this should be enough
+	static const int MAXITERS = 16;	// this should be enough
 	bool usePrior;
 
 	// weights for prior
@@ -130,9 +131,17 @@ private:
 	Tensor2<float> tm0, tm1;
 		
 	// the tensor after mode product, with truncation
+	// they are changed ONLY if wid or wexp is changed
 	// tm0c: corec mode product with wid
 	// tm1c: corec mode product with wexp
 	Tensor2<float> tm0c, tm1c;
+
+	// the tensor after mode product, with truncation, and after rigid transformation
+	// they are changed ONLY if the rigid transformation changes
+	// tm0c: corec mode product with wid, after rigid transformation
+	// tm1c: corec mode product with wexp, after rigid transformation
+	Tensor2<float> tm0cRT, tm1cRT;
+
 	// the tensor after 2 mode products, with truncation; 
 	// tmc is the tensor before applying global transformation
 	Tensor1<float> tmc;
