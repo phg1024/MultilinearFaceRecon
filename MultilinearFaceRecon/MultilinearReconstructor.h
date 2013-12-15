@@ -27,6 +27,8 @@ class MultilinearReconstructor : public QObject
 public:
 	enum FittingOption {
 		FIT_POSE,
+		FIT_IDENTITY,
+		FIT_EXPRESSION,
 		FIT_POSE_AND_IDENTITY,
 		FIT_POSE_AND_EXPRESSION,
 		FIT_ALL
@@ -87,6 +89,7 @@ private:
 	void updateMatrices();
 	void updateCoreC();
 	void updateTMC();
+	void updateTMCwithTM0C();
 	void transformTM0C();
 	void transformTM1C();
 

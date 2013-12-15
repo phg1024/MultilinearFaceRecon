@@ -81,7 +81,11 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	const int w = 640;
 	const int h = 480;
 
-	for(int imgidx=1;imgidx<imageCount;imgidx++) {
+	PhGUtils::Timer tRecon, tCombined;
+	int validFrames = 0;
+
+	tCombined.tic();
+	for(int imgidx=1;imgidx<=imageCount;imgidx++) {
 		// process each image and perform reconstruction
 		string colorImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + colorPostfix;
 		string depthImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + depthPostfix;
@@ -120,15 +124,29 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 		}
 
 		viewer->bindTargetLandmarks(lms);
-		if( imgidx == 0 )
+		if( imgidx == 1 ) {
+			// fit the pose first, then fit the identity and pose together
+			//viewer->fit(MultilinearReconstructor::FIT_POSE);
+			//viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
+			//::system("pause");
 			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
-		else
+			//viewer->fit(MultilinearReconstructor::FIT_ALL);
+		}
+		else{
+			validFrames++;
+			tRecon.tic();
 			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+			tRecon.toc();
+		}
+			//viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 			//viewer->fit(MultilinearReconstructor::FIT_POSE);
 
 		QApplication::processEvents();
 		::system("pause");
 	}
+	tCombined.toc();
+	PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() / validFrames));
+	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() / validFrames));
 }
 
 void MultilinearFaceRecon::updateKinectStreams()

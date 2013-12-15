@@ -31,7 +31,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 
 	w_prior_id = 5e-2;
 	w_prior_exp = 5e-2;
-	w_boundary = 1e-6;
+	w_boundary = 1e-4;
 	frameCounter = 0;
 }
 
@@ -73,12 +73,12 @@ void MultilinearReconstructor::loadPrior()
 	fwid.read(reinterpret_cast<char*>(sigma_wid.memptr()), sizeof(float)*ndims*ndims);
 
 	fwid.close();
-
 	//mu_wid.print("mean_wid");
 	//sigma_wid.print("sigma_wid");
-
 	sigma_wid = arma::inv(sigma_wid);
 	mu_wid = sigma_wid * mu_wid;
+
+
 
 	const string fnwexp = "../Data/wexp_trainingdata.bin";
 	ifstream fwexp(fnwexp, ios::in | ios::binary );
@@ -93,12 +93,12 @@ void MultilinearReconstructor::loadPrior()
 	fwexp.read(reinterpret_cast<char*>(sigma_wexp.memptr()), sizeof(float)*ndims*ndims);
 
 	fwexp.close();
-
 	//mu_wexp.print("mean_wexp");
 	//sigma_wexp.print("sigma_wexp");
-
 	sigma_wexp = arma::inv(sigma_wexp);
 	mu_wexp = sigma_wexp * mu_wexp;
+
+
 }
 
 void MultilinearReconstructor::loadCoreTensor()
@@ -129,9 +129,10 @@ void MultilinearReconstructor::initializeWeights()
 
 	float w0 = 1.0 / core.dim(0);
 	for(int i=0;i<Wid.length();i++) {
-		Wid(i) = w0;
 		//Wid(i) = mu_wid(i);
+		Wid(i) = 0;
 	}
+	Wid(0) = 1;
 
 	// use neutral face initially
 	for(int i=0;i<Wexp.length();i++) {
@@ -176,6 +177,20 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 			fitExpression = false;
 			break;
 		}
+	case FIT_IDENTITY:
+		{
+			fitPose = false;
+			fitIdentity = true;
+			fitExpression = false;
+			break;
+		}
+	case FIT_EXPRESSION:
+		{
+			fitPose = false;
+			fitIdentity = false;
+			fitExpression = true;
+			break;
+		}
 	case FIT_POSE_AND_IDENTITY:
 		{
 			fitPose = true;
@@ -206,6 +221,11 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 		if( ops == FIT_POSE_AND_IDENTITY ) {
 			updateTM0();
 		}
+		if( ops == FIT_ALL ) {
+			updateTM0();
+			updateTM1();
+		}
+
 		return;
 	}
 
@@ -319,7 +339,9 @@ void MultilinearReconstructor::fit_withPrior() {
 			timerID.tic();
 			converged &= fitIdentityWeights_withPrior();
 			timerID.toc();
+		}
 
+		if( fitIdentity && (fitExpression || fitPose) ) {
 			timerOther.tic();
 			// update tm0c with the new identity weights
 			// now the tensor is not updated with global rigid transformation
@@ -330,7 +352,6 @@ void MultilinearReconstructor::fit_withPrior() {
 
 		if( fitExpression ) {
 			timerOther.tic();
-
 			// apply the global transformation to tm0c
 			// because tm0c is required in fitting expression weights
 			transformTM0C();
@@ -339,19 +360,30 @@ void MultilinearReconstructor::fit_withPrior() {
 			timerExp.tic();
 			converged &= fitExpressionWeights_withPrior();	
 			timerExp.toc();
+		}
 
+		// this is not exactly logically correct
+		// but this works for the case of fitting both pose and expression
+		if( fitExpression && fitIdentity ) {//(fitIdentity || fitPose) ) {
 			timerOther.tic();
 			// update tm1c with the new expression weights
 			// now the tensor is not updated with global rigid transformation
 			tm1c = corec.modeProduct(Wexp, 1);
 			//corec.modeProduct(Wexp, 1, tm1c);
 			timerOther.toc();
-		}	
+		}
 
-		// compute tmc from the new tm1c
-		if( fitIdentity || fitExpression ) {
+		// compute tmc from the new tm1c or new tm0c
+		if( fitIdentity ) {
 			timerOther.tic();
+			//updateTMCwithTM0C();
 			updateTMC();
+			timerOther.toc();
+		}
+		else if( fitExpression ) {
+			timerOther.tic();
+			updateTMCwithTM0C();
+			//updateTMC();
 			timerOther.toc();
 		}		
 
@@ -372,19 +404,23 @@ void MultilinearReconstructor::fit_withPrior() {
 	//cout << "Total iterations = " << iters << endl;
 
 	timerTransform.tic();
-	if( fitIdentity && !fitExpression ) 
+	if( fitIdentity && !fitExpression ) { 
+		//cout << tm1.dim(0) << ", " << tm1.dim(1) << endl;
+		//PhGUtils::debug("Wid", Wid);
 		tplt = tm1.modeProduct(Wid, 0);
-
-	if( fitExpression && !fitIdentity ) {
-		cout << tm0.dim(0) << ", " << tm0.dim(1) << endl;
+	}
+	else if( fitExpression && !fitIdentity ) {
+		//cout << tm0.dim(0) << ", " << tm0.dim(1) << endl;
+		//PhGUtils::debug("Wexp", Wexp);
 		tplt = tm0.modeProduct(Wexp, 0);
 	}
-
-	if( fitIdentity && fitExpression )
+	else if( fitIdentity && fitExpression )
 		tplt = core.modeProduct(Wexp, 1).modeProduct(Wid, 0);
 	timerTransform.toc();
 
 	timerTransform.tic();
+	//PhGUtils::debug("R", Rmat);
+	//PhGUtils::debug("T", Tvec);
 	transformMesh();
 	timerTransform.toc();
 	//emit oneiter();
@@ -649,9 +685,18 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 		}
 	}
 
+	//PhGUtils::Matrix3x3f invRmat = Rmat.inv();
+
+	int npts = targets.size();
 	// assemble the right hand side, fill in the upper part as usual
-	for(int i=0;i<q.length();i++) {
-		brhs(i) = q(i) * w_landmarks[i];
+	for(int i=0, vidx=0;i<npts;vidx+=3, i++) {
+		//brhs(vidx) = (q(vidx) - Tvec.x) * w_landmarks[vidx];
+		//brhs(vidx+1) = (q(vidx+1) - Tvec.y) * w_landmarks[vidx+1];
+		//brhs(vidx+2) = (q(vidx+2) - Tvec.z) * w_landmarks[vidx+2];
+		//PhGUtils::rotatePoint(brhs(vidx), brhs(vidx+1), brhs(vidx+2), invRmat);
+		brhs(vidx) = q(vidx);
+		brhs(vidx+1) = q(vidx+1);
+		brhs(vidx+2) = q(vidx+2);
 	}
 	// fill in the lower part with the mean vector of identity weights
 	int ndim_id = mu_wid.size();
@@ -668,6 +713,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 		Wid(i) = brhs(i);		
 		//cout << params[i] << ' ';
 	}
+
 	//cout << endl;
 #endif
 
@@ -805,6 +851,9 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 		Wexp(i) = brhs(i);
 		//cout << params[i] << ' ';
 	}
+
+	// normalize Wexp
+
 	//cout << endl;
 	//cout << endl;
 #endif
@@ -996,8 +1045,9 @@ void MultilinearReconstructor::updateCoreC() {
 
 // transform TM0C with global rigid transformation
 void MultilinearReconstructor::transformTM0C() {
-	tm0cRT = tm0c;
 	int npts = tm0c.dim(1) / 3;
+	// don't use the assignment operator, it actually moves the data
+	//tm0cRT = tm0c;
 	for(int i=0;i<tm0c.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
 			// should change this to a fast version, don't create temporary object
@@ -1010,6 +1060,9 @@ void MultilinearReconstructor::transformTM0C() {
 			tm0c(i, vidx+2) = p.z;
 			*/
 
+			tm0cRT(i, vidx) = tm0c(i, vidx);
+			tm0cRT(i, vidx+1) = tm0c(i, vidx+1);
+			tm0cRT(i, vidx+2) = tm0c(i, vidx+2);
 			// store the rotated and translated tensor in tm0cRT
 			PhGUtils::transformPoint( tm0cRT(i, vidx), tm0cRT(i, vidx+1), tm0cRT(i, vidx+2), Rmat, Tvec );
 		}
@@ -1019,7 +1072,8 @@ void MultilinearReconstructor::transformTM0C() {
 // transform TM1C with global rigid transformation
 void MultilinearReconstructor::transformTM1C() {
 	int npts = tm1c.dim(1) / 3;
-	tm1cRT = tm1c;
+	// don't use the assignment operator, it actually moves the data
+	//tm1cRT = tm1c;
 	for(int i=0;i<tm1c.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
 			// should change this to a fast version, don't create temporary object
@@ -1032,6 +1086,10 @@ void MultilinearReconstructor::transformTM1C() {
 			tm1c(i, vidx+1) = p.y;
 			tm1c(i, vidx+2) = p.z;
 			*/
+
+			tm1cRT(i, vidx) = tm1c(i, vidx);
+			tm1cRT(i, vidx+1) = tm1c(i, vidx+1);
+			tm1cRT(i, vidx+2) = tm1c(i, vidx+2);
 			PhGUtils::transformPoint( tm1cRT(i, vidx), tm1cRT(i, vidx+1), tm1cRT(i, vidx+2), Rmat, Tvec );
 		}
 	}
@@ -1039,6 +1097,10 @@ void MultilinearReconstructor::transformTM1C() {
 
 void MultilinearReconstructor::updateTMC() {
 	tm1c.modeProduct(Wid, 0, tmc);
+}
+
+void MultilinearReconstructor::updateTMCwithTM0C() {
+	tm0c.modeProduct(Wexp, 0, tmc);
 }
 
 float MultilinearReconstructor::computeError()
