@@ -113,6 +113,8 @@ private:
 	bool fitExpressionWeights();
 	bool fitExpressionWeights_withPrior();
 
+	vector<float> computeWeightedMeanPose();
+
 private:
 	// convergence criteria
 	float cc;
@@ -159,7 +161,12 @@ private:
 	// fitted face
 	Tensor1<float> tmesh;
 	
-	float RTparams[7]; /* sx, ry, rz, tx, ty, tz, scale */	
+	float RTparams[7]; /* sx, ry, rz, tx, ty, tz, scale */
+	
+	bool useHistory;
+	static const int historyLength = 5;
+	float historyWeights[historyLength];
+	deque<vector<float>> RTHistory;	// stores the RT parameters for last 5 frames
 	// used to avoid local minima
 	float meanX, meanY, meanZ;
 	float scale;
@@ -170,7 +177,8 @@ private:
 
 	// computation related
 	PhGUtils::DenseMatrix<float> Aid, Aexp;
-	PhGUtils::DenseVector<float> brhs;
+	PhGUtils::DenseMatrix<float> AidtAid, AexptAexp;
+	PhGUtils::DenseVector<float> brhs, Aidtb, Aexptb;
 
 	// weights
 	Tensor1<float> Wid, Wexp;

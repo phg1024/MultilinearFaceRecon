@@ -6,6 +6,7 @@
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
 #define USELEVMAR4WEIGHTS 0
+#define USE_MKL_LS 1		// use mkl least square solver
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {
@@ -15,6 +16,8 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	{
 		printf("%s\n", culaGetStatusString(s));
 	}
+
+	mkl_set_num_threads(8);
 
 	loadCoreTensor();
 	loadPrior();
@@ -31,8 +34,15 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 
 	w_prior_id = 5e-2;
 	w_prior_exp = 5e-2;
-	w_boundary = 1e-4;
+	w_boundary = 1e-6;
 	frameCounter = 0;
+
+	useHistory = true;
+	historyWeights[0] = 0.01;
+	historyWeights[1] = 0.02;
+	historyWeights[2] = 0.04;
+	historyWeights[3] = 0.08;
+	historyWeights[4] = 0.16;
 }
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
@@ -373,6 +383,9 @@ void MultilinearReconstructor::fit_withPrior() {
 			timerOther.toc();
 		}
 
+		//::system("pause");
+
+
 		// compute tmc from the new tm1c or new tm0c
 		if( fitIdentity ) {
 			timerOther.tic();
@@ -418,6 +431,15 @@ void MultilinearReconstructor::fit_withPrior() {
 		tplt = core.modeProduct(Wexp, 1).modeProduct(Wid, 0);
 	timerTransform.toc();
 
+	if( useHistory ) {
+		// post process, impose a moving average for pose
+		RTHistory.push_back(vector<float>(RTparams, RTparams+7));
+		if( RTHistory.size() > historyLength ) RTHistory.pop_front();
+		vector<float> meanRT = computeWeightedMeanPose();
+		// copy back the mean pose
+		for(int i=0;i<7;i++) RTparams[i] = meanRT[i];
+	}
+
 	timerTransform.tic();
 	//PhGUtils::debug("R", Rmat);
 	//PhGUtils::debug("T", Tvec);
@@ -425,11 +447,31 @@ void MultilinearReconstructor::fit_withPrior() {
 	timerTransform.toc();
 	//emit oneiter();
 
+	/*
 	PhGUtils::message("Time cost for pose fitting = " + PhGUtils::toString(timerRT.elapsed()) + " seconds.");
 	PhGUtils::message("Time cost for wid fitting = " + PhGUtils::toString(timerID.elapsed()) + " seconds.");
 	PhGUtils::message("Time cost for wexp fitting = " + PhGUtils::toString(timerExp.elapsed()) + " seconds.");
 	PhGUtils::message("Time cost for tensor transformation = " + PhGUtils::toString(timerTransform.elapsed()) + " seconds.");
 	PhGUtils::message("Time cost for other computation = " + PhGUtils::toString(timerOther.elapsed()) + " seconds.");
+	*/
+}
+
+vector<float> MultilinearReconstructor::computeWeightedMeanPose() {
+	vector<float> m(7, 0);
+
+	float wsum = 0;
+	int i=0;
+	for(auto it=RTHistory.begin(); it!= RTHistory.end(); ++it) {
+		for(int j=0;j<7;j++) {
+			m[j] += (*it)[j] * historyWeights[i];
+		}
+		wsum += historyWeights[i];
+		i++;
+	}
+
+	for(int j=0;j<7;j++) m[j] /= wsum;
+
+	return m;
 }
 
 void evalCost(float *p, float *hx, int m, int n, void* adata) {
@@ -841,6 +883,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 		brhs(idx) = mu_wexp(i) * w_prior_exp;
 	}
 
+#if USE_MKL_LS
 	int rtn = leastsquare<float>(Aexp, brhs);
 	//debug("rtn", rtn);
 
@@ -849,8 +892,19 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	for(int i=0;i<nparams;i++) {
 		diff += fabs(Wexp(i) - brhs(i));
 		Wexp(i) = brhs(i);
+	}
+#else
+	int rtn = leastsquare_normalmat(Aexp, brhs, AexptAexp, Aexptb);
+	float diff = 0;
+	for(int i=0;i<nparams;i++) {
+		//cout << brhs(i) << ", " << Aexptb(i) << "\tdiff #" << i << " = " << fabs(brhs(i) - Aexptb(i)) << endl;
+		diff += fabs(Wexp(i) - Aexptb(i));
+		Wexp(i) = Aexptb(i);
 		//cout << params[i] << ' ';
 	}
+	//PhGUtils::message("done");
+	//::system("pause");
+#endif
 
 	// normalize Wexp
 
@@ -994,7 +1048,12 @@ void MultilinearReconstructor::updateMatrices() {
 		Aid = PhGUtils::DenseMatrix<float>::zeros(tm1c.dim(1) + ndim_id, tm1c.dim(0));
 		Aexp = PhGUtils::DenseMatrix<float>::zeros(tm0c.dim(1) + ndim_exp, tm0c.dim(0));
 
+		AidtAid = PhGUtils::DenseMatrix<float>::zeros(tm1c.dim(0), tm1c.dim(0));
+		AexptAexp = PhGUtils::DenseMatrix<float>::zeros(tm0c.dim(0), tm0c.dim(0));
+
+		/*
 		// fill in the covariance matrices now, no need to fill them in each time
+		
 		for(int j=0;j<Aid.cols();j++) {
 			for(int i=0, ridx=tm1c.dim(1);i<ndim_id;i++, ridx++) {
 				Aid(ridx, j) = sigma_wid(i, j) * w_prior_id;
@@ -1006,14 +1065,23 @@ void MultilinearReconstructor::updateMatrices() {
 				Aexp(ridx, j) = sigma_wexp(i, j) * w_prior_exp;
 			}
 		}
+		*/
 
 		// take the larger size for the right hand side vector
 		brhs.resize(targets.size()*3 + max(ndim_id, ndim_exp));
+		Aidtb.resize(tm1c.dim(0));
+		Aexptb.resize(tm0c.dim(0));
 	}
 	else {
 		Aid = PhGUtils::DenseMatrix<float>::zeros(tm1c.dim(1), tm1c.dim(0));
 		Aexp = PhGUtils::DenseMatrix<float>::zeros(tm0c.dim(1), tm0c.dim(0));
+
+		AidtAid = PhGUtils::DenseMatrix<float>::zeros(tm1c.dim(0), tm1c.dim(0));
+		AexptAexp = PhGUtils::DenseMatrix<float>::zeros(tm0c.dim(0), tm0c.dim(0));
+
 		brhs.resize(targets.size()*3);
+		Aidtb.resize(tm1c.dim(0));
+		Aexptb.resize(tm0c.dim(0));
 	}
 }
 
@@ -1100,6 +1168,7 @@ void MultilinearReconstructor::updateTMC() {
 }
 
 void MultilinearReconstructor::updateTMCwithTM0C() {
+	//PhGUtils::message("updating tmc");
 	tm0c.modeProduct(Wexp, 0, tmc);
 }
 
