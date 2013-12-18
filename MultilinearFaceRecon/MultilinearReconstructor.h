@@ -119,7 +119,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold;
-	static const int MAXITERS = 16;	// this should be enough
+	static const int MAXITERS = 8;	// this should be enough
 	bool usePrior;
 
 	// weights for prior
@@ -160,7 +160,16 @@ private:
 
 	// fitted face
 	Tensor1<float> tmesh;
-	
+
+	// workspace for rigid fitting
+	struct PoseWorkspace{
+		static const int npts = 78;
+		float meas[npts];
+		// for cminpack
+		//int workspace[npts];
+		//float w2[12*npts+32];
+	} pws;
+
 	float RTparams[7]; /* sx, ry, rz, tx, ty, tz, scale */
 	
 	bool useHistory;
@@ -185,7 +194,9 @@ private:
 
 	// weights prior
 	arma::fvec mu_wid, mu_wexp;
+	arma::fvec mu_wid_weighted, mu_wexp_weighted;
 	arma::fmat sigma_wid, sigma_wexp;
+	arma::fmat sigma_wid_weighted, sigma_wexp_weighted;
 
 	// target vertices	
 	vector<pair<PhGUtils::Point3f, int>> targets;

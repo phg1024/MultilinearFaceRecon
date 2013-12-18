@@ -9,7 +9,11 @@
 #define USE_MKL_LS 1		// use mkl least square solver
 
 MultilinearReconstructor::MultilinearReconstructor(void)
-{
+{	
+	w_prior_id = 5e-2;
+	w_prior_exp = 5e-2;
+	w_boundary = 1e-6;
+	
 	// initialize CULA
 	culaStatus s = culaInitialize();
 	if(s != culaNoError)
@@ -32,9 +36,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	errorThreshold = 1e-4;
 	usePrior = true;
 
-	w_prior_id = 5e-2;
-	w_prior_exp = 5e-2;
-	w_boundary = 1e-6;
+
 	frameCounter = 0;
 
 	useHistory = true;
@@ -86,9 +88,9 @@ void MultilinearReconstructor::loadPrior()
 	//mu_wid.print("mean_wid");
 	//sigma_wid.print("sigma_wid");
 	sigma_wid = arma::inv(sigma_wid);
+	sigma_wid_weighted = sigma_wid * w_prior_id;
 	mu_wid = sigma_wid * mu_wid;
-
-
+	mu_wid_weighted = mu_wid * w_prior_id;
 
 	const string fnwexp = "../Data/wexp_trainingdata.bin";
 	ifstream fwexp(fnwexp, ios::in | ios::binary );
@@ -106,9 +108,9 @@ void MultilinearReconstructor::loadPrior()
 	//mu_wexp.print("mean_wexp");
 	//sigma_wexp.print("sigma_wexp");
 	sigma_wexp = arma::inv(sigma_wexp);
+	sigma_wexp_weighted = sigma_wexp * w_prior_exp;
 	mu_wexp = sigma_wexp * mu_wexp;
-
-
+	mu_wexp_weighted = mu_wexp * w_prior_exp;
 }
 
 void MultilinearReconstructor::loadCoreTensor()
@@ -606,13 +608,11 @@ int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cm
 
 bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	int npts = targets.size();
-	vector<float> meas(npts);
-	vector<int> workspace(npts);
-	vector<float> w2(12*npts+32);
 
 	// use levmar
 	//int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
-	int iters = slevmar_der(evalCost, evalJacobian, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	int iters = slevmar_der(evalCost, evalJacobian, RTparams, 
+		&(pws.meas[0]), 7, npts, 32, NULL, NULL, NULL, NULL, this);
 	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// use minpack
@@ -717,13 +717,13 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 	// the lower part is already filled in
 	for(int i=0;i<tm1cRT.dim(0);i++) {
 		for(int j=0;j<tm1cRT.dim(1);j++) {
-			Aid(j, i) = tm1cRT(i, j) * w_landmarks[j];
+			Aid(j, i) = tm1cRT(i, j);// * w_landmarks[j];
 		}
 	}
 
 	for(int j=0;j<Aid.cols();j++) {
 		for(int i=0, ridx=tm1c.dim(1);i<nparams;i++, ridx++) {
-			Aid(ridx, j) = sigma_wid(i, j) * w_prior_id;
+			Aid(ridx, j) = sigma_wid_weighted(i, j);
 		}
 	}
 
@@ -736,14 +736,14 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 		//brhs(vidx+1) = (q(vidx+1) - Tvec.y) * w_landmarks[vidx+1];
 		//brhs(vidx+2) = (q(vidx+2) - Tvec.z) * w_landmarks[vidx+2];
 		//PhGUtils::rotatePoint(brhs(vidx), brhs(vidx+1), brhs(vidx+2), invRmat);
-		brhs(vidx) = q(vidx);
-		brhs(vidx+1) = q(vidx+1);
-		brhs(vidx+2) = q(vidx+2);
+		brhs(vidx) = q(vidx) * w_landmarks[vidx];
+		brhs(vidx+1) = q(vidx+1) * w_landmarks[vidx+1];
+		brhs(vidx+2) = q(vidx+2) * w_landmarks[vidx+2];
 	}
 	// fill in the lower part with the mean vector of identity weights
 	int ndim_id = mu_wid.size();
 	for(int i=0, idx=q.length();i<ndim_id;i++,idx++) {
-		brhs(idx) = mu_wid(i) * w_prior_id;
+		brhs(idx) = mu_wid_weighted(i);
 	}
 
 	int rtn = leastsquare<float>(Aid, brhs);
@@ -861,14 +861,14 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	// fill in the upper part of the matrix, the lower part is already filled
 	for(int i=0;i<tm0cRT.dim(0);i++) {
 		for(int j=0;j<tm0cRT.dim(1);j++) {
-			Aexp(j, i) = tm0cRT(i, j) * w_landmarks[j];
+			Aexp(j, i) = tm0cRT(i, j);// * w_landmarks[j];
 		}
 	}
 
 	// fill in the lower part
 	for(int j=0;j<Aexp.cols();j++) {
 		for(int i=0, ridx=tm0c.dim(1);i<nparams;i++, ridx++) {
-			Aexp(ridx, j) = sigma_wexp(i, j) * w_prior_exp;
+			Aexp(ridx, j) = sigma_wexp_weighted(i, j);
 		}
 	}
 
@@ -880,7 +880,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	// fill in the lower part with the mean vector of expression weights
 	int ndim_exp = mu_wexp.size();
 	for(int i=0, idx=q.length();i<ndim_exp;i++,idx++) {
-		brhs(idx) = mu_wexp(i) * w_prior_exp;
+		brhs(idx) = mu_wexp_weighted(i);
 	}
 
 #if USE_MKL_LS
@@ -1133,6 +1133,9 @@ void MultilinearReconstructor::transformTM0C() {
 			tm0cRT(i, vidx+2) = tm0c(i, vidx+2);
 			// store the rotated and translated tensor in tm0cRT
 			PhGUtils::transformPoint( tm0cRT(i, vidx), tm0cRT(i, vidx+1), tm0cRT(i, vidx+2), Rmat, Tvec );
+			tm0cRT(i, vidx) *= w_landmarks[vidx];
+			tm0cRT(i, vidx+1) *= w_landmarks[vidx+1];
+			tm0cRT(i, vidx+2) *= w_landmarks[vidx+2];
 		}
 	}
 }
@@ -1159,6 +1162,11 @@ void MultilinearReconstructor::transformTM1C() {
 			tm1cRT(i, vidx+1) = tm1c(i, vidx+1);
 			tm1cRT(i, vidx+2) = tm1c(i, vidx+2);
 			PhGUtils::transformPoint( tm1cRT(i, vidx), tm1cRT(i, vidx+1), tm1cRT(i, vidx+2), Rmat, Tvec );
+		
+			// multiply weights
+			tm1cRT(i, vidx) *= w_landmarks[vidx];
+			tm1cRT(i, vidx+1) *= w_landmarks[vidx+1];
+			tm1cRT(i, vidx+2) *= w_landmarks[vidx+2];
 		}
 	}
 }
