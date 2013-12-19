@@ -48,7 +48,6 @@ void AAMWrapper::setup() {
 
 const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigned char* dimg, int w, int h )
 {
-
 		/// realtime tracking related
 
 		// copy the image over here

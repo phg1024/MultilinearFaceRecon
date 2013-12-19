@@ -13,19 +13,21 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	w_prior_id = 5e-2;
 	w_prior_exp = 5e-2;
 	w_boundary = 1e-6;
+
+	//meanX = meanY = meanZ = 0;
 	
 	// initialize CULA
-	culaStatus s = culaInitialize();
-	if(s != culaNoError)
-	{
-		printf("%s\n", culaGetStatusString(s));
-	}
+	//culaStatus s = culaInitialize();
+	//if(s != culaNoError)
+	//{
+	//	printf("%s\n", culaGetStatusString(s));
+	//}
 
 	mkl_set_num_threads(8);
 
 	loadCoreTensor();
-	loadPrior();
 	initializeWeights();
+	loadPrior();
 	createTemplateItem();
 	//updateComputationTensor();
 	init();
@@ -35,7 +37,6 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	cc = 1e-6;
 	errorThreshold = 1e-4;
 	usePrior = true;
-
 
 	frameCounter = 0;
 
@@ -85,12 +86,16 @@ void MultilinearReconstructor::loadPrior()
 	fwid.read(reinterpret_cast<char*>(sigma_wid.memptr()), sizeof(float)*ndims*ndims);
 
 	fwid.close();
+
+	PhGUtils::message("identity prior loaded.");
+	PhGUtils::message("processing identity prior.");
 	//mu_wid.print("mean_wid");
 	//sigma_wid.print("sigma_wid");
 	sigma_wid = arma::inv(sigma_wid);
 	sigma_wid_weighted = sigma_wid * w_prior_id;
 	mu_wid = sigma_wid * mu_wid;
 	mu_wid_weighted = mu_wid * w_prior_id;
+	PhGUtils::message("done");
 
 	const string fnwexp = "../Data/wexp_trainingdata.bin";
 	ifstream fwexp(fnwexp, ios::in | ios::binary );
@@ -608,9 +613,9 @@ int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cm
 
 bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	int npts = targets.size();
-
+	
 	// use levmar
-	//int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	//int iters = slevmar_dif(evalCost, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
 	int iters = slevmar_der(evalCost, evalJacobian, RTparams, 
 		&(pws.meas[0]), 7, npts, 32, NULL, NULL, NULL, NULL, this);
 	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
@@ -643,7 +648,7 @@ bool MultilinearReconstructor::fitRigidTransformationOnly()
 	int npts = targets.size();
 	vector<float> meas(npts);
 	int iters = slevmar_dif(evalCost, RTparams, &(meas[0]), 6, npts, 512, NULL, NULL, NULL, NULL, this);
-	cout << "rigid fitting finished in " << iters << " iterations." << endl;
+	//cout << "rigid fitting finished in " << iters << " iterations." << endl;
 
 	// set up the matrix and translation vector
 	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * scale;
@@ -1002,6 +1007,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 	int npts = targets.size();
 
 	if( updateTC ) {
+		pws.meas.resize(npts);
 		updateComputationTensor();
 		updateMatrices();
 	}

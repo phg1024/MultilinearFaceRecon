@@ -4,6 +4,7 @@
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
 #include "MultilinearReconstructor.h"
+#include "MultilinearReconstructorGPU.cuh"
 
 class BlendShapeViewer : public GL3DCanvas
 {
@@ -16,6 +17,10 @@ public:
 	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts);
 	void fit(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void generatePrior();
+
+	const MultilinearReconstructor& getReconstructor() const {
+		return recon;
+	}
 
 protected:
 	virtual void initializeGL();
@@ -43,6 +48,7 @@ private:
 	vector<PhGUtils::Point3f> targetLandmarks;
 	vector<int> landmarks;
 	MultilinearReconstructor recon;
+	MultilinearReconstructorGPU GPURecon;
 
 	PhGUtils::Matrix4x4f mProj, mMv;
 };

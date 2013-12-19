@@ -17,11 +17,11 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
-    <PlatformToolset>v120_CTP_Nov2012</PlatformToolset>
+    <PlatformToolset>v110</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
-    <PlatformToolset>v120_CTP_Nov2012</PlatformToolset>
+    <PlatformToolset>v110</PlatformToolset>
     <UseIntelMKL>Sequential</UseIntelMKL>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -37,7 +37,9 @@
     <Import Project="..\AAMModule\Eigen.props" />
     <Import Project="..\AAMModule\CULA.props" />
     <Import Project="..\AAMModule\CUDA 5.5.props" />
-    <Import Project="..\AAMModule_Realtime\sparsehash.props" />
+    <Import Project="PhGUtils.props" />
+    <Import Project="levmar_debug.props" />
+    <Import Project="armadillo.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -48,7 +50,9 @@
     <Import Project="..\AAMModule\CUDA 5.5.props" />
     <Import Project="..\AAMModule\OpenCV.props" />
     <Import Project="..\AAMModule\mkl.props" />
-    <Import Project="..\AAMModule_Realtime\sparsehash.props" />
+    <Import Project="PhGUtils_Release.props" />
+    <Import Project="levmar.props" />
+    <Import Project="armadillo.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
@@ -57,12 +61,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
     <IncludePath>C:\Program Files %28x86%29\Intel\Composer XE\mkl\include;C:\Users\PhG\Desktop\Code\Libraries\levmar-2.6\include;C:\Users\PhG\Desktop\Code\Libraries\armadillo-3.920.2\include;C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\include;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\include;C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\include;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files %28x86%29\Intel\Composer XE\mkl\lib\intel64;C:\Users\PhG\Desktop\Code\Libraries\levmar-2.6\lib;C:\Users\PhG\Desktop\Code\Libraries\BLAS_LAPACK;C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\lib;C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\lib\Release\x64;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\lib\x64\Debug;$(LibraryPath)</LibraryPath>
+    <LibraryPath>C:\Users\Peihong\Desktop\Code\MultilinearFaceRecon\x64\Debug;C:\Program Files %28x86%29\Intel\Composer XE\mkl\lib\intel64;C:\Users\PhG\Desktop\Code\Libraries\levmar-2.6\lib;C:\Users\PhG\Desktop\Code\Libraries\BLAS_LAPACK;C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\lib;C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\lib\Release\x64;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\lib\x64\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
     <IncludePath>C:\Program Files %28x86%29\Intel\Composer XE 2013 SP1\mkl\include;C:\Users\PhG\Desktop\Code\Libraries\levmar-2.6\include;C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\include;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\include;C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\include;C:\Users\PhG\Desktop\Code\Libraries\armadillo-3.920.2\include;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Program Files %28x86%29\Intel\Composer XE 2013 SP1\mkl\lib\intel64;C:\Users\PhG\Desktop\Code\Libraries\levmar-2.6\lib;C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\lib;C:\Users\PhG\Desktop\Code\Libraries\BLAS_LAPACK;C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\lib;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\lib\x64\Debug;$(LibraryPath)</LibraryPath>
+    <LibraryPath>C:\Users\Peihong\Desktop\Code\MultilinearFaceRecon\x64\Release;C:\Program Files %28x86%29\Intel\Composer XE 2013 SP1\mkl\lib\intel64;C:\Users\PhG\Desktop\Code\Libraries\levmar-2.6\lib;C:\Users\PhG\Desktop\Code\Libraries\PhGUtils\lib;C:\Users\PhG\Desktop\Code\Libraries\BLAS_LAPACK;C:\Users\PhG\Desktop\Code\Libraries\glew-1.10.0\lib;C:\Users\PhG\Desktop\Code\Libraries\freeglut-2.8.1\lib\x64\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -79,7 +83,7 @@
       <OutputFile>$(OutDir)\$(ProjectName).exe</OutputFile>
       <AdditionalLibraryDirectories>C:\Users\PhG\Desktop\Code\MultilinearFaceRecon\x64\Debug;$(QTDIR)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>AAMModule_Realtime.lib;mkl_intel_lp64.lib;mkl_core.lib;mkl_sequential.lib;levmar64d.lib;blas_win64_MTd.lib;lapack_win64_MTd.lib;PhGUtilsd.lib;qtmaind.lib;Qt5Cored.lib;Qt5Guid.lib;Qt5OpenGLd.lib;opengl32.lib;glu32.lib;Qt5Widgetsd.lib;Qt5Xmld.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>AAMModule_Realtime.lib;mkl_intel_lp64.lib;mkl_core.lib;mkl_sequential.lib;levmar64d.lib;PhGUtilsd.lib;qtmaind.lib;Qt5Cored.lib;Qt5Guid.lib;Qt5OpenGLd.lib;opengl32.lib;glu32.lib;Qt5Widgetsd.lib;Qt5Xmld.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -195,6 +199,12 @@
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.\GeneratedFiles\qrc_%(Filename).cpp;%(Outputs)</Outputs>
       <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(QTDIR)\bin\rcc.exe" -name "%(Filename)" -no-compress "%(FullPath)" -o .\GeneratedFiles\qrc_%(Filename).cpp</Command>
     </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="MultilinearReconstructorGPU.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="MultilinearReconstructorGPU.cuh" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
