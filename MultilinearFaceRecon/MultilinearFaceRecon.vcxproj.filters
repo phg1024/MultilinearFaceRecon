@@ -97,4 +97,10 @@
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="MultilinearReconstructorGPU.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="MultilinearReconstructorGPU.cuh" />
+  </ItemGroup>
 </Project>

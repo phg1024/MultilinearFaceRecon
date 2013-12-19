@@ -17,7 +17,7 @@ AAMWrapper::~AAMWrapper(void)
 }
 
 void AAMWrapper::setup() {
-	string datapath = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\model\\";
+	string datapath = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\model\\";
 	string searchPicDir;
 	string savePrefix;
 	string AAMSearchPrefix;
