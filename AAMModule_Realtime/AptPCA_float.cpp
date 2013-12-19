@@ -13,7 +13,27 @@ Adp_PCA_float::Adp_PCA_float(int _dim,int _maximumDim,bool _outputData,int _bloc
 
 	blockNum=_blockNum;
 	dataForUse=MatrixXf::Zero(dim,_blockNum);
+
+	readyToTransfer=false;
 }
+
+
+void Adp_PCA_float::updateModel()
+{
+	//	cout<<"1"<<" ";
+	//cout<<dataForUse.cols()<<endl;
+	updateModel(dataForUse,true);
+	//	cout<<"2"<<endl;
+	getMeanAndModel(newMeanVec_GPU);
+	//	cout<<"3"<<endl;
+	readyToTransfer=true;
+}
+
+void Adp_PCA_float::setNewMeanVec(float *_meanVec)
+{
+	newMeanVec_GPU=_meanVec;
+}
+
 
 void Adp_PCA_float::setModel(Mat &model,Mat &eigenVec,Mat &m,int dataNum,int modelDim)
 {
@@ -103,7 +123,7 @@ void Adp_PCA_float::initialModel(MatrixXf &data)
 			data.col(i)=data.col(i)-meanA;
 		}
 		//cout<<data.topLeftCorner(20,5)<<endl;
-		ofstream out("mean.txt",ios::out);
+		/*ofstream out("mean.txt",ios::out);
 		for (int i=0;i<meanA.rows();i++)
 		{
 			for (int j=0;j<meanA.cols();j++)
@@ -123,7 +143,7 @@ void Adp_PCA_float::initialModel(MatrixXf &data)
 			}
 			out1<<endl;
 		}
-		out1.close();
+		out1.close();*/
 
 
 
@@ -235,7 +255,7 @@ void Adp_PCA_float::updateModel(MatrixXf &B,bool isNormalize)
 		//cout<<"no change: "<<curResValue<<endl;
 		return;
 	}
-
+	//return;
 
 
 

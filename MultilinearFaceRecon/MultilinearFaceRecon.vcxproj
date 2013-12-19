@@ -37,6 +37,7 @@
     <Import Project="..\AAMModule\Eigen.props" />
     <Import Project="..\AAMModule\CULA.props" />
     <Import Project="..\AAMModule\CUDA 5.5.props" />
+    <Import Project="..\AAMModule_Realtime\sparsehash.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -47,6 +48,7 @@
     <Import Project="..\AAMModule\CUDA 5.5.props" />
     <Import Project="..\AAMModule\OpenCV.props" />
     <Import Project="..\AAMModule\mkl.props" />
+    <Import Project="..\AAMModule_Realtime\sparsehash.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>

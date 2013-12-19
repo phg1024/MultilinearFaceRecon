@@ -3203,7 +3203,7 @@ extern "C" void setData_onRun_AAM(float *parameters,int width,int height,vector<
 {
 	AAM_Search_RealGlobal_CUDA *data=trackEngine.AAM_ENGINE;
 	
-	if (parameters[0]!=-1000000000)
+	if (parameters[data->s_dim]!=-1000000000)
 	{
 		CUDA_CALL(cudaMemcpy(data->cu_parameters,parameters,(data->s_dim+data->t_dim+4)*sizeof(float),cudaMemcpyHostToDevice));
 		//CUDA_CALL(cudaMemcpy(data->cu_parameters,parameters,(data->s_dim+4)*sizeof(float),cudaMemcpyHostToDevice));
@@ -3212,6 +3212,8 @@ extern "C" void setData_onRun_AAM(float *parameters,int width,int height,vector<
 	else
 	{
 		//cout<<"not updating parameters\n";
+		CUDA_CALL(cudaMemcpy(data->cu_parameters,parameters,(data->s_dim)*sizeof(float),cudaMemcpyHostToDevice));
+		CUDA_CALL(cudaMemcpy(data->cu_parameters+data->s_dim+data->t_dim,parameters+data->s_dim+data->t_dim,(4)*sizeof(float),cudaMemcpyHostToDevice));
 		//CUDA_CALL(cudaMemcpy(data->cu_parameters+data->s_dim,parameters+data->s_dim,4*sizeof(float),cudaMemcpyHostToDevice));
 	}
 	gradientCalculation<<<width*height/256+1,256>>>(data->cu_gradientX,data->cu_gradientY,width,height);
@@ -3267,7 +3269,7 @@ extern "C" void setData_AAM_combination(float *s_vec,float *t_vec,float *s_mean,
 	data->cu_t_vec=data->cu_t_mean+pix_num;
 	CUDA_CALL(cudaMemcpy(data->cu_t_vec,t_vec,t_dim*pix_num*sizeof(float),cudaMemcpyHostToDevice));
 	data->newMeanAndTVec=new float[t_dim*pix_num+pix_num];
-
+	setNewMeanVec(data->newMeanAndTVec);
 	delete []host_SMean_Tmean;
 
 	
@@ -5303,26 +5305,33 @@ extern "C" int iterate_combination(int width,int height,int currentFrame,int sta
 	int status=0;
 	AAM_Search_RealGlobal_CUDA *data=trackEngine.AAM_ENGINE;
 
-	if (data->isAdptive&&data->currentFrameID==data->blockNum&&updateOnly)
+	//if (data->isAdptive&&data->currentFrameID==data->blockNum&&updateOnly)
+	//{
+	//	//cout<<"update model\n";
+	//	//GTB("updateModel");
+	//	//update texture model
+	//	CUDA_CALL(cudaMemcpy(data->host_blockTextureData, data->cu_blockTextureData, data->pix_num*data->blockNum*sizeof(float), cudaMemcpyDeviceToHost ));
+
+
+	//	updateModelCPU(data->host_blockTextureData,data->blockNum,data->newMeanAndTVec);
+
+	//	//data->exp->updateModel(data->host_blockTextureData,data->blockNum);
+	//	updateTextureModel_cuda(data->newMeanAndTVec);
+	//	data->currentFrameID=0;
+
+	//	
+	//	/*GTE("updateModel");
+	//	gCodeTimer.printTimeTree();
+	//	double time = total_fps;
+	//	cout<<"update model time: "<<time<<" ms"<<endl;*/
+
+	//	return status;
+
+	//}
+
+	if (updateOnly)
 	{
-		//cout<<"update model\n";
-		//GTB("updateModel");
-		//update texture model
-		CUDA_CALL(cudaMemcpy(data->host_blockTextureData, data->cu_blockTextureData, data->pix_num*data->blockNum*sizeof(float), cudaMemcpyDeviceToHost ));
-
-
-		updateModelCPU(data->host_blockTextureData,data->blockNum,data->newMeanAndTVec);
-
-		//data->exp->updateModel(data->host_blockTextureData,data->blockNum);
 		updateTextureModel_cuda(data->newMeanAndTVec);
-		data->currentFrameID=0;
-
-		return status;
-		/*GTE("updateModel");
-		gCodeTimer.printTimeTree();
-		double time = total_fps;
-		cout<<"update model time: "<<time<<" ms"<<endl;*/
-
 	}
 
 	//float *cu_inputImg=data->cu_inputImg;
@@ -5450,7 +5459,7 @@ extern "C" int iterate_combination(int width,int height,int currentFrame,int sta
 
 		/*vectorAdd<<<(data->ptsNum*2)/16,16>>>(data->cu_lastShape,data->cu_currentShape,1,
 			-1,data->ptsNum*2);*/
-		if (times>8)
+		if (times>4)
 		{
 			float sumSquare=thrust::inner_product(data->Vec_lastShape.begin(),data->Vec_lastShape.end(),data->Vec_currentShape.begin(),0,thrust::plus<float>(),binary_op2);
 			if((sumSquare/156.0f<0.005)||times>MaxIterNum)
@@ -5474,7 +5483,8 @@ extern "C" int iterate_combination(int width,int height,int currentFrame,int sta
 					data->currentFrameID++;
 					if (data->currentFrameID==data->blockNum)
 					{
-						//data->currentFrameID=0;
+						CUDA_CALL(cudaMemcpy(data->host_blockTextureData, data->cu_blockTextureData, data->pix_num*data->blockNum*sizeof(float), cudaMemcpyDeviceToHost ));
+						data->currentFrameID=0;
 						status=1;
 					}
 				}
@@ -5482,6 +5492,8 @@ extern "C" int iterate_combination(int width,int height,int currentFrame,int sta
 				float *parameters=new float[4];
 				CUDA_CALL(cudaMemcpy(parameters, data->cu_parameters+data->s_dim+data->t_dim, 4*sizeof(float), cudaMemcpyDeviceToHost ));
 				resultTheta=parameters[0];
+
+				//cout<<"used times: "<<times<<endl;
 				break;
 			}
 		}

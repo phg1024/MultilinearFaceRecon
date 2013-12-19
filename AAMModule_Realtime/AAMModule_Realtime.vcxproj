@@ -59,6 +59,7 @@
     <Import Project="CULA.props" />
     <Import Project="CUDA 5.5.props" />
     <Import Project="Kinect.props" />
+    <Import Project="sparsehash.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -70,6 +71,7 @@
     <Import Project="CULA.props" />
     <Import Project="CUDA 5.5.props" />
     <Import Project="Kinect.props" />
+    <Import Project="sparsehash.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -81,6 +83,7 @@
     <Import Project="CULA.props" />
     <Import Project="CUDA 5.5.props" />
     <Import Project="Kinect.props" />
+    <Import Project="sparsehash.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -92,6 +95,7 @@
     <Import Project="CULA.props" />
     <Import Project="CUDA 5.5.props" />
     <Import Project="Kinect.props" />
+    <Import Project="sparsehash.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -172,6 +176,7 @@
     <ClCompile Include="delaunay triangulation.cpp" />
     <ClCompile Include="geoHashing.cpp" />
     <ClCompile Include="HashTable.cpp" />
+    <ClCompile Include="HashTableFast.cpp" />
     <ClCompile Include="imageAli_common.cpp" />
     <ClCompile Include="ImageRenderer.cpp" />
     <ClCompile Include="LSAlignment.cpp" />
@@ -197,6 +202,7 @@
     <ClInclude Include="geoHashing.h" />
     <ClInclude Include="GRandom.h" />
     <ClInclude Include="HashTable.h" />
+    <ClInclude Include="Hash_Table_Fast.h" />
     <ClInclude Include="ImageRenderer.h" />
     <ClInclude Include="imgAli_common.h" />
     <ClInclude Include="LSAlignment.h" />

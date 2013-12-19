@@ -3,6 +3,7 @@
 //     Copyright (c) Microsoft Corporation.  All rights reserved.
 // </copyright>
 //------------------------------------------------------------------------------
+
 #include "stdafx.h"
 #include <strsafe.h>
 #include "coloranddepthRec.h"
@@ -267,8 +268,8 @@ CColorDepthBasics::CColorDepthBasics() :
 		depthRT_model="D:\\Fuhao\\face dataset\\train_RBGD_enlarged_030813\\NoGarrett\\trainedTree_15_12_56_22_0.txt";*/
 
 
-		//engine=new AAM_Detection_Combination(0.8,.05,0.005,0,colorRT_model,depthRT_model,AAMModelPath,alignedShapeDir,true);
-		engine=new AAM_Detection_Combination(0.9,0.05,0.003,0,colorRT_model,depthRT_model,AAMModelPath,alignedShapeDir,true);
+		engine=new AAM_Detection_Combination(0.8,.05,0.005,0,colorRT_model,depthRT_model,AAMModelPath,alignedShapeDir,true);
+		//engine=new AAM_Detection_Combination(0.9,0.05,0.003,0,colorRT_model,depthRT_model,AAMModelPath,alignedShapeDir,true);
 		//engine=new AAM_Detection_Combination(1,0,0,0,colorRT_model,depthRT_model,AAMModelPath,alignedShapeDir);
 		//m_pDrawColor->setPtsInfo(currentShape,78)
 
@@ -1209,10 +1210,10 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 	//{
 	//	return;
 	//}
-	/*if (showDetecton)
+	if (showDetecton)
 	{
-	GTB("START");
-	}*/
+		GTB("START");
+	}
 
 	HRESULT hr;
 
@@ -1222,6 +1223,8 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 		//if (!haveTable||(haveTable&&startNum%5==3))
 			//if(!haveTable)
 	{
+		//GTB("START");
+
 		m_pNuiSensor->NuiImageGetColorPixelCoordinateFrameFromDepthPixelFrameAtResolution(
 			NUI_IMAGE_RESOLUTION_640x480,
 			NUI_IMAGE_RESOLUTION_640x480,
@@ -1231,6 +1234,12 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 			m_colorCoordinates
 			);
 		haveTable=true;
+
+		/*	GTE("START");
+
+		gCodeTimer.printTimeTree();
+		double time = total_fps;
+		cout<<"used time per iteration: "<<time<<endl;*/
 	}
 
 
@@ -1239,6 +1248,8 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 	//D3D11_MAPPED_SUBRESOURCE msT;
 	//	hr = m_pImmediateContext->Map(m_pColorTexture2D, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &msT);
 	//	if ( FAILED(hr) ) { return hr; }
+	//GTB("alignment");
+
 
 	BYTE * rgbrun = m_colorRGBXAligned;	
 	//for (LONG y = 0; y < cColorHeight; ++y)
@@ -1289,7 +1300,7 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 	//for(int lll=0;lll<100;lll++)
 	{
 		//GTB("START");
-#pragma omp parallel for
+		//#pragma omp parallel for
 		//uchar* color_ptr = colorImage.ptr<uchar>();
 
 		for (LONG y = 0; y < cColorHeight; ++y)
@@ -1343,6 +1354,13 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 	//GTB("START");
 	////take 2ms per frame. Seems not necessary now
 	medianBlur(depthImageWarped,depthImageWarped,3);
+
+	/*GTE("alignment");
+
+	gCodeTimer.printTimeTree();
+	double time = total_fps;
+	cout<<"used time per iteration: "<<time<<endl;*/
+
 	//GTE("START");
 
 	if (outputDepthWarped&&frameId<totalFrameNo)
@@ -1514,11 +1532,17 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 
 		bool isSecceed=false;
 		bool isDrop=false;
-		//if(1)
-		if (((curStatus==0&&engine->AAM_exp->isAdaptive)&&(startNum%5!=4))||(!engine->AAM_exp->isAdaptive&&startNum%5!=4))
+		//if (((curStatus==0&&engine->AAM_exp->isAdaptive))||(!engine->AAM_exp->isAdaptive&&startNum%5!=4))
+		//GTB("START");
+		//if (((curStatus==0&&engine->AAM_exp->isAdaptive)&&(startNum%5!=4))||(!engine->AAM_exp->isAdaptive&&startNum%5!=4))
+		if(1)
 			//if (startNum%5!=3)
 		{
-			//	GTB("START");
+			//if (!(engine->AAM_exp->isAdaptive&&curStatus==1))
+			{
+				//GTB("START");
+			}
+
 			isSecceed=engine->track_combine(colorIMG_Gray,depthImageWarped,curStatus,startX,endX,startY,endY,startNum>0);
 			//isSecceed=engine->track_combine(colorIMG_Gray,depthImageWarped,startX,endX,startY,endY,startNum>0);
 			if (initial&&isSecceed)
@@ -1537,11 +1561,15 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 			{
 			cout<<"failed!\n";
 			}*/
-			//GTE("START");
+			//if (!(engine->AAM_exp->isAdaptive&&curStatus==1))
+			{
+				/*	GTE("START");
 
-			/*gCodeTimer.printTimeTree();
-			double time = total_fps;
-			cout<<"used time per iteration: "<<time<<"  /60= "<<time/60<<endl;*/
+				gCodeTimer.printTimeTree();
+				double time = total_fps;
+				cout<<"used time per iteration: "<<time<<" ms"<<endl;*/
+			}
+
 		}
 		//if ((curStatus==1&&engine->AAM_exp->isAdaptive)||(startNum%5==3&&!engine->AAM_exp->isAdaptive))
 		else
@@ -1549,8 +1577,33 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 			//cout<<"begin update\n";
 			if (engine->AAM_exp->isAdaptive&&curStatus==1)
 			{
+				//GTB("START");
+
+
 				float tmp;
 				curStatus=iterate_combination(0,0,0,0,tmp,NULL,false,false,true);
+
+
+				/*GTE("START");
+
+				gCodeTimer.printTimeTree();
+				double time = total_fps;
+				cout<<"used time per iteration: "<<time<<endl;*/
+
+				//isSecceed=engine->track_combine(colorIMG_Gray,depthImageWarped,curStatus,startX,endX,startY,endY,startNum>0);
+				////isSecceed=engine->track_combine(colorIMG_Gray,depthImageWarped,startX,endX,startY,endY,startNum>0);
+				//if (initial&&isSecceed)
+				//{
+				//	initial=false;
+				//}
+
+				//if (!isSecceed)//reset all the parameters to initial status
+				//{
+				//	initial=true;
+				//	startNum=0;
+				//	engine->hasVelocity=false;
+				//}
+				//curStatus=0;
 				//cout<<"model updated\n";
 			}
 
@@ -1558,12 +1611,22 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 			isDrop=true;
 
 		}
-		//GTE("START");
+		/*GTE("START");
+		gCodeTimer.printTimeTree();
+		double time = total_fps;
+		cout<<"used time per iteration: "<<time<<endl;*/
 		//}
 
 		//m_pDrawColor->Draw(m_colorRGBX, cDepthWidth * cDepthHeight * cBytesPerPixel);
 
+		if (showDetecton)
+		{
+			GTE("START");
 
+			gCodeTimer.printTimeTree();
+			double time = total_fps;
+			cout<<"used time per iteration: "<<time<<endl;
+		}
 
 
 		// cvSetWindowProperty( "Facial Features", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN );  
@@ -1623,9 +1686,9 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 
 			}
 
-			Mat tmpImg;
-			flip(colorImage,tmpImg,1);
-			m_pDrawColor->Draw(tmpImg.ptr<BYTE>(), cDepthWidth * cDepthHeight * cBytesPerPixel);
+			//Mat tmpImg;
+			//	flip(colorImage,tmpImg,1);
+			m_pDrawColor->Draw(colorImage.ptr<BYTE>(), cDepthWidth * cDepthHeight * cBytesPerPixel);
 
 			/*namedWindow("Facial Features",CV_WINDOW_NORMAL | CV_WINDOW_KEEPRATIO | CV_GUI_EXPANDED);
 			for (int i=0;i<cptsNum;i++)
@@ -1641,9 +1704,9 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 		}
 		else if (!isSecceed&&!isDrop)
 		{
-			Mat tmpImg;
-			flip(colorImage,tmpImg,1);
-			m_pDrawColor->DrawImgOnly(tmpImg.ptr<BYTE>(), cDepthWidth * cDepthHeight * cBytesPerPixel);
+			//Mat tmpImg;
+			//flip(colorImage,tmpImg,1);
+			m_pDrawColor->DrawImgOnly(colorImage.ptr<BYTE>(), cDepthWidth * cDepthHeight * cBytesPerPixel);
 			//namedWindow("Facial Features",CV_WINDOW_NORMAL | CV_WINDOW_KEEPRATIO | CV_GUI_EXPANDED);
 			//flip(colorImage,colorImage,1);
 			/*for (int i=0;i<cptsNum*2;i++)
@@ -1718,9 +1781,9 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 		for (int i=0;i<engine->ptsNum*2;i++)
 			currentShape[i]=lastShape[i];
 
-		Mat tmpImg;
-		flip(colorImage,tmpImg,1);
-		m_pDrawColor->Draw(tmpImg.ptr<BYTE>(), cDepthWidth * cDepthHeight * cBytesPerPixel);
+		//Mat tmpImg;
+		//flip(colorImage,tmpImg,1);
+		m_pDrawColor->Draw(colorImage.ptr<BYTE>(), cDepthWidth * cDepthHeight * cBytesPerPixel);
 		//namedWindow("Facial Features",CV_WINDOW_NORMAL | CV_WINDOW_KEEPRATIO | CV_GUI_EXPANDED);
 		//putText(colorImage,"123456",Point(250,80),FONT_HERSHEY_PLAIN,1.2,Scalar(0,255,0));
 		//// cvSetWindowProperty( "Facial Features", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN );  
@@ -1789,6 +1852,8 @@ void CColorDepthBasics::ProcessDepthwithMapping()
 	//	imshow("Facial Features",colorImage);
 	//	waitKey(1);
 	//}
+
+
 	//m_pDrawDepth->Draw(m_colorRGBX, cDepthWidth * cDepthHeight * cBytesPerPixel);
 
 	depthImageWarped.release();

@@ -217,10 +217,10 @@ void BlendShapeViewer::bindTargetMesh( const string& filename ) {
 }
 
 void BlendShapeViewer::fit(MultilinearReconstructor::FittingOption ops) {
-	PhGUtils::Timer t;
-	t.tic();
+	//PhGUtils::Timer t;
+	//t.tic();
 	recon.fit(ops);
-	t.toc("reconstruction");
+	//t.toc("reconstruction");
 	
 	updateMeshWithReconstructor();
 }

@@ -47,174 +47,174 @@ bool comparator ( const distancePir& l, const distancePir& r)
 
 AAM_Detection_Combination::AAM_Detection_Combination(double _AAMWeight,double _RTWeight,double _PriorWeight,double _localWeight,string colorDir,string depthDir,string aammodelPath,string alignedShapeDir,bool isAdp)
 {
-		face_cascade=(CvHaarClassifierCascade*)cvLoad("d:/opencv 2.4/opencv/data/haarcascades/haarcascade_frontalface_alt.xml");
-		//face_cascade=(CvHaarClassifierCascade*)cvLoad("d:/fuhao/OpenCV2.1/data/haarcascades/haarcascade_frontalface_alt.xml");
-		faces_storage=cvCreateMemStorage(0);
+	face_cascade=(CvHaarClassifierCascade*)cvLoad("d:/opencv 2.4/opencv/data/haarcascades/haarcascade_frontalface_alt.xml");
+	//face_cascade=(CvHaarClassifierCascade*)cvLoad("d:/fuhao/OpenCV2.1/data/haarcascades/haarcascade_frontalface_alt.xml");
+	faces_storage=cvCreateMemStorage(0);
 
-		AAMWeight=_AAMWeight;
-		RTWeight=_RTWeight;
-		priorWeight=_PriorWeight;
-		localWeight=_localWeight;
-		AAMModelPath=aammodelPath;
+	AAMWeight=_AAMWeight;
+	RTWeight=_RTWeight;
+	priorWeight=_PriorWeight;
+	localWeight=_localWeight;
+	AAMModelPath=aammodelPath;
 
 
-		colorRT_dir=colorDir;
-		depthRT_dir=depthDir;
+	colorRT_dir=colorDir;
+	depthRT_dir=depthDir;
 
-		fullIndNum=sizeof(combineIndList)/sizeof(int);
+	fullIndNum=sizeof(combineIndList)/sizeof(int);
 
-		prepareModel(isAdp);
+	prepareModel(isAdp);
 
-		host_colorImage=new float[MPN];
-		host_depthImage=new float[MPN];
+	host_colorImage=new float[MPN];
+	host_depthImage=new float[MPN];
 
-		hostDetectionResult=new float[MPN*(1+MAX_LABEL_NUMBER)];
+	hostDetectionResult=new float[MPN*(1+MAX_LABEL_NUMBER)];
 
-		finalPos=new float *[MAX_LABEL_NUMBER];
-		for (int i=0;i<MAX_LABEL_NUMBER;i++)
+	finalPos=new float *[MAX_LABEL_NUMBER];
+	for (int i=0;i<MAX_LABEL_NUMBER;i++)
+	{
+		finalPos[i]=new float [2];
+	}
+
+	//CPU
+	ptsNum=AAM_exp->meanShape->ptsNum;
+	maximumProb=new float[MAX_LABEL_NUMBER];
+	sampleNumberFromTrainingSet=ceil(log(1-0.95)/log(5.0f/6.0f));
+	sampleNumberFromProbMap=1;
+	sampleNumberFromFeature=ceil(log(1-0.95)/log(5.0f/9.0f));
+	window_threshold_small=10;
+	window_threshold_large=20;
+	window_threshold_small*=window_threshold_small;
+	window_threshold_large*=window_threshold_large;
+	//ifstream in("D:\\Fuhao\\AAM model\\allignedshape.txt",ios::in);
+	//ifstream in("D:\\Fuhao\\face dataset\\train_all_final\\allignedshape.txt",ios::in);
+	//		ifstream in("D:\\Fuhao\\face dataset\\train_larger database\\allignedshape.txt",ios::in);
+	//ifstream in("D:\\Fuhao\\face dataset\\lfpw\\train_78\\selected\\allignedshape_91_90.txt",ios::in);
+	ifstream in(alignedShapeDir.c_str(),ios::in);
+	//ifstream in("D:\\Fuhao\\face dataset\\lfpw\\train_78\\selected\\allignedshape_90_90.txt",ios::in);
+	float x,y;
+	totalShapeNum=0;
+	while(in)
+	{
+		for (int i=0;i<ptsNum;i++)
 		{
-			finalPos[i]=new float [2];
+			in>>x>>y;
 		}
+		totalShapeNum++;		
+	}
+	totalShapeNum--;
+	in.clear();
+	in.seekg(0);
 
-		//CPU
-		ptsNum=AAM_exp->meanShape->ptsNum;
-		maximumProb=new float[MAX_LABEL_NUMBER];
-		sampleNumberFromTrainingSet=ceil(log(1-0.95)/log(5.0f/6.0f));
-		sampleNumberFromProbMap=1;
-		sampleNumberFromFeature=ceil(log(1-0.95)/log(5.0f/9.0f));
-		window_threshold_small=10;
-		window_threshold_large=20;
-		window_threshold_small*=window_threshold_small;
-		window_threshold_large*=window_threshold_large;
-		//ifstream in("D:\\Fuhao\\AAM model\\allignedshape.txt",ios::in);
-		//ifstream in("D:\\Fuhao\\face dataset\\train_all_final\\allignedshape.txt",ios::in);
-//		ifstream in("D:\\Fuhao\\face dataset\\train_larger database\\allignedshape.txt",ios::in);
-		//ifstream in("D:\\Fuhao\\face dataset\\lfpw\\train_78\\selected\\allignedshape_91_90.txt",ios::in);
-		ifstream in(alignedShapeDir.c_str(),ios::in);
-		//ifstream in("D:\\Fuhao\\face dataset\\lfpw\\train_78\\selected\\allignedshape_90_90.txt",ios::in);
-		float x,y;
-		totalShapeNum=0;
-		while(in)
-		{
-			for (int i=0;i<ptsNum;i++)
-			{
-				in>>x>>y;
-			}
-			totalShapeNum++;		
-		}
-		totalShapeNum--;
-		in.clear();
-		in.seekg(0);
-		shapes=Mat::zeros(ptsNum*2,totalShapeNum+1,CV_64FC1);
+	//cout<<totalShapeNum<<endl;
+	shapes=Mat::zeros(ptsNum*2,totalShapeNum+1,CV_64FC1);
+	for (int j=0;j<ptsNum;j++)
+	{
+		shapes.at<double>(j,0)=AAM_exp->meanShape->pts[j][0]-meanShapeCenter[0];
+		shapes.at<double>(j+ptsNum,0)=AAM_exp->meanShape->pts[j][1]-meanShapeCenter[1];
+	}
+	for (int i=1;i<=totalShapeNum;i++)
+	{
 		for (int j=0;j<ptsNum;j++)
-		{
-			shapes.at<double>(j,0)=AAM_exp->meanShape->pts[j][0]-meanShapeCenter[0];
-			shapes.at<double>(j+ptsNum,0)=AAM_exp->meanShape->pts[j][1]-meanShapeCenter[1];
+		{ 
+			in>>x>>y;
+			shapes.at<double>(j,i)=x*AAM_exp->shape_scale;
+			shapes.at<double>(j+ptsNum,i)=y*AAM_exp->shape_scale;
 		}
-		for (int i=1;i<=totalShapeNum;i++)
-		{
-			for (int j=0;j<ptsNum;j++)
-			{ 
-				in>>x>>y;
-				shapes.at<double>(j,i)=x*AAM_exp->shape_scale;
-				shapes.at<double>(j+ptsNum,i)=y*AAM_exp->shape_scale;
-			}
-		}
+	}
 
 
-		
 
-		
+
+
 	/*	ofstream out("D:\\Fuhao\\face dataset\\train_larger database\\allignedshape_feature.txt",ios::out);
-		out<<totalShapeNum<<" "<<ptsNum<<endl;
-		for (int i=0;i<shapes.cols;i++)
-		{
-			for (int j=0;j<shapes.rows;j++)
-			{
-				out<<shapes.at<double>(j,i)<<" ";
-			}
-			out<<endl;
-		}
-		out.close();*/
+	out<<totalShapeNum<<" "<<ptsNum<<endl;
+	for (int i=0;i<shapes.cols;i++)
+	{
+	for (int j=0;j<shapes.rows;j++)
+	{
+	out<<shapes.at<double>(j,i)<<" ";
+	}
+	out<<endl;
+	}
+	out.close();*/
 
 	/*	ofstream out("D:\\Fuhao\\face dataset\\lfpw\\train_78\\selected\\allignedshape_feature_90_90.txt",ios::out);
-		out<<totalShapeNum<<" "<<ptsNum<<endl;
-		for (int i=0;i<shapes.cols;i++)
+	out<<totalShapeNum<<" "<<ptsNum<<endl;
+	for (int i=0;i<shapes.cols;i++)
+	{
+	for (int j=0;j<shapes.rows;j++)
+	{
+	out<<shapes.at<double>(j,i)<<" ";
+	}
+	out<<endl;
+	}
+	out.close();*/
+
+
+
+	w_critical=ceil((float)11*0.6);
+
+
+	Mat shapeCenter=shapes.clone();
+	for (int i=1;i<=totalShapeNum;i++)
+	{
+		for (int j=0;j<ptsNum*2;j++)
 		{
-			for (int j=0;j<shapes.rows;j++)
-			{
-				out<<shapes.at<double>(j,i)<<" ";
-			}
-			out<<endl;
-		}
-		out.close();*/
-
-
-
-		w_critical=ceil((float)11*0.6);
-
-
-		Mat shapeCenter=shapes.clone();
-		for (int i=1;i<=totalShapeNum;i++)
-		{
-			for (int j=0;j<ptsNum*2;j++)
-			{
-				shapeCenter.at<double>(j,i)=shapes.at<double>(j,0);
-			}
-
-		}
-		cout<<AAM_exp->m_s_vec.rows<<" "<<AAM_exp->m_s_vec.cols<<" "<<AAM_exp->shapeDim<<endl;
-		cout<<shapes.rows<<" "<<shapes.cols<<" "<<shapeCenter.rows<<" "<<shapeCenter.cols<<endl;
-		eigenVectors=AAM_exp->m_s_vec.rowRange(Range(0,AAM_exp->shapeDim))*(shapes-shapeCenter);
-
-		host_preCalculatedConv=new float [MAX_LABEL_NUMBER*MPN*4];
-
-		buildHashTabel(shapes);
-
-		state=0;
-		hasVelocity=false;
-		isAAMOnly=false;
-		showNN=false;
-		TemporalTracking=false;
-		showProbMap=false;
-		for (int i=0;i<fullIndNum*2;i++)
-		{
-			pridictedPts[i]=0;
+			shapeCenter.at<double>(j,i)=shapes.at<double>(j,0);
 		}
 
+	}
+	cout<<AAM_exp->m_s_vec.rows<<" "<<AAM_exp->m_s_vec.cols<<" "<<AAM_exp->shapeDim<<endl;
+	cout<<shapes.rows<<" "<<shapes.cols<<" "<<shapeCenter.rows<<" "<<shapeCenter.cols<<endl;
+	eigenVectors=AAM_exp->m_s_vec.rowRange(Range(0,AAM_exp->shapeDim))*(shapes-shapeCenter);
+
+	host_preCalculatedConv=new float [MAX_LABEL_NUMBER*MPN*4];
+
+	buildHashTabel(shapes);
+
+	state=0;
+	hasVelocity=false;
+	isAAMOnly=false;
+	showNN=false;
+	TemporalTracking=false;
+	showProbMap=false;
+	for (int i=0;i<fullIndNum*2;i++)
+	{
+		pridictedPts[i]=0;
+	}
 
 
-		totalShapeNum=shapes.cols;
-		fullTrainingPos=new Mat[totalShapeNum];
-		int cind;
-		for (int j=0;j<totalShapeNum;j++)
+
+	totalShapeNum=shapes.cols;
+	fullTrainingPos=new Mat[totalShapeNum];
+	int cind;
+	for (int j=0;j<totalShapeNum;j++)
+	{
+		fullTrainingPos[j].create(fullIndNum*2,4,CV_32FC1);
+		for (int i=0;i<fullIndNum;i++)
 		{
-			fullTrainingPos[j].create(fullIndNum*2,4,CV_32FC1);
-			for (int i=0;i<fullIndNum;i++)
-			{
-				cind=combineIndList[i];
+			cind=combineIndList[i];
 
-				fullTrainingPos[j].at<float>(i,0)=shapes.at<double>(cind,j);
-				fullTrainingPos[j].at<float>(i,1)=shapes.at<double>(cind+ptsNum,j);
-				fullTrainingPos[j].at<float>(i,2)=1;
-				fullTrainingPos[j].at<float>(i,3)=0;
+			fullTrainingPos[j].at<float>(i,0)=shapes.at<double>(cind,j);
+			fullTrainingPos[j].at<float>(i,1)=shapes.at<double>(cind+ptsNum,j);
+			fullTrainingPos[j].at<float>(i,2)=1;
+			fullTrainingPos[j].at<float>(i,3)=0;
 
-				fullTrainingPos[j].at<float>(i+fullIndNum,0)=shapes.at<double>(cind+ptsNum,j);
-				fullTrainingPos[j].at<float>(i+fullIndNum,1)=-shapes.at<double>(cind,j);;
-				fullTrainingPos[j].at<float>(i+fullIndNum,2)=0;
-				fullTrainingPos[j].at<float>(i+fullIndNum,3)=1;
-			}
+			fullTrainingPos[j].at<float>(i+fullIndNum,0)=shapes.at<double>(cind+ptsNum,j);
+			fullTrainingPos[j].at<float>(i+fullIndNum,1)=-shapes.at<double>(cind,j);;
+			fullTrainingPos[j].at<float>(i+fullIndNum,2)=0;
+			fullTrainingPos[j].at<float>(i+fullIndNum,3)=1;
 		}
+	}
 
-		//absInd=new float[MAX_LABEL_NUMBER];
+	//absInd=new float[MAX_LABEL_NUMBER];
 }
 
 
 void AAM_Detection_Combination::searchPics(string listName)
 {
-	// Peihong changed this
 	//read in the name
-	/*
 	char cname[800];
 	ifstream inn("D:\\Fuhao\\face dataset\\train_larger database\\imgList.txt",ios::in);
 	int totalNum;
@@ -225,7 +225,6 @@ void AAM_Detection_Combination::searchPics(string listName)
 		inn.getline(cname,800);
 		nameList[i]=cname;
 	}
-	*/
 
 
 	ifstream in(listName.c_str(),ios::in);
@@ -248,10 +247,10 @@ void AAM_Detection_Combination::searchPics(string listName)
 
 	for (int ll=0;ll<_imgNum;ll++)
 	{
-		
+
 		//readin the image name first
 		in.getline(name,500,'\n');
-		
+
 
 		if (ll<startNum)//||ll>459-49)
 		{
@@ -276,14 +275,14 @@ void AAM_Detection_Combination::searchPics(string listName)
 		QueryPerformanceFrequency((LARGE_INTEGER   *)&persecond);
 		QueryPerformanceCounter((LARGE_INTEGER   *)&t1);*/
 
-	/*	char name[500];
+		/*	char name[500];
 		sprintf(name, "AAM+detection/colordepth/%s_%dModes.txt", AAM_exp->prefix,11361+AAM_exp->currentFrame);
 		ifstream inModes(name,ios::in);
 		if (inModes)
 		{
-			inModes.close();
-			AAM_exp->currentFrame++;
-			continue;
+		inModes.close();
+		AAM_exp->currentFrame++;
+		continue;
 		}*/
 
 		//cout<<ll<<" "<<name<<endl;
@@ -294,66 +293,66 @@ void AAM_Detection_Combination::searchPics(string listName)
 		saveName+=".txt";
 		cout<<saveName<<endl;
 
-	//////////////read in the data and copy to groundtruth directory//////////////////////
-	//	char nameee[500];
-	//	sprintf(nameee, "groundtruth/%s_%d.txt", AAM_exp->prefix,11361+AAM_exp->currentFrame);
+		//////////////read in the data and copy to groundtruth directory//////////////////////
+		//	char nameee[500];
+		//	sprintf(nameee, "groundtruth/%s_%d.txt", AAM_exp->prefix,11361+AAM_exp->currentFrame);
 
-	//	ifstream f1(saveName.c_str(), fstream::binary);
-	//	ofstream f2(nameee, fstream::trunc|fstream::binary);
-	//	f2 << f1.rdbuf();
+		//	ifstream f1(saveName.c_str(), fstream::binary);
+		//	ofstream f2(nameee, fstream::trunc|fstream::binary);
+		//	f2 << f1.rdbuf();
 
-	//	string imgCpy=nameee;
-	//	saveName=name;
-	//	imgCpy=imgCpy.substr(0,imgCpy.length()-4);
-	//	imgCpy+=saveName.substr(saveName.length()-4,saveName.length());
-	//	cout<<imgCpy<<endl;
-	//	ifstream f3(name, fstream::binary);
-	//	ofstream f4(imgCpy.c_str(), fstream::trunc|fstream::binary);
-	//	f4 << f3.rdbuf();
+		//	string imgCpy=nameee;
+		//	saveName=name;
+		//	imgCpy=imgCpy.substr(0,imgCpy.length()-4);
+		//	imgCpy+=saveName.substr(saveName.length()-4,saveName.length());
+		//	cout<<imgCpy<<endl;
+		//	ifstream f3(name, fstream::binary);
+		//	ofstream f4(imgCpy.c_str(), fstream::trunc|fstream::binary);
+		//	f4 << f3.rdbuf();
 
-	//	imgCpy=nameee;
-	//	saveName=name;
-	//	saveName=saveName.substr(0,saveName.length()-4)+"_depth.png";
-	//	imgCpy=imgCpy.substr(0,imgCpy.length()-4);
-	//	imgCpy+="_depth.png";
-	//	cout<<imgCpy<<endl;
-	//	ifstream f5(saveName.c_str(), fstream::binary);
-	//	if (f5)
-	//	{
-	//		ofstream f6(imgCpy.c_str(), fstream::trunc|fstream::binary);
-	//		f6 << f5.rdbuf();
-	//	}
-	//	
+		//	imgCpy=nameee;
+		//	saveName=name;
+		//	saveName=saveName.substr(0,saveName.length()-4)+"_depth.png";
+		//	imgCpy=imgCpy.substr(0,imgCpy.length()-4);
+		//	imgCpy+="_depth.png";
+		//	cout<<imgCpy<<endl;
+		//	ifstream f5(saveName.c_str(), fstream::binary);
+		//	if (f5)
+		//	{
+		//		ofstream f6(imgCpy.c_str(), fstream::trunc|fstream::binary);
+		//		f6 << f5.rdbuf();
+		//	}
+		//	
 
-	//	AAM_exp->currentFrame++;
-	//	//CopyFile(_TEXT(saveName.c_str()), _TEXT(nameee), true);;
-	///*	ifstream in_g(saveName.c_str(),ios::in);
-	//	int cwidth,cheight;
-	//	int cnum;
-	//	float tx,ty;
-	//	if (in_g)
-	//	{
-	//		in_g>>cwidth>>cheight;
-	//		in_g>>cnum>>cnum;
-	//		for (int i=0;i<ptsNum;i++)
-	//		{
-	//			in>>currentShape[i]>>currentShape[i+ptsNum];
-	//			currentShape[i]*=cwidth;
-	//			currentShape[i+ptsNum]*=cheight;
-	//		}
-	//	}*/
-	//	continue;
+		//	AAM_exp->currentFrame++;
+		//	//CopyFile(_TEXT(saveName.c_str()), _TEXT(nameee), true);;
+		///*	ifstream in_g(saveName.c_str(),ios::in);
+		//	int cwidth,cheight;
+		//	int cnum;
+		//	float tx,ty;
+		//	if (in_g)
+		//	{
+		//		in_g>>cwidth>>cheight;
+		//		in_g>>cnum>>cnum;
+		//		for (int i=0;i<ptsNum;i++)
+		//		{
+		//			in>>currentShape[i]>>currentShape[i+ptsNum];
+		//			currentShape[i]*=cwidth;
+		//			currentShape[i+ptsNum]*=cheight;
+		//		}
+		//	}*/
+		//	continue;
 		/////////////////////////////////////////////////////////////////
-	/*	if (ll>_imgNum-8)
+		/*	if (ll>_imgNum-8)
 		{
-			continue;
+		continue;
 		}*/
-		
+
 		Mat m_img=imread(name,0);
 
 		colorImgBackUP=imread(name);
 
-	
+
 
 		Mat depthImg=Mat::ones(colorImgBackUP.rows,colorImgBackUP.cols,CV_32FC1);
 
@@ -479,7 +478,7 @@ void AAM_Detection_Combination::searchPics(string listName)
 			//colorImg.create(depthPNGImg.rows,depthPNGImg.cols,CV_32FC1);
 
 			////////////NewADD for missing depth: depth inpainting/////////////////////////
-		/*	namedWindow("old depth");
+			/*	namedWindow("old depth");
 			imshow("old depth",depthPNGImg);
 			waitKey();*/
 
@@ -611,7 +610,7 @@ void AAM_Detection_Combination::searchPics(string listName)
 
 
 
-		
+
 		////face detection here
 		int startX,endX,startY,endY;
 
@@ -677,7 +676,7 @@ void AAM_Detection_Combination::searchPics(string listName)
 			//check if we have ground truth, if yes, use it to limit depth data
 			/*char name[500];
 			sprintf(name, "%s/%s_tracked_%d.txt", refDir,prefix,cStart+AAM_exp->currentFrame);*/
-		/*	string name=curPureName;
+			/*	string name=curPureName;
 			string dirName=curPureName.substr(0,curPureName.find_last_of('\\')+1);
 			name=curPureName.substr(curPureName.find_last_of('\\')+1,curPureName.length()-curPureName.find_last_of('\\'));
 
@@ -727,16 +726,16 @@ void AAM_Detection_Combination::searchPics(string listName)
 					}
 				}
 
-			/*	for (int i=0;i<depthImg.rows;i++)
+				/*	for (int i=0;i<depthImg.rows;i++)
 				{
-					for (int j=0;j<depthImg.cols;j++)
-					{
-						if (i>=startY&&i<=endY&&j>=startX&&j<=endX)
-						{
-							continue;
-						}
-						depthImg.at<float>(i,j)=0;
-					}
+				for (int j=0;j<depthImg.cols;j++)
+				{
+				if (i>=startY&&i<=endY&&j>=startX&&j<=endX)
+				{
+				continue;
+				}
+				depthImg.at<float>(i,j)=0;
+				}
 				}*/
 				//track_AAM(m_img,depthImg,currentShape,cStart,"AAMPrior",AAM_exp->prefix);
 			}
@@ -748,25 +747,25 @@ void AAM_Detection_Combination::searchPics(string listName)
 		}
 		/*for (int i=0;i<depthImg.rows;i++)
 		{
-			for (int j=0;j<depthImg.cols;j++)
-			{
-				if (j<startX||j>endX||i<startY||i>endY)
-				{
-					depthImg.at<float>(i,j)=0;
-				}
-			}
+		for (int j=0;j<depthImg.cols;j++)
+		{
+		if (j<startX||j>endX||i<startY||i>endY)
+		{
+		depthImg.at<float>(i,j)=0;
+		}
+		}
 		}*/
 
 		/*Mat curImg=colorImgBackUP.clone();
 		for (int i=0;i<curImg.rows;i++)
 		{
-			for (int j=0;j<curImg.cols;j++)
-			{
-				if (j<startX||j>endX||i<startY||i>endY)
-				{
-					curImg.at<Vec3b>(i,j)=0;
-				}
-			}
+		for (int j=0;j<curImg.cols;j++)
+		{
+		if (j<startX||j>endX||i<startY||i>endY)
+		{
+		curImg.at<Vec3b>(i,j)=0;
+		}
+		}
 		}
 		namedWindow("face region");
 		imshow("face region",curImg);
@@ -774,31 +773,31 @@ void AAM_Detection_Combination::searchPics(string listName)
 
 		/*for (int i=0;i<depthImg.rows;i++)
 		{
-			for (int j=0;j<depthImg.cols;j++)
-			{
-				if (depthImg.at<float>(i,j)*standardDepth>1200)
-				{
-					depthImg.at<float>(i,j)=0;
-				}
-			}
+		for (int j=0;j<depthImg.cols;j++)
+		{
+		if (depthImg.at<float>(i,j)*standardDepth>1200)
+		{
+		depthImg.at<float>(i,j)=0;
+		}
+		}
 		}
 
 		namedWindow("depth");
 		imshow("depth",depthImg);
 		waitKey();*/
-//		
-//		startX=287;
-//		startY=99;
-//		endX=402;
-//		endY=250;
-//
-//
-//		/*startX=200;
-//		startY=99;
-//		endX=402;
-//		endY=300;
-//*/
-	//	cout<<startX<<" "<<startY<<" "<<endX<<" "<<endY<<endl;
+		//		
+		//		startX=287;
+		//		startY=99;
+		//		endX=402;
+		//		endY=250;
+		//
+		//
+		//		/*startX=200;
+		//		startY=99;
+		//		endX=402;
+		//		endY=300;
+		//*/
+		//	cout<<startX<<" "<<startY<<" "<<endX<<" "<<endY<<endl;
 		//for (int i=0;i<depthImg.rows;i++)
 		//{
 		//	for (int j=0;j<depthImg.cols;j++)
@@ -810,31 +809,31 @@ void AAM_Detection_Combination::searchPics(string listName)
 		//	}
 		//}
 
-	/*	ofstream out("D:\\Fuhao\\face dataset\\images for combination debug\\Fuhao_424.txt",ios::out);
+		/*	ofstream out("D:\\Fuhao\\face dataset\\images for combination debug\\Fuhao_424.txt",ios::out);
 		for (int i=0;i<depthImg.rows;i++)
 		{
-			for (int j=0;j<depthImg.cols;j++)
-			{
-				out<<depthImg.at<float>(i,j)*standardDepth<<" ";
-			}
-			out<<endl;
+		for (int j=0;j<depthImg.cols;j++)
+		{
+		out<<depthImg.at<float>(i,j)*standardDepth<<" ";
+		}
+		out<<endl;
 		}
 		out.close();*/
-		
+
 		//and then detect
 		//track(m_img,depthImg);
 		//track_sampling(m_img,depthImg);
 
 		//for AAM only with prior
-		
-	/*	char name[500];
+
+		/*	char name[500];
 		sprintf(name, "AAM+detection/colordepth/%s_%dModes.txt", AAM_exp->prefix,11361+AAM_exp->currentFrame);
 		ifstream inModes(name,ios::in);
 		if (inModes)
 		{
-			inModes.close();
-			AAM_exp->currentFrame++;
-			continue;
+		inModes.close();
+		AAM_exp->currentFrame++;
+		continue;
 		}*/
 		/*char name1[500];
 		sprintf(name1, "AAM+detection/colordepth/%s_%dModesNew.txt", AAM_exp->prefix,11361+AAM_exp->currentFrame);
@@ -845,22 +844,22 @@ void AAM_Detection_Combination::searchPics(string listName)
 		float tdepth;
 		while(inModes)
 		{
-			inModes>>tid>>tx>>ty;
-			tdepth=depthImg.at<float>(ty,tx)*standardDepth;
-			outModesWithDepth<<tid<<" "<<tx<<" "<<ty<<" "<<tdepth<<endl;
+		inModes>>tid>>tx>>ty;
+		tdepth=depthImg.at<float>(ty,tx)*standardDepth;
+		outModesWithDepth<<tid<<" "<<tx<<" "<<ty<<" "<<tdepth<<endl;
 		}
 		inModes.close();
 		outModesWithDepth.close();*/
-		
 
-	/*	DWORD HessianStart, HessianStop,d_totalstart;  
+
+		/*	DWORD HessianStart, HessianStop,d_totalstart;  
 		HessianStart=GetTickCount();*/
 
 		//set up the name
 
 		//output	initial parameters only
 		//track_AAM_GPU(m_img,depthImg,currentShape);
-		
+
 		//////////////////full method////////////////////////
 		char cccname[500];
 		sprintf(cccname, "%s_%s", curName.c_str(),AAM_exp->prefix);
@@ -874,7 +873,7 @@ void AAM_Detection_Combination::searchPics(string listName)
 		QueryPerformanceFrequency((LARGE_INTEGER   *)&persecond);
 
 		QueryPerformanceCounter((LARGE_INTEGER   *)&t1); 
-	
+
 		if (1||AAM_exp->currentFrame==startNum)
 		{
 			track_combine(m_img,depthImg,startX,endX,startY,endY,false);
@@ -894,7 +893,7 @@ void AAM_Detection_Combination::searchPics(string listName)
 		cout<<"frame  time: "<<(HessianStop-HessianStart)<<" ms"<<endl;
 		cout<<"\n************************************************\n";*/
 		AAM_exp->currentFrame++;
-		}
+	}
 }
 
 void AAM_Detection_Combination::track_AAM_GPU(Mat &colorImg,Mat &depthImg,float *cur_Shape)
@@ -906,7 +905,7 @@ void AAM_Detection_Combination::track_AAM_GPU(Mat &colorImg,Mat &depthImg,float 
 	//QueryPerformanceFrequency((LARGE_INTEGER   *)&persecond);
 
 	//QueryPerformanceCounter((LARGE_INTEGER   *)&t1); 
-	
+
 	//ransac_noSampling(finalPos,depthImg.cols,depthImg.rows,finalInd,maximumProb);
 	ransac_MeanShape(cur_Shape);
 	//ransac_noSampling_parrllel(finalPos,depthImg.cols,depthImg.rows,finalInd,maximumProb);
@@ -933,7 +932,7 @@ void AAM_Detection_Combination::track_AAM_GPU(Mat &colorImg,Mat &depthImg,float 
 	//AAM_exp->setInitialTranslation( globalTransformation.at<float>(2,0),globalTransformation.at<float>(3,0));
 	//AAM_exp->setInitialScale(scale);
 	//AAM_exp->setInitialTheta(theta);
-	
+
 	//output the initial parameters
 
 	string outName=curPureName+"_initialParameters.txt";
@@ -969,13 +968,13 @@ void AAM_Detection_Combination::track_AAM(Mat &colorImg,Mat &depthImg,float *cur
 	/*QueryPerformanceCounter((LARGE_INTEGER   *)&t2); 
 	time=(t2-t1)*1000/persecond; 
 	cout<<"----------------prepare CPU data time: "<<time<<"------------------------------"<<endl;
-	
+
 	QueryPerformanceCounter((LARGE_INTEGER   *)&t1); 
 	setData_onrun_shared(host_colorImage,host_depthImage,width, height);
 	QueryPerformanceCounter((LARGE_INTEGER   *)&t2); 
 	time=(t2-t1)*1000/persecond; 
 	cout<<"----------------copy CPU data to GPU time: "<<time<<"------------------------------"<<endl;*/
-	
+
 	//step 2: detection
 	//////////crutial part 1///////////
 	//1: detect face region only
@@ -987,7 +986,7 @@ void AAM_Detection_Combination::track_AAM(Mat &colorImg,Mat &depthImg,float *cur
 	//cout<<"----------------randomized tree and mode find time: "<<time<<"------------------------------"<<endl;
 
 	//return;
-	
+
 
 	//Mat tmp=colorImg.clone();
 	//Point c;
@@ -1002,7 +1001,7 @@ void AAM_Detection_Combination::track_AAM(Mat &colorImg,Mat &depthImg,float *cur
 	//namedWindow("feature locations");
 	//imshow("feature locations",tmp);
 	//waitKey();
-	
+
 	//return;
 
 
@@ -1039,7 +1038,7 @@ void AAM_Detection_Combination::track_AAM(Mat &colorImg,Mat &depthImg,float *cur
 	AAM_exp->setInitialTranslation( globalTransformation.at<float>(2,0),globalTransformation.at<float>(3,0));
 	AAM_exp->setInitialScale(scale);
 	AAM_exp->setInitialTheta(theta);
-	
+
 
 
 	//aam in cpu
@@ -1050,7 +1049,7 @@ void AAM_Detection_Combination::track_AAM(Mat &colorImg,Mat &depthImg,float *cur
 
 	rt->setupProbMaps(depthImg.cols,depthImg.rows,hostDetectionResult,finalInd);
 
-//	return;
+	//	return;
 
 	//lastyly, AAM with detection
 	//1. initialization setting
@@ -1068,9 +1067,9 @@ void AAM_Detection_Combination::track_AAM(Mat &colorImg,Mat &depthImg,float *cur
 		AAM_exp->shapeSample[ll][0]=finalPos[finalInd[ll]][0];
 		AAM_exp->shapeSample[ll][1]=finalPos[finalInd[ll]][1];
 	}
-	
+
 	AAM_exp->iterate_clean_CPU(colorImg,rt,1);
-	
+
 }
 
 void AAM_Detection_Combination::ransac_MeanShape(float *curShape)
@@ -1173,10 +1172,10 @@ distancePir *distanceVec=NULL;
 
 void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int width,int height,vector<int>&finalInd,float *maximumProb,Mat *img)
 {
-		srand(time(NULL));
+	srand(time(NULL));
 	float bestProb=0;
-	
-//	finalInd.resize(labelNum-1);
+
+	//	finalInd.resize(labelNum-1);
 
 	float e=2.7173;
 
@@ -1251,7 +1250,7 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 						tmp.push_back(l);
 					}
 				}
-			
+
 				//check if there are enough inliers
 				if (tmp.size()<w_critical)
 				{
@@ -1268,7 +1267,7 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 						(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1])*(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1]);		//cout<<distance<<endl;
 					int currentIndex=round(newU.at<float>(l+fullIndNum,0))*width+round(newU.at<float>(l,0));
 					//cout<<round(newU.at<float>(l+fullIndNum,0))<<" "<<round(newU.at<float>(l,0))<<" "<<currentIndex<<endl;
-					
+
 
 					float probAll=powf(e,-distance/50);
 					if (currentIndex<0||currentIndex>=width*height)
@@ -1310,7 +1309,7 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 					}
 					globalTransformation_optimal=globalTransformation.clone();
 				}
-				
+
 			}
 		}
 	}
@@ -1344,13 +1343,13 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 					(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1])*(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1]);		//cout<<distance<<endl;
 
 				int currentIndex=round(newU.at<float>(l+fullIndNum,0))*width+round(newU.at<float>(l,0));
-				
+
 				if (distance<window_threshold_small&&maximumProb[l]>0)
 				{
 					tmpInd.push_back(l);
 				}
 
-			
+
 			}	
 			if (tmpInd.size()>bestIndNum)
 			{
@@ -1395,18 +1394,18 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 	globalTransformation_optimal=globalTransformation.clone();
 
 	/*Mat tmpIMg=(*img).clone();
-	
-			newU=fullTrainingPos[bestFitTrainingSampleInd]*globalTransformation_optimal;
-			Point c;
-			for (int j=0;j<fullIndNum;j++)
-			{
-				c.x=newU.at<float>(j,0);
-				c.y=newU.at<float>(j+fullIndNum,0);
-				circle(tmpIMg,c,5,255);
-			}
-			namedWindow("KNN visualization");
-				imshow("KNN visualization",tmpIMg);
-				waitKey();*/
+
+	newU=fullTrainingPos[bestFitTrainingSampleInd]*globalTransformation_optimal;
+	Point c;
+	for (int j=0;j<fullIndNum;j++)
+	{
+	c.x=newU.at<float>(j,0);
+	c.y=newU.at<float>(j+fullIndNum,0);
+	circle(tmpIMg,c,5,255);
+	}
+	namedWindow("KNN visualization");
+	imshow("KNN visualization",tmpIMg);
+	waitKey();*/
 
 	float bestDistance=1000000;
 	float currentDis;
@@ -1425,7 +1424,7 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 	float sigma=0.2;
 	for (int ii=0;ii<finalInd.size();ii++)
 	{
-		
+
 
 		//float probAll=powf(e,-currentDis*currentDis/200);
 		prob_used[ii]=powf(e,-(maximumProb[finalInd[ii]]-1)*(maximumProb[finalInd[ii]]-1)/
@@ -1437,15 +1436,15 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 		//cout<<ii<<" "<<maximumProb[ii]<<" "<<hostDetectionResult[currentIndex+finalInd[ii]*width*height]<<endl;
 		/*if (hostDetectionResult[currentIndex+finalInd[ii]*width*height]>0.1)
 		{
-			prob_used[ii]=1;
+		prob_used[ii]=1;
 		}
 		else
-			prob_used[ii]=0;*/
+		prob_used[ii]=0;*/
 	}
-	
+
 
 	for (int i=0;i<totalShapeNum;i++)
-	//for (int i=22;i<23;i++)
+		//for (int i=22;i<23;i++)
 	{
 		getTransformationInfo(finalInd,sampledPos,shapes,i);	//get transformation parameters
 		//globalTransformation.at<float>(0,0)=globalTransformation_optimal.at<float>(0,0);
@@ -1454,9 +1453,9 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 
 		//newU=fullTrainingPos[i]*globalTransformation_optimal;
 
-	/*	for (int ii=0;ii<finalInd.size();ii++)
+		/*	for (int ii=0;ii<finalInd.size();ii++)
 		{
-			cout<<newU.at<float>(finalInd[ii],0)<<" "<<newU.at<float>(finalInd[ii]+fullIndNum,0)<<" ";
+		cout<<newU.at<float>(finalInd[ii],0)<<" "<<newU.at<float>(finalInd[ii]+fullIndNum,0)<<" ";
 		}
 		cout<<endl;*/
 
@@ -1473,9 +1472,9 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 		distanceVec[i].second=i;
 		/*if (currentDis<bestDistance)
 		{
-			bestDistance=currentDis;
-			bestFitTrainingSampleInd=i;
-			globalTransformation_optimal=globalTransformation.clone();
+		bestDistance=currentDis;
+		bestFitTrainingSampleInd=i;
+		globalTransformation_optimal=globalTransformation.clone();
 		}*/
 		//distance=(newU.at<float>(l,0)-sampledPos[l][0])*(newU.at<float>(l,0)-sampledPos[l][0])+
 		//(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1])*(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1]);		//cout<<distance<<endl;
@@ -1546,15 +1545,15 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 				circle(tmpIMg,c,5,255);
 			}
 
-			
+
 		}
 
 		namedWindow("KNN visualization");
 		imshow("KNN visualization",tmpIMg);
 		waitKey();
-		
+
 	}
-	
+
 
 	float sigma1=sigma;
 	for (int ii=0;ii<finalInd.size();ii++)
@@ -1571,9 +1570,9 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 		float probAll=powf(e,-currentDis*currentDis/50);
 		//probAll*=hostDetectionResult[currentIndex+finalInd[ii]*width*height];
 		/*probAll*=powf(e,-(hostDetectionResult[currentIndex+finalInd[ii]*width*height]-1)*(hostDetectionResult[currentIndex+finalInd[ii]*width*height]-1)/
-			(2*sigma1*sigma1));*/
+		(2*sigma1*sigma1));*/
 		//probAll*=powf(e,-(maximumProb[finalInd[ii]]-1)*(maximumProb[finalInd[ii]]-1)/
-			//(2*sigma1*sigma1));;
+		//(2*sigma1*sigma1));;
 		AAM_exp->probForEachFeature[ii]=probAll;
 		//cout<<finalInd[ii]<<" "<<AAM_exp->probForEachFeature[ii]<<endl;
 		//AAM_exp->probForEachFeature[ii]=1;
@@ -1582,129 +1581,129 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 	/*cout<<"feature probabilities:\n";
 	for (int i=0;i<finalInd.size();i++)
 	{
-		cout<<i<< " "<<maximumProb[finalInd[i]]<<" "<<AAM_exp->probForEachFeature[i]<<endl;
+	cout<<i<< " "<<maximumProb[finalInd[i]]<<" "<<AAM_exp->probForEachFeature[i]<<endl;
 	}*/
 
 	//then do the KNN fit
 	//eigenVectors.at<double>(i,minInd);
 	//cout<<eigenVectors.cols<<" "<<eigenVectors.rows<<endl;
-	
+
 	Mat KNNVec=Mat::zeros(eigenVectors.rows,NNNum,CV_64FC1);
 	for (int i=0;i<NNNum;i++)
 	{
 		KNNVec.col(i)+=eigenVectors.col(distanceVec[i].second);
 	}
-	
+
 	//if (localWeight>0)
 	{
-	//update the mean
-	Mat mean_KNN=KNNVec.col(0)*0;
-	for (int i=0;i<KNNVec.cols;i++)
-	{
-		mean_KNN+=KNNVec.col(i);
-	}
-	mean_KNN/=KNNVec.cols;
-	for (int i=0;i<mean_KNN.rows;i++)
-	{
-		AAM_exp->priorMean[i]=mean_KNN.at<double>(i,0);
-	}
-
-	//update the conv
-	for (int i=0;i<KNNVec.cols;i++)
-	{
-		KNNVec.col(i)-=mean_KNN;
-	}
-	Mat KNNVec_tran;
-	transpose(KNNVec,KNNVec_tran);
-	Mat convKNN=KNNVec*KNNVec_tran/KNNVec.cols;
-
-	Mat conv_inv_KNN=convKNN.inv();
-
-//	cout<<AAM_exp->priorSigma.cols<<" "<<AAM_exp->priorSigma.rows<<endl;
-	for (int i=0;i<conv_inv_KNN.rows;i++)
-	{
-		for (int j=0;j<conv_inv_KNN.cols;j++)
+		//update the mean
+		Mat mean_KNN=KNNVec.col(0)*0;
+		for (int i=0;i<KNNVec.cols;i++)
 		{
-			AAM_exp->priorSigma.at<double>(i,j)=conv_inv_KNN.at<double>(i,j);
+			mean_KNN+=KNNVec.col(i);
 		}
-	}
-
-
-	if (localWeight>0)
-	{
-
-
-		//train the local PCA model
-		int s_dim=eigenVectors.rows;
-		//use KNNVec_tran to train
-		CvMat *pData=cvCreateMat(KNNVec_tran.rows,KNNVec_tran.cols,CV_64FC1);
-		for (int i=0;i<KNNVec_tran.rows;i++)
+		mean_KNN/=KNNVec.cols;
+		for (int i=0;i<mean_KNN.rows;i++)
 		{
-			for (int j=0;j<KNNVec_tran.cols;j++)
+			AAM_exp->priorMean[i]=mean_KNN.at<double>(i,0);
+		}
+
+		//update the conv
+		for (int i=0;i<KNNVec.cols;i++)
+		{
+			KNNVec.col(i)-=mean_KNN;
+		}
+		Mat KNNVec_tran;
+		transpose(KNNVec,KNNVec_tran);
+		Mat convKNN=KNNVec*KNNVec_tran/KNNVec.cols;
+
+		Mat conv_inv_KNN=convKNN.inv();
+
+		//	cout<<AAM_exp->priorSigma.cols<<" "<<AAM_exp->priorSigma.rows<<endl;
+		for (int i=0;i<conv_inv_KNN.rows;i++)
+		{
+			for (int j=0;j<conv_inv_KNN.cols;j++)
 			{
-				//CV_MAT_ELEM(*pData,double,i,j)=shape[i]->ptsForMatlab[j];
-
-				//here,we keep the shape in the same scale with the meanshape
-				CV_MAT_ELEM(*pData,double,i,j)=KNNVec_tran.at<double>(i,j);
-			}
-
-		}
-		if (AAM_exp->local_s_mean==NULL)
-		{
-			AAM_exp->local_s_mean = cvCreateMat(1, KNNVec_tran.cols, CV_64FC1);
-			AAM_exp->m_local_s_mean=cvarrToMat(AAM_exp->local_s_mean);
-		}
-
-		if (AAM_exp->local_s_vec==NULL)
-		{
-			AAM_exp->local_s_vec=cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
-		}
-
-		CvMat* s_value = cvCreateMat(1, min(KNNVec_tran.cols,KNNVec_tran.rows), CV_64FC1);
-		//CvMat *s_PCAvec = cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
-		cvCalcPCA( pData, AAM_exp->local_s_mean, s_value, AAM_exp->local_s_vec, CV_PCA_DATA_AS_ROW );
-		AAM_exp->m_local_mean=cvarrToMat(AAM_exp->local_s_mean);
-
-		double sumEigVal=0;
-		for (int i=0;i<s_value->cols;i++)
-		{
-			sumEigVal+=CV_MAT_ELEM(*s_value,double,0,i);
-		}
-
-		double sumCur=0;
-		for (int i=0;i<s_value->cols;i++)
-		{
-			sumCur+=CV_MAT_ELEM(*s_value,double,0,i);
-			if (sumCur/sumEigVal>=0.98)
-			{
-				AAM_exp->local_shape_dim=i+1;
-				break;
+				AAM_exp->priorSigma.at<double>(i,j)=conv_inv_KNN.at<double>(i,j);
 			}
 		}
-		//cout<<"local dim: "<<AAM_exp->local_shape_dim<<endl;
 
-		Mat curEigenVec=cvarrToMat(AAM_exp->local_s_vec);
-		Mat usedEigenVec=curEigenVec.rowRange(Range(0,AAM_exp->local_shape_dim));
-		Mat usedEigenVec_tran;
-		transpose(usedEigenVec,usedEigenVec_tran);
-		Mat localHessian=usedEigenVec_tran*usedEigenVec;
-		localHessian=Mat::eye(localHessian.rows,localHessian.cols,CV_64FC1)-localHessian;
 
-		Mat localHessian_tran;
-		transpose(localHessian,localHessian_tran);
-		localHessian=localHessian_tran*localHessian;
-		for (int i=0;i<localHessian.rows;i++)
+		if (localWeight>0)
 		{
-			for (int j=0;j<localHessian.cols;j++)
+
+
+			//train the local PCA model
+			int s_dim=eigenVectors.rows;
+			//use KNNVec_tran to train
+			CvMat *pData=cvCreateMat(KNNVec_tran.rows,KNNVec_tran.cols,CV_64FC1);
+			for (int i=0;i<KNNVec_tran.rows;i++)
 			{
-				AAM_exp->m_localHessian.at<double>(i,j)=localHessian.at<double>(i,j);
+				for (int j=0;j<KNNVec_tran.cols;j++)
+				{
+					//CV_MAT_ELEM(*pData,double,i,j)=shape[i]->ptsForMatlab[j];
+
+					//here,we keep the shape in the same scale with the meanshape
+					CV_MAT_ELEM(*pData,double,i,j)=KNNVec_tran.at<double>(i,j);
+				}
+
+			}
+			if (AAM_exp->local_s_mean==NULL)
+			{
+				AAM_exp->local_s_mean = cvCreateMat(1, KNNVec_tran.cols, CV_64FC1);
+				AAM_exp->m_local_s_mean=cvarrToMat(AAM_exp->local_s_mean);
+			}
+
+			if (AAM_exp->local_s_vec==NULL)
+			{
+				AAM_exp->local_s_vec=cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
+			}
+
+			CvMat* s_value = cvCreateMat(1, min(KNNVec_tran.cols,KNNVec_tran.rows), CV_64FC1);
+			//CvMat *s_PCAvec = cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
+			cvCalcPCA( pData, AAM_exp->local_s_mean, s_value, AAM_exp->local_s_vec, CV_PCA_DATA_AS_ROW );
+			AAM_exp->m_local_mean=cvarrToMat(AAM_exp->local_s_mean);
+
+			double sumEigVal=0;
+			for (int i=0;i<s_value->cols;i++)
+			{
+				sumEigVal+=CV_MAT_ELEM(*s_value,double,0,i);
+			}
+
+			double sumCur=0;
+			for (int i=0;i<s_value->cols;i++)
+			{
+				sumCur+=CV_MAT_ELEM(*s_value,double,0,i);
+				if (sumCur/sumEigVal>=0.98)
+				{
+					AAM_exp->local_shape_dim=i+1;
+					break;
+				}
+			}
+			//cout<<"local dim: "<<AAM_exp->local_shape_dim<<endl;
+
+			Mat curEigenVec=cvarrToMat(AAM_exp->local_s_vec);
+			Mat usedEigenVec=curEigenVec.rowRange(Range(0,AAM_exp->local_shape_dim));
+			Mat usedEigenVec_tran;
+			transpose(usedEigenVec,usedEigenVec_tran);
+			Mat localHessian=usedEigenVec_tran*usedEigenVec;
+			localHessian=Mat::eye(localHessian.rows,localHessian.cols,CV_64FC1)-localHessian;
+
+			Mat localHessian_tran;
+			transpose(localHessian,localHessian_tran);
+			localHessian=localHessian_tran*localHessian;
+			for (int i=0;i<localHessian.rows;i++)
+			{
+				for (int j=0;j<localHessian.cols;j++)
+				{
+					AAM_exp->m_localHessian.at<double>(i,j)=localHessian.at<double>(i,j);
+				}
 			}
 		}
-	}
 
 	}
 	//delete []distance;
-	
+
 
 	//find the best one
 	//for (int i=0;i<totalShapeNum;i++)
@@ -1839,17 +1838,17 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 
 	/////////////////////////new version, do not estimate gtP for every example//////////////////////////////////
 	//globalTransformation=globalTransformation_optimal;
-//bestProb=0;
-//finalInd.clear();
-//for (int i=0;i<fullIndNum;i++)
-//{
-//	if (maximumProb[i]>0.95)
-//	{
-//		finalInd.push_back(i);
-//		bestProb+=maximumProb[i];
-//	}
-//}
-//bestProb/=finalInd.size();
+	//bestProb=0;
+	//finalInd.clear();
+	//for (int i=0;i<fullIndNum;i++)
+	//{
+	//	if (maximumProb[i]>0.95)
+	//	{
+	//		finalInd.push_back(i);
+	//		bestProb+=maximumProb[i];
+	//	}
+	//}
+	//bestProb/=finalInd.size();
 	Mat *newUList=new Mat[totalShapeNum];
 	bool *usedLabel=new bool[fullIndNum];
 	//vector <int >tmpInd;
@@ -1881,7 +1880,7 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 		{
 			float distance=(newU.at<float>(l,0)-sampledPos[l][0])*(newU.at<float>(l,0)-sampledPos[l][0])+
 				(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1])*(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1]);		//cout<<distance<<endl;
-			
+
 			//cout<<l<<endl;
 			//{
 			//	Mat tmp=tmpImg.clone();
@@ -1916,11 +1915,11 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 			float probAll=powf(e,-distance/50);
 			probAll*=hostDetectionResult[currentIndex+l*width*height];
 			//cout<<l<<" "<<probAll<<endl;
-		//	cout<<probAll<<" "<<powf(e,-distance/50)<<" "<<hostDetectionResult[currentIndex+l*width*height]<<endl;
+			//	cout<<probAll<<" "<<powf(e,-distance/50)<<" "<<hostDetectionResult[currentIndex+l*width*height]<<endl;
 			//if (distance<window_threshold_small&&hostDetectionResult[currentIndex+l*width*height]>=0.2)
 			if(probAll>0.00001)
 			{
-		
+
 				tmpInd.push_back(l);
 				//inNum++;
 			}
@@ -1962,7 +1961,7 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 		}
 		//cout<<inNum<<endl;
 	}
-	
+
 	for (int i=0;i<30;i++)
 	{
 		AAM_exp->probForEachFeature[i]=0;
@@ -2002,10 +2001,10 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 	/*finalInd.clear();
 	for (int i=0;i<fullIndNum;i++)
 	{
-		if (usedLabel[i])
-		{
-			finalInd.push_back(i);
-		}
+	if (usedLabel[i])
+	{
+	finalInd.push_back(i);
+	}
 	}*/
 
 	//
@@ -2085,12 +2084,12 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 	///////////////////////////////////////////////////////////////////////////////////
 
 	///////////////////////old version, re-estimate global transforation every time///////////////////////////////
-//	float bestDistance=1000000;
-//	float currentDis;
+	//	float bestDistance=1000000;
+	//	float currentDis;
 	//float 
 	//now check distance
 	for (int i=0;i<totalShapeNum;i++)
-	//for (int i=22;i<23;i++)
+		//for (int i=22;i<23;i++)
 	{
 		//cout<<i<<endl;
 		getTransformationInfo(finalInd,sampledPos,shapes,i);	//get transformation parameters
@@ -2100,9 +2099,9 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 
 		//newU=fullTrainingPos[i]*globalTransformation_optimal;
 
-	/*	for (int ii=0;ii<finalInd.size();ii++)
+		/*	for (int ii=0;ii<finalInd.size();ii++)
 		{
-			cout<<newU.at<float>(finalInd[ii],0)<<" "<<newU.at<float>(finalInd[ii]+fullIndNum,0)<<" ";
+		cout<<newU.at<float>(finalInd[ii],0)<<" "<<newU.at<float>(finalInd[ii]+fullIndNum,0)<<" ";
 		}
 		cout<<endl;*/
 
@@ -2153,7 +2152,7 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 			(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1])*(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1]);		//cout<<distance<<endl;
 		/*if (combineIndList[l]==56||combineIndList[l]==61)
 		{
-			cout<<combineIndList[l]<<" "<<sqrt(distance)<<endl;
+		cout<<combineIndList[l]<<" "<<sqrt(distance)<<endl;
 		}*/
 		if (distance<window_threshold_large)
 		{
@@ -2188,12 +2187,12 @@ void AAM_Detection_Combination::ransac_noSampling_parrllel(int **sampledPos,int 
 
 void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,int width,int height,vector<int>&finalInd,float *maximumProb,char *saveName,Mat *img,Mat *depthImg)
 {
-		srand(time(NULL));
+	srand(time(NULL));
 	float bestProb=0;
-	
-//	finalInd.resize(labelNum-1);
 
-	
+	//	finalInd.resize(labelNum-1);
+
+
 	float prob_threshold=0;
 
 	vector<int> traningSapleInd;
@@ -2231,8 +2230,8 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 	//go over every traing example
 	//for (int i=0;i<sampleNumberFromTrainingSet;i++)
 
-//	for(int i=0;i<fullIndNum;i++)
-		//cout<<i<<" "<<maximumProb[i]<<endl;
+	//	for(int i=0;i<fullIndNum;i++)
+	//cout<<i<<" "<<maximumProb[i]<<endl;
 	//#pragma omp parallel for
 	traningSapleInd.push_back(0);
 	for(int i=0;i<traningSapleInd.size();i++)
@@ -2257,10 +2256,10 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 				{
 					curIndex[p]=RandInt_cABc(0,candidatePoints[p].size()-1);
 				}
-			//	if (combineIndList[p]==51||combineIndList[p]==48)
-			//	{
-			//		curIndex[p]=1;
-			//	}
+				//	if (combineIndList[p]==51||combineIndList[p]==48)
+				//	{
+				//		curIndex[p]=1;
+				//	}
 				sampledPos[p][0]=candidatePoints[p][curIndex[p]].x;
 				sampledPos[p][1]=candidatePoints[p][curIndex[p]].y;
 			}
@@ -2279,7 +2278,7 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 						found=true;
 					}
 				}
-				
+
 				if (k==0)
 				{
 					currentInd[0]=18;currentInd[1]=16;
@@ -2288,9 +2287,9 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 				{
 					currentInd[0]=18;currentInd[1]=17;
 				}
-			//	else
+				//	else
 				//{
-					//currentInd[0]=14;currentInd[1]=15;
+				//currentInd[0]=14;currentInd[1]=15;
 				//}
 				getTransformationInfo(currentInd,sampledPos,shapes,traningSapleInd[i]);	//get transformation parameters
 
@@ -2324,7 +2323,7 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 						tmp.push_back(l);
 					}
 				}
-			
+
 				//check if there are enough inliers
 				if (tmp.size()<w_critical)
 				{
@@ -2341,7 +2340,7 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 						(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1])*(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1]);		//cout<<distance<<endl;
 					int currentIndex=round(newU.at<float>(l+fullIndNum,0))*width+round(newU.at<float>(l,0));
 					//cout<<round(newU.at<float>(l+fullIndNum,0))<<" "<<round(newU.at<float>(l,0))<<" "<<currentIndex<<endl;
-					
+
 
 					float probAll=powf(e,-distance/50);
 					if (currentIndex<0||currentIndex>=width*height)
@@ -2399,28 +2398,28 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 								(newU.at<float>(ii,0)-candidatePoints[ii][jj].x)+
 								(newU.at<float>(ii+fullIndNum,0)-candidatePoints[ii][jj].y)*
 								(newU.at<float>(ii+fullIndNum,0)-candidatePoints[ii][jj].y)));
-						
+
 							if (currentDis<minDis)
 							{
 								minDis=currentDis;
 								cindex=jj;
 							}
 						}	
-					/*	if (ii==8)
+						/*	if (ii==8)
 						{
-							cout<<cindex<<endl;
+						cout<<cindex<<endl;
 						}*/
 						sampledPos[ii][0]=candidatePoints[ii][cindex].x;
 						sampledPos[ii][1]=candidatePoints[ii][cindex].y;
 						selectedPointIndex[ii]=cindex;
 					}
 
-				/*	for (int p=0;p<fullIndNum;p++)
+					/*	for (int p=0;p<fullIndNum;p++)
 					{
-						selectedPointIndex[p]=curIndex[p];
+					selectedPointIndex[p]=curIndex[p];
 					}*/
 				}
-				
+
 			}
 		}
 	}
@@ -2490,13 +2489,13 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 					(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1])*(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1]);		//cout<<distance<<endl;
 
 				int currentIndex=round(newU.at<float>(l+fullIndNum,0))*width+round(newU.at<float>(l,0));
-				
+
 				if (distance<window_threshold_small&&maximumProb[l]>prob_threshold)
 				{
 					tmpInd.push_back(l);
 				}
 
-			
+
 			}	
 			if (tmpInd.size()>bestIndNum)
 			{
@@ -2513,7 +2512,7 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 	newU=fullTrainingPos[bestFitTrainingSampleInd]*globalTransformation;
 
 
-	
+
 	////////////////////update the index again//////////////////////////////////////
 	////////////////////////////////////////////////////////////////////////////////
 
@@ -2546,18 +2545,18 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 	globalTransformation_optimal=globalTransformation.clone();
 
 	/*Mat tmpIMg=(*img).clone();
-	
-			newU=fullTrainingPos[bestFitTrainingSampleInd]*globalTransformation_optimal;
-			Point c;
-			for (int j=0;j<fullIndNum;j++)
-			{
-				c.x=newU.at<float>(j,0);
-				c.y=newU.at<float>(j+fullIndNum,0);
-				circle(tmpIMg,c,5,255);
-			}
-			namedWindow("KNN visualization");
-				imshow("KNN visualization",tmpIMg);
-				waitKey();*/
+
+	newU=fullTrainingPos[bestFitTrainingSampleInd]*globalTransformation_optimal;
+	Point c;
+	for (int j=0;j<fullIndNum;j++)
+	{
+	c.x=newU.at<float>(j,0);
+	c.y=newU.at<float>(j+fullIndNum,0);
+	circle(tmpIMg,c,5,255);
+	}
+	namedWindow("KNN visualization");
+	imshow("KNN visualization",tmpIMg);
+	waitKey();*/
 
 	float bestDistance=1000000;
 	float currentDis;
@@ -2576,7 +2575,7 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 	float sigma=0.3;
 	for (int ii=0;ii<finalInd.size();ii++)
 	{
-		
+
 
 		//float probAll=powf(e,-currentDis*currentDis/200);
 		prob_used[ii]=powf(e,-(maximumProb[finalInd[ii]]-1)*(maximumProb[finalInd[ii]]-1)/
@@ -2588,15 +2587,15 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 		//cout<<ii<<" "<<maximumProb[ii]<<" "<<hostDetectionResult[currentIndex+finalInd[ii]*width*height]<<endl;
 		/*if (hostDetectionResult[currentIndex+finalInd[ii]*width*height]>0.1)
 		{
-			prob_used[ii]=1;
+		prob_used[ii]=1;
 		}
 		else
-			prob_used[ii]=0;*/
+		prob_used[ii]=0;*/
 	}
-	
+
 
 	for (int i=0;i<totalShapeNum;i++)
-	//for (int i=22;i<23;i++)
+		//for (int i=22;i<23;i++)
 	{
 		getTransformationInfo(finalInd,sampledPos,shapes,i);	//get transformation parameters
 		//globalTransformation.at<float>(0,0)=globalTransformation_optimal.at<float>(0,0);
@@ -2605,9 +2604,9 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 
 		//newU=fullTrainingPos[i]*globalTransformation_optimal;
 
-	/*	for (int ii=0;ii<finalInd.size();ii++)
+		/*	for (int ii=0;ii<finalInd.size();ii++)
 		{
-			cout<<newU.at<float>(finalInd[ii],0)<<" "<<newU.at<float>(finalInd[ii]+fullIndNum,0)<<" ";
+		cout<<newU.at<float>(finalInd[ii],0)<<" "<<newU.at<float>(finalInd[ii]+fullIndNum,0)<<" ";
 		}
 		cout<<endl;*/
 
@@ -2624,9 +2623,9 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 		distanceVec[i].second=i;
 		/*if (currentDis<bestDistance)
 		{
-			bestDistance=currentDis;
-			bestFitTrainingSampleInd=i;
-			globalTransformation_optimal=globalTransformation.clone();
+		bestDistance=currentDis;
+		bestFitTrainingSampleInd=i;
+		globalTransformation_optimal=globalTransformation.clone();
 		}*/
 		//distance=(newU.at<float>(l,0)-sampledPos[l][0])*(newU.at<float>(l,0)-sampledPos[l][0])+
 		//(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1])*(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1]);		//cout<<distance<<endl;
@@ -2780,71 +2779,71 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 	//newU=fullTrainingPos[bestFitTrainingSampleInd]*globalTransformation;
 	//globalTransformation_optimal=globalTransformation.clone();
 
-			Mat tmpIMg=colorImgBackUP.clone();
-	
-			newU=fullTrainingPos[bestFitTrainingSampleInd]*globalTransformation_optimal;
-			Point c;
-			for (int j=0;j<fullIndNum;j++)
-			{
-				c.x=newU.at<float>(j,0);
-				c.y=newU.at<float>(j+fullIndNum,0);
-				circle(tmpIMg,c,3,Scalar(0,0,255));
-			}
-		/*	for (int j=0;j<finalInd.size();j++)
-			{
-				cout<<sampledPos[finalInd[j]][0]<<" "<<sampledPos[finalInd[j]][1]<<endl;
-				c.x=sampledPos[finalInd[j]][0];
-				c.y=sampledPos[finalInd[j]][1];
-				circle(tmpIMg,c,2,Scalar(0,0,255));
-			}*/
+	Mat tmpIMg=colorImgBackUP.clone();
 
-			//for (int j=0;j<fullIndNum;j++)
-			//{
-			//	for (int k=0;k<candidatePoints[j].size();j++)
-			//	{
-			//		circle(tmpIMg,candidatePoints[j][k],5,Scalar(255,0,0));
-			//	}
+	newU=fullTrainingPos[bestFitTrainingSampleInd]*globalTransformation_optimal;
+	Point c;
+	for (int j=0;j<fullIndNum;j++)
+	{
+		c.x=newU.at<float>(j,0);
+		c.y=newU.at<float>(j+fullIndNum,0);
+		circle(tmpIMg,c,3,Scalar(0,0,255));
+	}
+	/*	for (int j=0;j<finalInd.size();j++)
+	{
+	cout<<sampledPos[finalInd[j]][0]<<" "<<sampledPos[finalInd[j]][1]<<endl;
+	c.x=sampledPos[finalInd[j]][0];
+	c.y=sampledPos[finalInd[j]][1];
+	circle(tmpIMg,c,2,Scalar(0,0,255));
+	}*/
 
-			//}
+	//for (int j=0;j<fullIndNum;j++)
+	//{
+	//	for (int k=0;k<candidatePoints[j].size();j++)
+	//	{
+	//		circle(tmpIMg,candidatePoints[j][k],5,Scalar(255,0,0));
+	//	}
 
-			//char name_withSize[50];
-			//sprintf(name_withSize, "Red: nearest neighbor");
+	//}
 
-			//char name_withSize1[50];
-			//sprintf(name_withSize1, "Blue: detected modes");
+	//char name_withSize[50];
+	//sprintf(name_withSize, "Red: nearest neighbor");
 
-			//int fontFace = FONT_HERSHEY_PLAIN;
-			//putText(tmpIMg,name_withSize,Point(tmpIMg.cols-300,tmpIMg.rows-50),fontFace,1.2,Scalar(0,255,0));
-			//putText(tmpIMg,name_withSize1,Point(tmpIMg.cols-300,tmpIMg.rows-25),fontFace,1.2,Scalar(0,255,0));
-			//imwrite(saveName,tmpIMg);
-			////namedWindow("KNN visualization");
-			//	//imshow("KNN visualization",tmpIMg);
-			//	//waitKey(2);
+	//char name_withSize1[50];
+	//sprintf(name_withSize1, "Blue: detected modes");
 
-			//string nameTxt=saveName;
-			//nameTxt=nameTxt.substr(0,nameTxt.length()-3);
-			//nameTxt+="txt";
+	//int fontFace = FONT_HERSHEY_PLAIN;
+	//putText(tmpIMg,name_withSize,Point(tmpIMg.cols-300,tmpIMg.rows-50),fontFace,1.2,Scalar(0,255,0));
+	//putText(tmpIMg,name_withSize1,Point(tmpIMg.cols-300,tmpIMg.rows-25),fontFace,1.2,Scalar(0,255,0));
+	//imwrite(saveName,tmpIMg);
+	////namedWindow("KNN visualization");
+	//	//imshow("KNN visualization",tmpIMg);
+	//	//waitKey(2);
 
-			//ofstream out_txt(nameTxt,ios::out);
-			//for (int j=0;j<fullIndNum;j++)
-			//{
-			//	out_txt<<newU.at<float>(j,0)<<" "<<newU.at<float>(j+fullIndNum,0)<<endl;
-			//}
-			//out_txt.close();
+	//string nameTxt=saveName;
+	//nameTxt=nameTxt.substr(0,nameTxt.length()-3);
+	//nameTxt+="txt";
 
-			//nameTxt=saveName;
-			//nameTxt=nameTxt.substr(0,nameTxt.length()-4);
-			//nameTxt+="Modes.txt";
-			//ofstream out_mode(nameTxt,ios::out);
-			//for (int j=0;j<fullIndNum;j++)
-			//{
-			//	for (int k=0;k<candidatePoints[j].size();j++)
-			//	{
-			//		out_mode<<j<<" "<<candidatePoints[j][k].x<<" "<<candidatePoints[j][k].y<<" "<<(*depthImg).at<float>(candidatePoints[j][k].y,candidatePoints[j][k].x)<<endl;
-			//	}
-			//}
-			//out_mode.close();
-			//	return;
+	//ofstream out_txt(nameTxt,ios::out);
+	//for (int j=0;j<fullIndNum;j++)
+	//{
+	//	out_txt<<newU.at<float>(j,0)<<" "<<newU.at<float>(j+fullIndNum,0)<<endl;
+	//}
+	//out_txt.close();
+
+	//nameTxt=saveName;
+	//nameTxt=nameTxt.substr(0,nameTxt.length()-4);
+	//nameTxt+="Modes.txt";
+	//ofstream out_mode(nameTxt,ios::out);
+	//for (int j=0;j<fullIndNum;j++)
+	//{
+	//	for (int k=0;k<candidatePoints[j].size();j++)
+	//	{
+	//		out_mode<<j<<" "<<candidatePoints[j][k].x<<" "<<candidatePoints[j][k].y<<" "<<(*depthImg).at<float>(candidatePoints[j][k].y,candidatePoints[j][k].x)<<endl;
+	//	}
+	//}
+	//out_mode.close();
+	//	return;
 	///////////////////////////////////////////////////////////////////////////////////
 
 
@@ -2952,7 +2951,7 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 	///////////////////////////////////////////////////////////////////////////////////////
 
 
-		float sigma1=sigma;
+	float sigma1=sigma;
 	//for (int ii=0;ii<finalInd.size();ii++)
 	//{
 	//	float currentDis=sqrt(((newU.at<float>(finalInd[ii],0)-sampledPos[finalInd[ii]][0])*
@@ -2975,58 +2974,58 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 	//	//AAM_exp->probForEachFeature[ii]=1;
 	//}
 
-		//visualize the image data
-		if (AAM_exp->showSingleStep&&img!=NULL)
+	//visualize the image data
+	if (AAM_exp->showSingleStep&&img!=NULL)
+	{
+		ofstream out("D:\\Fuhao\\exp results\\flow chart\\KNN.txt",ios::out);
+
+		//out.close();
+		Mat meanU=newU.clone();
+		meanU*=0;
+		Mat tmpIMg=(*img).clone();
+		for (int i=0;i<NNNum;i++)
 		{
-			ofstream out("D:\\Fuhao\\exp results\\flow chart\\KNN.txt",ios::out);
-		
-			//out.close();
-			Mat meanU=newU.clone();
-			meanU*=0;
-			Mat tmpIMg=(*img).clone();
-			for (int i=0;i<NNNum;i++)
-			{
-				int tmpInd=distanceVec[i].second;
-				getTransformationInfo(finalInd,sampledPos,shapes,tmpInd);
-				Mat newU1=fullTrainingPos[tmpInd]*globalTransformation;
-				meanU+=newU1;
-				Point c;
-				for (int j=0;j<fullIndNum;j++)
-				{
-					c.x=newU1.at<float>(j,0);
-					c.y=newU1.at<float>(j+fullIndNum,0);
-					circle(tmpIMg,c,5,255);
-				}
-				for (int j=0;j<fullIndNum;j++)
-				{
-					out<<" "<<newU1.at<float>(j,0)<<" "<<
-					newU1.at<float>(j+fullIndNum,0)<<" ";
-				//	circle(tmpIMg,c,5,255);
-				}
-				out<<endl;
-			}
-			
-			out.close();
-			meanU/=NNNum;
+			int tmpInd=distanceVec[i].second;
+			getTransformationInfo(finalInd,sampledPos,shapes,tmpInd);
+			Mat newU1=fullTrainingPos[tmpInd]*globalTransformation;
+			meanU+=newU1;
+			Point c;
 			for (int j=0;j<fullIndNum;j++)
 			{
-				Point c;
-				c.x=meanU.at<float>(j,0);
-				c.y=meanU.at<float>(j+fullIndNum,0);
+				c.x=newU1.at<float>(j,0);
+				c.y=newU1.at<float>(j+fullIndNum,0);
+				circle(tmpIMg,c,5,255);
+			}
+			for (int j=0;j<fullIndNum;j++)
+			{
+				out<<" "<<newU1.at<float>(j,0)<<" "<<
+					newU1.at<float>(j+fullIndNum,0)<<" ";
 				//	circle(tmpIMg,c,5,255);
 			}
-			namedWindow("KNN visualization");
-			imshow("KNN visualization",tmpIMg);
-			waitKey();
-
+			out<<endl;
 		}
 
-		//using all the index
-		finalInd.clear();
-		for (int i=0;i<fullIndNum;i++)
+		out.close();
+		meanU/=NNNum;
+		for (int j=0;j<fullIndNum;j++)
 		{
-			finalInd.push_back(i);
+			Point c;
+			c.x=meanU.at<float>(j,0);
+			c.y=meanU.at<float>(j+fullIndNum,0);
+			//	circle(tmpIMg,c,5,255);
 		}
+		namedWindow("KNN visualization");
+		imshow("KNN visualization",tmpIMg);
+		waitKey();
+
+	}
+
+	//using all the index
+	finalInd.clear();
+	for (int i=0;i<fullIndNum;i++)
+	{
+		finalInd.push_back(i);
+	}
 	for (int ii=0;ii<finalInd.size();ii++)
 	{
 		int cindex=finalInd[ii];
@@ -3038,15 +3037,15 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 				(newU.at<float>(cindex+fullIndNum,0)-candidatePoints[cindex][j].y)));
 			float probAll=powf(e,-currentDis*currentDis/50);
 			//probAll*=powf(e,-(maximumProb[finalInd[ii]]-1)*(maximumProb[finalInd[ii]]-1)/
-						//(2*sigma1*sigma1));
+			//(2*sigma1*sigma1));
 			AAM_exp->probForEachFeatureCandidates[ii][j]=probAll;
 
-		/*	if (finalInd[ii]==2)
+			/*	if (finalInd[ii]==2)
 			{
-				cout<<j<<" "<<currentDis<<" "<<probAll<<" "<<candidatePoints[cindex][j].x<<" "<<candidatePoints[cindex][j].y<<endl;
-				
+			cout<<j<<" "<<currentDis<<" "<<probAll<<" "<<candidatePoints[cindex][j].x<<" "<<candidatePoints[cindex][j].y<<endl;
+
 			}*/
-			
+
 		}
 		AAM_exp->candidateNum[ii]=candidatePoints[cindex].size();
 		//AAM_exp->probForEachFeature[ii]=1;
@@ -3100,129 +3099,129 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 	/*cout<<"feature probabilities:\n";
 	for (int i=0;i<finalInd.size();i++)
 	{
-		cout<<i<< " "<<maximumProb[finalInd[i]]<<" "<<AAM_exp->probForEachFeature[i]<<endl;
+	cout<<i<< " "<<maximumProb[finalInd[i]]<<" "<<AAM_exp->probForEachFeature[i]<<endl;
 	}*/
 
 	//then do the KNN fit
 	//eigenVectors.at<double>(i,minInd);
 	//cout<<eigenVectors.cols<<" "<<eigenVectors.rows<<endl;
-	
+
 	Mat KNNVec=Mat::zeros(eigenVectors.rows,NNNum,CV_64FC1);
 	for (int i=0;i<NNNum;i++)
 	{
 		KNNVec.col(i)+=eigenVectors.col(distanceVec[i].second);
 	}
-	
+
 	//if (localWeight>0)
 	{
-	//update the mean
-	Mat mean_KNN=KNNVec.col(0)*0;
-	for (int i=0;i<KNNVec.cols;i++)
-	{
-		mean_KNN+=KNNVec.col(i);
-	}
-	mean_KNN/=KNNVec.cols;
-	for (int i=0;i<mean_KNN.rows;i++)
-	{
-		AAM_exp->priorMean[i]=mean_KNN.at<double>(i,0);
-	}
-
-	//update the conv
-	for (int i=0;i<KNNVec.cols;i++)
-	{
-		KNNVec.col(i)-=mean_KNN;
-	}
-	Mat KNNVec_tran;
-	transpose(KNNVec,KNNVec_tran);
-	Mat convKNN=KNNVec*KNNVec_tran/KNNVec.cols;
-
-	Mat conv_inv_KNN=convKNN.inv();
-
-//	cout<<AAM_exp->priorSigma.cols<<" "<<AAM_exp->priorSigma.rows<<endl;
-	for (int i=0;i<conv_inv_KNN.rows;i++)
-	{
-		for (int j=0;j<conv_inv_KNN.cols;j++)
+		//update the mean
+		Mat mean_KNN=KNNVec.col(0)*0;
+		for (int i=0;i<KNNVec.cols;i++)
 		{
-			AAM_exp->priorSigma.at<double>(i,j)=conv_inv_KNN.at<double>(i,j);
+			mean_KNN+=KNNVec.col(i);
 		}
-	}
-
-
-	if (localWeight>0)
-	{
-
-
-		//train the local PCA model
-		int s_dim=eigenVectors.rows;
-		//use KNNVec_tran to train
-		CvMat *pData=cvCreateMat(KNNVec_tran.rows,KNNVec_tran.cols,CV_64FC1);
-		for (int i=0;i<KNNVec_tran.rows;i++)
+		mean_KNN/=KNNVec.cols;
+		for (int i=0;i<mean_KNN.rows;i++)
 		{
-			for (int j=0;j<KNNVec_tran.cols;j++)
+			AAM_exp->priorMean[i]=mean_KNN.at<double>(i,0);
+		}
+
+		//update the conv
+		for (int i=0;i<KNNVec.cols;i++)
+		{
+			KNNVec.col(i)-=mean_KNN;
+		}
+		Mat KNNVec_tran;
+		transpose(KNNVec,KNNVec_tran);
+		Mat convKNN=KNNVec*KNNVec_tran/KNNVec.cols;
+
+		Mat conv_inv_KNN=convKNN.inv();
+
+		//	cout<<AAM_exp->priorSigma.cols<<" "<<AAM_exp->priorSigma.rows<<endl;
+		for (int i=0;i<conv_inv_KNN.rows;i++)
+		{
+			for (int j=0;j<conv_inv_KNN.cols;j++)
 			{
-				//CV_MAT_ELEM(*pData,double,i,j)=shape[i]->ptsForMatlab[j];
-
-				//here,we keep the shape in the same scale with the meanshape
-				CV_MAT_ELEM(*pData,double,i,j)=KNNVec_tran.at<double>(i,j);
-			}
-
-		}
-		if (AAM_exp->local_s_mean==NULL)
-		{
-			AAM_exp->local_s_mean = cvCreateMat(1, KNNVec_tran.cols, CV_64FC1);
-			AAM_exp->m_local_s_mean=cvarrToMat(AAM_exp->local_s_mean);
-		}
-
-		if (AAM_exp->local_s_vec==NULL)
-		{
-			AAM_exp->local_s_vec=cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
-		}
-
-		CvMat* s_value = cvCreateMat(1, min(KNNVec_tran.cols,KNNVec_tran.rows), CV_64FC1);
-		//CvMat *s_PCAvec = cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
-		cvCalcPCA( pData, AAM_exp->local_s_mean, s_value, AAM_exp->local_s_vec, CV_PCA_DATA_AS_ROW );
-		AAM_exp->m_local_mean=cvarrToMat(AAM_exp->local_s_mean);
-
-		double sumEigVal=0;
-		for (int i=0;i<s_value->cols;i++)
-		{
-			sumEigVal+=CV_MAT_ELEM(*s_value,double,0,i);
-		}
-
-		double sumCur=0;
-		for (int i=0;i<s_value->cols;i++)
-		{
-			sumCur+=CV_MAT_ELEM(*s_value,double,0,i);
-			if (sumCur/sumEigVal>=0.98)
-			{
-				AAM_exp->local_shape_dim=i+1;
-				break;
+				AAM_exp->priorSigma.at<double>(i,j)=conv_inv_KNN.at<double>(i,j);
 			}
 		}
-		//cout<<"local dim: "<<AAM_exp->local_shape_dim<<endl;
 
-		Mat curEigenVec=cvarrToMat(AAM_exp->local_s_vec);
-		Mat usedEigenVec=curEigenVec.rowRange(Range(0,AAM_exp->local_shape_dim));
-		Mat usedEigenVec_tran;
-		transpose(usedEigenVec,usedEigenVec_tran);
-		Mat localHessian=usedEigenVec_tran*usedEigenVec;
-		localHessian=Mat::eye(localHessian.rows,localHessian.cols,CV_64FC1)-localHessian;
 
-		Mat localHessian_tran;
-		transpose(localHessian,localHessian_tran);
-		localHessian=localHessian_tran*localHessian;
-		for (int i=0;i<localHessian.rows;i++)
+		if (localWeight>0)
 		{
-			for (int j=0;j<localHessian.cols;j++)
+
+
+			//train the local PCA model
+			int s_dim=eigenVectors.rows;
+			//use KNNVec_tran to train
+			CvMat *pData=cvCreateMat(KNNVec_tran.rows,KNNVec_tran.cols,CV_64FC1);
+			for (int i=0;i<KNNVec_tran.rows;i++)
 			{
-				AAM_exp->m_localHessian.at<double>(i,j)=localHessian.at<double>(i,j);
+				for (int j=0;j<KNNVec_tran.cols;j++)
+				{
+					//CV_MAT_ELEM(*pData,double,i,j)=shape[i]->ptsForMatlab[j];
+
+					//here,we keep the shape in the same scale with the meanshape
+					CV_MAT_ELEM(*pData,double,i,j)=KNNVec_tran.at<double>(i,j);
+				}
+
+			}
+			if (AAM_exp->local_s_mean==NULL)
+			{
+				AAM_exp->local_s_mean = cvCreateMat(1, KNNVec_tran.cols, CV_64FC1);
+				AAM_exp->m_local_s_mean=cvarrToMat(AAM_exp->local_s_mean);
+			}
+
+			if (AAM_exp->local_s_vec==NULL)
+			{
+				AAM_exp->local_s_vec=cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
+			}
+
+			CvMat* s_value = cvCreateMat(1, min(KNNVec_tran.cols,KNNVec_tran.rows), CV_64FC1);
+			//CvMat *s_PCAvec = cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
+			cvCalcPCA( pData, AAM_exp->local_s_mean, s_value, AAM_exp->local_s_vec, CV_PCA_DATA_AS_ROW );
+			AAM_exp->m_local_mean=cvarrToMat(AAM_exp->local_s_mean);
+
+			double sumEigVal=0;
+			for (int i=0;i<s_value->cols;i++)
+			{
+				sumEigVal+=CV_MAT_ELEM(*s_value,double,0,i);
+			}
+
+			double sumCur=0;
+			for (int i=0;i<s_value->cols;i++)
+			{
+				sumCur+=CV_MAT_ELEM(*s_value,double,0,i);
+				if (sumCur/sumEigVal>=0.98)
+				{
+					AAM_exp->local_shape_dim=i+1;
+					break;
+				}
+			}
+			//cout<<"local dim: "<<AAM_exp->local_shape_dim<<endl;
+
+			Mat curEigenVec=cvarrToMat(AAM_exp->local_s_vec);
+			Mat usedEigenVec=curEigenVec.rowRange(Range(0,AAM_exp->local_shape_dim));
+			Mat usedEigenVec_tran;
+			transpose(usedEigenVec,usedEigenVec_tran);
+			Mat localHessian=usedEigenVec_tran*usedEigenVec;
+			localHessian=Mat::eye(localHessian.rows,localHessian.cols,CV_64FC1)-localHessian;
+
+			Mat localHessian_tran;
+			transpose(localHessian,localHessian_tran);
+			localHessian=localHessian_tran*localHessian;
+			for (int i=0;i<localHessian.rows;i++)
+			{
+				for (int j=0;j<localHessian.cols;j++)
+				{
+					AAM_exp->m_localHessian.at<double>(i,j)=localHessian.at<double>(i,j);
+				}
 			}
 		}
-	}
 
 	}
 	//delete []distance;
-	
+
 
 	//find the best one
 	//for (int i=0;i<totalShapeNum;i++)
@@ -3357,17 +3356,17 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 
 	/////////////////////////new version, do not estimate gtP for every example//////////////////////////////////
 	//globalTransformation=globalTransformation_optimal;
-//bestProb=0;
-//finalInd.clear();
-//for (int i=0;i<fullIndNum;i++)
-//{
-//	if (maximumProb[i]>0.95)
-//	{
-//		finalInd.push_back(i);
-//		bestProb+=maximumProb[i];
-//	}
-//}
-//bestProb/=finalInd.size();
+	//bestProb=0;
+	//finalInd.clear();
+	//for (int i=0;i<fullIndNum;i++)
+	//{
+	//	if (maximumProb[i]>0.95)
+	//	{
+	//		finalInd.push_back(i);
+	//		bestProb+=maximumProb[i];
+	//	}
+	//}
+	//bestProb/=finalInd.size();
 	Mat *newUList=new Mat[totalShapeNum];
 	bool *usedLabel=new bool[fullIndNum];
 	//vector <int >tmpInd;
@@ -3399,7 +3398,7 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 		{
 			float distance=(newU.at<float>(l,0)-sampledPos[l][0])*(newU.at<float>(l,0)-sampledPos[l][0])+
 				(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1])*(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1]);		//cout<<distance<<endl;
-			
+
 			//cout<<l<<endl;
 			//{
 			//	Mat tmp=tmpImg.clone();
@@ -3434,11 +3433,11 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 			float probAll=powf(e,-distance/50);
 			probAll*=hostDetectionResult[currentIndex+l*width*height];
 			//cout<<l<<" "<<probAll<<endl;
-		//	cout<<probAll<<" "<<powf(e,-distance/50)<<" "<<hostDetectionResult[currentIndex+l*width*height]<<endl;
+			//	cout<<probAll<<" "<<powf(e,-distance/50)<<" "<<hostDetectionResult[currentIndex+l*width*height]<<endl;
 			//if (distance<window_threshold_small&&hostDetectionResult[currentIndex+l*width*height]>=0.2)
 			if(probAll>0.00001)
 			{
-		
+
 				tmpInd.push_back(l);
 				//inNum++;
 			}
@@ -3480,7 +3479,7 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 		}
 		//cout<<inNum<<endl;
 	}
-	
+
 	for (int i=0;i<30;i++)
 	{
 		AAM_exp->probForEachFeature[i]=0;
@@ -3520,10 +3519,10 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 	/*finalInd.clear();
 	for (int i=0;i<fullIndNum;i++)
 	{
-		if (usedLabel[i])
-		{
-			finalInd.push_back(i);
-		}
+	if (usedLabel[i])
+	{
+	finalInd.push_back(i);
+	}
 	}*/
 
 	//
@@ -3603,12 +3602,12 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 	///////////////////////////////////////////////////////////////////////////////////
 
 	///////////////////////old version, re-estimate global transforation every time///////////////////////////////
-//	float bestDistance=1000000;
-//	float currentDis;
+	//	float bestDistance=1000000;
+	//	float currentDis;
 	//float 
 	//now check distance
 	for (int i=0;i<totalShapeNum;i++)
-	//for (int i=22;i<23;i++)
+		//for (int i=22;i<23;i++)
 	{
 		//cout<<i<<endl;
 		getTransformationInfo(finalInd,sampledPos,shapes,i);	//get transformation parameters
@@ -3618,9 +3617,9 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 
 		//newU=fullTrainingPos[i]*globalTransformation_optimal;
 
-	/*	for (int ii=0;ii<finalInd.size();ii++)
+		/*	for (int ii=0;ii<finalInd.size();ii++)
 		{
-			cout<<newU.at<float>(finalInd[ii],0)<<" "<<newU.at<float>(finalInd[ii]+fullIndNum,0)<<" ";
+		cout<<newU.at<float>(finalInd[ii],0)<<" "<<newU.at<float>(finalInd[ii]+fullIndNum,0)<<" ";
 		}
 		cout<<endl;*/
 
@@ -3671,7 +3670,7 @@ void AAM_Detection_Combination::ransac_noSampling_Candidates(int **sampledPos,in
 			(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1])*(newU.at<float>(l+fullIndNum,0)-sampledPos[l][1]);		//cout<<distance<<endl;
 		/*if (combineIndList[l]==56||combineIndList[l]==61)
 		{
-			cout<<combineIndList[l]<<" "<<sqrt(distance)<<endl;
+		cout<<combineIndList[l]<<" "<<sqrt(distance)<<endl;
 		}*/
 		if (distance<window_threshold_large)
 		{
@@ -3708,10 +3707,10 @@ void AAM_Detection_Combination::ransac_noSampling(int **sampledPos,int width,int
 {
 	srand(time(NULL));
 	float bestProb=0;
-	
-//	finalInd.resize(labelNum-1);
 
-	
+	//	finalInd.resize(labelNum-1);
+
+
 
 
 	vector<int> traningSapleInd;
@@ -3759,33 +3758,33 @@ void AAM_Detection_Combination::ransac_noSampling(int **sampledPos,int width,int
 					}
 				}
 				//cout<<endl;
-				
-		/*		if (tmp.size()>=w_critical)
-				{
-					Mat img=imread("G:\\face database\\kinect data\\test real data_original image_compact sampling\\Fuhao_583.jpg");
-					Point c;
-					for (int oo=0;oo<newU.rows/2;oo++)
-					{
-						c.x=newU.at<float>(oo);
-						c.y=newU.at<float>(oo+newU.rows/2);
-						circle(img,c,5,255);
-						c.x=sampledPos[oo][0];
-						c.y=sampledPos[oo][1];
-						circle(img,c,2,255);
-						namedWindow("1");
-						imshow("1",img);
-						waitKey();
 
-					}
-				}*/
-				
-			/*	for (int oo=0;oo<labelNum-1;oo++)
+				/*		if (tmp.size()>=w_critical)
 				{
-					c.x=sampledPos[oo][0];
-					c.y=sampledPos[oo][1];
-					circle(img,c,2,255);
+				Mat img=imread("G:\\face database\\kinect data\\test real data_original image_compact sampling\\Fuhao_583.jpg");
+				Point c;
+				for (int oo=0;oo<newU.rows/2;oo++)
+				{
+				c.x=newU.at<float>(oo);
+				c.y=newU.at<float>(oo+newU.rows/2);
+				circle(img,c,5,255);
+				c.x=sampledPos[oo][0];
+				c.y=sampledPos[oo][1];
+				circle(img,c,2,255);
+				namedWindow("1");
+				imshow("1",img);
+				waitKey();
+
+				}
 				}*/
-			
+
+				/*	for (int oo=0;oo<labelNum-1;oo++)
+				{
+				c.x=sampledPos[oo][0];
+				c.y=sampledPos[oo][1];
+				circle(img,c,2,255);
+				}*/
+
 				//check if there are enough inliers
 				if (tmp.size()<w_critical)
 				{
@@ -3826,25 +3825,25 @@ void AAM_Detection_Combination::ransac_noSampling(int **sampledPos,int width,int
 					//Mat img=imread("G:\\face database\\kinect data\\test real data_original image_compact sampling\\Fuhao_583.jpg");
 
 					//Mat newU=fullTrainingPos[traningSapleInd[i]]*globalTransformation_optimal;
-				/*	Point c;
+					/*	Point c;
 					for (int oo=0;oo<newU.rows/2;oo++)
 					{
-						c.x=newU.at<float>(oo);
-						c.y=newU.at<float>(oo+newU.rows/2);
-						circle(img,c,5,255);
+					c.x=newU.at<float>(oo);
+					c.y=newU.at<float>(oo+newU.rows/2);
+					circle(img,c,5,255);
 					}	
 					for (int oo=0;oo<labelNum-1;oo++)
 					{
-						c.x=sampledPos[oo][0];
-						c.y=sampledPos[oo][1];
-						circle(img,c,2,255);
+					c.x=sampledPos[oo][0];
+					c.y=sampledPos[oo][1];
+					circle(img,c,2,255);
 					}
 					namedWindow("1");
 					imshow("1",img);
 					waitKey();*/
 
-					
-					
+
+
 					float prob=0;
 					for (int jj=0;jj<tmp.size();jj++)
 					{
@@ -3877,7 +3876,7 @@ void AAM_Detection_Combination::ransac_noSampling(int **sampledPos,int width,int
 	//float 
 	//now check distance
 	for (int i=0;i<totalShapeNum;i++)
-	//for (int i=22;i<23;i++)
+		//for (int i=22;i<23;i++)
 	{
 		//cout<<i<<endl;
 		getTransformationInfo(finalInd,sampledPos,shapes,i);	//get transformation parameters
@@ -3903,7 +3902,7 @@ void AAM_Detection_Combination::ransac_noSampling(int **sampledPos,int width,int
 	}
 
 
-//	cout<<"the best probility: "<<bestProb<<endl;
+	//	cout<<"the best probility: "<<bestProb<<endl;
 
 	//Mat img=imread("G:\\face database\\kinect data\\test real data_original image_compact sampling\\Fuhao_583.jpg");
 
@@ -3927,17 +3926,17 @@ void AAM_Detection_Combination::findSecondModes_Maxima(int **samplePos,int width
 
 	//Mat tmpImg=(*img).clone();
 	//ofstream out("D:\\Fuhao\\exp results\\Final\\mode process\\modes.txt",ios::out);
-//
+	//
 	//ofstream out1("D:\\Fuhao\\exp results\\Final\\mode process\\prob_map.txt",ios::out);
 
 	for (int i=0;i<Ind.size();i++)
 	{
 		candidatePoints[i].clear();
 
-	/*	if (maxProb[Ind[i]]<0.35)
+		/*	if (maxProb[Ind[i]]<0.35)
 		{
-			candidatePoints[i].push_back(Point(samplePos[Ind[i]][0],samplePos[Ind[i]][1]));
-			continue;
+		candidatePoints[i].push_back(Point(samplePos[Ind[i]][0],samplePos[Ind[i]][1]));
+		continue;
 		}*/
 		int cIndex=Ind[i];
 
@@ -4049,7 +4048,7 @@ void AAM_Detection_Combination::findSecondModes_Maxima(int **samplePos,int width
 		//{
 		//	candidatePoints[i].push_back(Point(expectation[0],expectation[1]));
 		//}
-		
+
 		//use the maxima
 		float maxProb=0;
 		int maxInd;
@@ -4065,10 +4064,10 @@ void AAM_Detection_Combination::findSecondModes_Maxima(int **samplePos,int width
 		candidatePoints[i].push_back(totalPointList[maxInd]);
 		/*if (Ind[i]==14)
 		{
-			for (int l=0;l<totalPointList.size();l++)
-			{
-				out<<candidatePoints[i].size()<<" "<<totalPointList[l].x<<" "<<totalPointList[l].y<<endl;
-			}
+		for (int l=0;l<totalPointList.size();l++)
+		{
+		out<<candidatePoints[i].size()<<" "<<totalPointList[l].x<<" "<<totalPointList[l].y<<endl;
+		}
 		}*/
 
 		//candidatePoints[i].push_back(c);
@@ -4169,37 +4168,37 @@ void AAM_Detection_Combination::findSecondModes_Maxima(int **samplePos,int width
 							}
 						}
 						candidatePoints[i].push_back(totalPointList[maxInd]);
-					
+
 					}
 					else
 					{
 						/*for (int l=0;l<totalPointList.size();l++)
 						{
-							c_cur=totalPointList[l];
-							tmpProb.at<double>(c_cur.y,c_cur.x)=0;
+						c_cur=totalPointList[l];
+						tmpProb.at<double>(c_cur.y,c_cur.x)=0;
 						}*/
 					}
 				}
 			}
 		}
-		
-	
-	/*	if (img!=NULL&&(combineIndList[cIndex]==42||combineIndList[cIndex]==48))
+
+
+		/*	if (img!=NULL&&(combineIndList[cIndex]==42||combineIndList[cIndex]==48))
 		{
-			cout<<combineIndList[cIndex]<<" "<<candidatePoints[i].size()<<endl;
-			Mat tmpImg=(*img).clone();
-			for (int l=0;l<candidatePoints[i].size();l++)
-			{
-				circle(tmpImg,candidatePoints[i][l],2,255);
-			}
-			namedWindow("ProbMap");
-			imshow("ProbMap",tmpImg);
-			waitKey();
+		cout<<combineIndList[cIndex]<<" "<<candidatePoints[i].size()<<endl;
+		Mat tmpImg=(*img).clone();
+		for (int l=0;l<candidatePoints[i].size();l++)
+		{
+		circle(tmpImg,candidatePoints[i][l],2,255);
+		}
+		namedWindow("ProbMap");
+		imshow("ProbMap",tmpImg);
+		waitKey();
 		}*/
-		
+
 
 	}
-		//out.close();
+	//out.close();
 	//	out1.close();
 }
 
@@ -4208,7 +4207,7 @@ void AAM_Detection_Combination::findSecondModes_localMaxima(int **samplePos,int 
 
 	//Mat tmpImg=(*img).clone();
 	//ofstream out("D:\\Fuhao\\exp results\\Final\\mode process\\modes.txt",ios::out);
-//
+	//
 	//ofstream out1("D:\\Fuhao\\exp results\\Final\\mode process\\prob_map.txt",ios::out);
 
 	for (int i=0;i<Ind.size();i++)
@@ -4220,17 +4219,17 @@ void AAM_Detection_Combination::findSecondModes_localMaxima(int **samplePos,int 
 			continue;
 		}
 
-	/*	if (maxProb[Ind[i]]<0.35)
+		/*	if (maxProb[Ind[i]]<0.35)
 		{
-			candidatePoints[i].push_back(Point(samplePos[Ind[i]][0],samplePos[Ind[i]][1]));
-			continue;
+		candidatePoints[i].push_back(Point(samplePos[Ind[i]][0],samplePos[Ind[i]][1]));
+		continue;
 		}*/
 		int cIndex=Ind[i];
 
 		/*if (maxProb[cIndex]<0.1)
 		{
-			candidatePoints[i].push_back(Point(samplePos[cIndex][0],samplePos[cIndex][1]));
-			continue;
+		candidatePoints[i].push_back(Point(samplePos[cIndex][0],samplePos[cIndex][1]));
+		continue;
 		}*/
 
 		Mat tmpProb=Mat::zeros(height,width,CV_64FC1);
@@ -4285,17 +4284,17 @@ void AAM_Detection_Combination::findSecondModes_localMaxima(int **samplePos,int 
 		}
 		namedWindow("localMaxima");
 		imshow("localMaxima",tmp);
-		
+
 		waitKey();
-	/*	ofstream out("D:\\Fuhao\\cpu gpu validation\\mapExp.txt",ios::out);
+		/*	ofstream out("D:\\Fuhao\\cpu gpu validation\\mapExp.txt",ios::out);
 		for (int j=0;j<height;j++)
 		{
-			for (int k=0;k<width;k++)
-			{
-				float cProb=probMap[j*width+k+cIndex*width*height];
-				out<<cProb<<" ";
-			}
-			out<<endl;
+		for (int k=0;k<width;k++)
+		{
+		float cProb=probMap[j*width+k+cIndex*width*height];
+		out<<cProb<<" ";
+		}
+		out<<endl;
 		}
 		out.close();*/
 		//namedWindow("prob");
@@ -4317,26 +4316,26 @@ void AAM_Detection_Combination::findSecondModes_Meanshift(int **samplePos,int wi
 
 	//Mat tmpImg=(*img).clone();
 	//ofstream out("D:\\Fuhao\\exp results\\Final\\mode process\\modes.txt",ios::out);
-//
+	//
 	//ofstream out1("D:\\Fuhao\\exp results\\Final\\mode process\\prob_map.txt",ios::out);
 
 	for (int i=0;i<Ind.size();i++)
 	{
 		candidatePoints[i].clear();
 
-		
 
-	/*	if (maxProb[Ind[i]]<0.35)
+
+		/*	if (maxProb[Ind[i]]<0.35)
 		{
-			candidatePoints[i].push_back(Point(samplePos[Ind[i]][0],samplePos[Ind[i]][1]));
-			continue;
+		candidatePoints[i].push_back(Point(samplePos[Ind[i]][0],samplePos[Ind[i]][1]));
+		continue;
 		}*/
 		int cIndex=Ind[i];
 
 		/*if (maxProb[cIndex]<0.1)
 		{
-			candidatePoints[i].push_back(Point(samplePos[cIndex][0],samplePos[cIndex][1]));
-			continue;
+		candidatePoints[i].push_back(Point(samplePos[cIndex][0],samplePos[cIndex][1]));
+		continue;
 		}*/
 
 		Mat tmpProb=Mat::zeros(height,width,CV_64FC1);
@@ -4357,11 +4356,11 @@ void AAM_Detection_Combination::findSecondModes_Meanshift(int **samplePos,int wi
 			}
 		}
 
-	/*	if (i==0)
+		/*	if (i==0)
 		{
-			namedWindow("1");
-			imshow("1",tmpProb);
-			waitKey();
+		namedWindow("1");
+		imshow("1",tmpProb);
+		waitKey();
 		}*/
 
 		//if (Ind[i]==14)
@@ -4458,21 +4457,21 @@ void AAM_Detection_Combination::findSecondModes_Meanshift(int **samplePos,int wi
 			candidatePoints[i].push_back(Point2f(expectation[0],expectation[1]));
 			//cout<<sumProb<<" "<<expectation[0]<<" "<<expectation[1]<<endl;
 		}
-		
+
 		/*if (Ind[i]==14)
 		{
-			for (int l=0;l<totalPointList.size();l++)
-			{
-				out<<candidatePoints[i].size()<<" "<<totalPointList[l].x<<" "<<totalPointList[l].y<<endl;
-			}
+		for (int l=0;l<totalPointList.size();l++)
+		{
+		out<<candidatePoints[i].size()<<" "<<totalPointList[l].x<<" "<<totalPointList[l].y<<endl;
+		}
 		}*/
 
 		//candidatePoints[i].push_back(c);
-	/*	if (i==12)
+		/*	if (i==12)
 		{
-			namedWindow("1");
-			imshow("1",tmpProb);
-			waitKey();
+		namedWindow("1");
+		imshow("1",tmpProb);
+		waitKey();
 		}*/
 
 		totalPointList.clear();
@@ -4546,61 +4545,61 @@ void AAM_Detection_Combination::findSecondModes_Meanshift(int **samplePos,int wi
 						expectation[0]/=sumProb;
 						expectation[1]/=sumProb;
 						//if ((expectation[0]-samplePos[cIndex][0])*(expectation[0]-samplePos[cIndex][0])+
-							//(expectation[1]-samplePos[cIndex][1])*(expectation[1]-samplePos[cIndex][1])>9)
+						//(expectation[1]-samplePos[cIndex][1])*(expectation[1]-samplePos[cIndex][1])>9)
 						if(expectation[0]>=sx&&expectation[0]<=ex&&expectation[1]>=sy&&expectation[1]<=ey)
-						//if(expectation[0]>50&&expectation[0]<590&&expectation[1]>50&&expectation[1]<430)
+							//if(expectation[0]>50&&expectation[0]<590&&expectation[1]>50&&expectation[1]<430)
 						{
 							candidatePoints[i].push_back(Point2f(expectation[0],expectation[1]));
 
 							/*if (Ind[i]==14)
 							{
-								for (int l=0;l<totalPointList.size();l++)
-								{
-									out<<candidatePoints[i].size()<<" "<<totalPointList[l].x<<" "<<totalPointList[l].y<<endl;
-								}
+							for (int l=0;l<totalPointList.size();l++)
+							{
+							out<<candidatePoints[i].size()<<" "<<totalPointList[l].x<<" "<<totalPointList[l].y<<endl;
+							}
 							}*/
 						}
 
-					
+
 					}
 					else
 					{
 						/*for (int l=0;l<totalPointList.size();l++)
 						{
-							c_cur=totalPointList[l];
-							tmpProb.at<double>(c_cur.y,c_cur.x)=0;
+						c_cur=totalPointList[l];
+						tmpProb.at<double>(c_cur.y,c_cur.x)=0;
 						}*/
 					}
 
 					/*if (i==12)
 					{
-						cout<<candidatePoints[i].size()<<endl;
-						namedWindow("1");
-						imshow("1",tmpProb);
-						waitKey();
+					cout<<candidatePoints[i].size()<<endl;
+					namedWindow("1");
+					imshow("1",tmpProb);
+					waitKey();
 					}*/
 
 				}
 			}
 		}
-		
-	
-	/*	if (img!=NULL&&(combineIndList[cIndex]==42||combineIndList[cIndex]==48))
+
+
+		/*	if (img!=NULL&&(combineIndList[cIndex]==42||combineIndList[cIndex]==48))
 		{
-			cout<<combineIndList[cIndex]<<" "<<candidatePoints[i].size()<<endl;
-			Mat tmpImg=(*img).clone();
-			for (int l=0;l<candidatePoints[i].size();l++)
-			{
-				circle(tmpImg,candidatePoints[i][l],2,255);
-			}
-			namedWindow("ProbMap");
-			imshow("ProbMap",tmpImg);
-			waitKey();
+		cout<<combineIndList[cIndex]<<" "<<candidatePoints[i].size()<<endl;
+		Mat tmpImg=(*img).clone();
+		for (int l=0;l<candidatePoints[i].size();l++)
+		{
+		circle(tmpImg,candidatePoints[i][l],2,255);
+		}
+		namedWindow("ProbMap");
+		imshow("ProbMap",tmpImg);
+		waitKey();
 		}*/
-		
+
 		/*if (i==12)
 		{
-			cout<<"size "<<i<<" "<<candidatePoints[i].size()<<endl;
+		cout<<"size "<<i<<" "<<candidatePoints[i].size()<<endl;
 		}*/
 	}
 	//return;
@@ -4635,7 +4634,7 @@ void AAM_Detection_Combination::findSecondModes_Meanshift(int **samplePos,int wi
 			bool isstop=false;
 			//float lastP[2];
 			float curP[2];
-			
+
 			curP[0]=candidatePoints[cind][j].x;
 			curP[1]=candidatePoints[cind][j].y;
 
@@ -4643,7 +4642,7 @@ void AAM_Detection_Combination::findSecondModes_Meanshift(int **samplePos,int wi
 
 			int localWindowSize=20;
 			float sigma=3;
-			
+
 			int times=0;
 			while(!isstop)
 			{
@@ -4662,7 +4661,7 @@ void AAM_Detection_Combination::findSecondModes_Meanshift(int **samplePos,int wi
 							tmpP[1]+=ttProb*(float)m;
 							sumProb+=ttProb;
 						}
-						
+
 					}
 				}
 				tmpP[0]/=sumProb;tmpP[1]/=sumProb;
@@ -4671,7 +4670,7 @@ void AAM_Detection_Combination::findSecondModes_Meanshift(int **samplePos,int wi
 				//cout<<distance<<endl;
 				if (distance<0.00001)
 				{
-					
+
 					isstop=true;
 				}
 				else
@@ -4689,7 +4688,7 @@ void AAM_Detection_Combination::findSecondModes_Meanshift(int **samplePos,int wi
 				cout<<i<<" "<<times<<endl;
 
 			}
-			
+
 			////Mat tmpImg=tmpProb.clone();
 			//Mat tmpImg=(*img).clone();
 			//circle(tmpImg,candidatePoints[cind][j],5,255);
@@ -4698,12 +4697,12 @@ void AAM_Detection_Combination::findSecondModes_Meanshift(int **samplePos,int wi
 			//namedWindow("MeanShift");
 			//imshow("MeanShift",tmpImg);
 			//waitKey();
-		
+
 		}		
 	}
-//	QueryPerformanceCounter((LARGE_INTEGER   *)&t2);
-//	double   time=(t2-t1)*1000/persecond; 
-//	cout<<"meanshift time: "<<time<<"ms "<<endl;
+	//	QueryPerformanceCounter((LARGE_INTEGER   *)&t2);
+	//	double   time=(t2-t1)*1000/persecond; 
+	//	cout<<"meanshift time: "<<time<<"ms "<<endl;
 	//update the first candidate
 	for (int i=0;i<fullIndNum;i++)
 	{
@@ -4711,7 +4710,7 @@ void AAM_Detection_Combination::findSecondModes_Meanshift(int **samplePos,int wi
 		samplePos[i][1]=candidatePoints[i][0].y;
 	}
 
-		//out.close();
+	//out.close();
 	//	out1.close();
 }
 
@@ -4721,17 +4720,17 @@ void AAM_Detection_Combination::findSecondModes(int **samplePos,int width,int he
 
 	//Mat tmpImg=(*img).clone();
 	//ofstream out("D:\\Fuhao\\exp results\\Final\\mode process\\modes.txt",ios::out);
-//
+	//
 	//ofstream out1("D:\\Fuhao\\exp results\\Final\\mode process\\prob_map.txt",ios::out);
 
 	for (int i=0;i<Ind.size();i++)
 	{
 		candidatePoints[i].clear();
 
-	/*	if (maxProb[Ind[i]]<0.35)
+		/*	if (maxProb[Ind[i]]<0.35)
 		{
-			candidatePoints[i].push_back(Point(samplePos[Ind[i]][0],samplePos[Ind[i]][1]));
-			continue;
+		candidatePoints[i].push_back(Point(samplePos[Ind[i]][0],samplePos[Ind[i]][1]));
+		continue;
 		}*/
 		int cIndex=Ind[i];
 
@@ -4753,11 +4752,11 @@ void AAM_Detection_Combination::findSecondModes(int **samplePos,int width,int he
 			}
 		}
 
-	/*	if (i==0)
+		/*	if (i==0)
 		{
-			namedWindow("1");
-			imshow("1",tmpProb);
-			waitKey();
+		namedWindow("1");
+		imshow("1",tmpProb);
+		waitKey();
 		}*/
 
 		//if (Ind[i]==14)
@@ -4853,21 +4852,21 @@ void AAM_Detection_Combination::findSecondModes(int **samplePos,int width,int he
 			candidatePoints[i].push_back(Point(expectation[0],expectation[1]));
 			//cout<<sumProb<<" "<<expectation[0]<<" "<<expectation[1]<<endl;
 		}
-		
+
 		/*if (Ind[i]==14)
 		{
-			for (int l=0;l<totalPointList.size();l++)
-			{
-				out<<candidatePoints[i].size()<<" "<<totalPointList[l].x<<" "<<totalPointList[l].y<<endl;
-			}
+		for (int l=0;l<totalPointList.size();l++)
+		{
+		out<<candidatePoints[i].size()<<" "<<totalPointList[l].x<<" "<<totalPointList[l].y<<endl;
+		}
 		}*/
 
 		//candidatePoints[i].push_back(c);
-	/*	if (i==12)
+		/*	if (i==12)
 		{
-			namedWindow("1");
-			imshow("1",tmpProb);
-			waitKey();
+		namedWindow("1");
+		imshow("1",tmpProb);
+		waitKey();
 		}*/
 
 		totalPointList.clear();
@@ -4941,64 +4940,64 @@ void AAM_Detection_Combination::findSecondModes(int **samplePos,int width,int he
 						expectation[0]/=sumProb;
 						expectation[1]/=sumProb;
 						//if ((expectation[0]-samplePos[cIndex][0])*(expectation[0]-samplePos[cIndex][0])+
-							//(expectation[1]-samplePos[cIndex][1])*(expectation[1]-samplePos[cIndex][1])>9)
+						//(expectation[1]-samplePos[cIndex][1])*(expectation[1]-samplePos[cIndex][1])>9)
 						if(expectation[0]>=sx&&expectation[0]<=ex&&expectation[1]>=sy&&expectation[1]<=ey)
-						//if(expectation[0]>50&&expectation[0]<590&&expectation[1]>50&&expectation[1]<430)
+							//if(expectation[0]>50&&expectation[0]<590&&expectation[1]>50&&expectation[1]<430)
 						{
 							candidatePoints[i].push_back(Point(expectation[0],expectation[1]));
 
 							/*if (Ind[i]==14)
 							{
-								for (int l=0;l<totalPointList.size();l++)
-								{
-									out<<candidatePoints[i].size()<<" "<<totalPointList[l].x<<" "<<totalPointList[l].y<<endl;
-								}
+							for (int l=0;l<totalPointList.size();l++)
+							{
+							out<<candidatePoints[i].size()<<" "<<totalPointList[l].x<<" "<<totalPointList[l].y<<endl;
+							}
 							}*/
 						}
 
-					
+
 					}
 					else
 					{
 						/*for (int l=0;l<totalPointList.size();l++)
 						{
-							c_cur=totalPointList[l];
-							tmpProb.at<double>(c_cur.y,c_cur.x)=0;
+						c_cur=totalPointList[l];
+						tmpProb.at<double>(c_cur.y,c_cur.x)=0;
 						}*/
 					}
 
 					/*if (i==12)
 					{
-						cout<<candidatePoints[i].size()<<endl;
-						namedWindow("1");
-						imshow("1",tmpProb);
-						waitKey();
+					cout<<candidatePoints[i].size()<<endl;
+					namedWindow("1");
+					imshow("1",tmpProb);
+					waitKey();
 					}*/
 
 				}
 			}
 		}
-		
-	
-	/*	if (img!=NULL&&(combineIndList[cIndex]==42||combineIndList[cIndex]==48))
+
+
+		/*	if (img!=NULL&&(combineIndList[cIndex]==42||combineIndList[cIndex]==48))
 		{
-			cout<<combineIndList[cIndex]<<" "<<candidatePoints[i].size()<<endl;
-			Mat tmpImg=(*img).clone();
-			for (int l=0;l<candidatePoints[i].size();l++)
-			{
-				circle(tmpImg,candidatePoints[i][l],2,255);
-			}
-			namedWindow("ProbMap");
-			imshow("ProbMap",tmpImg);
-			waitKey();
+		cout<<combineIndList[cIndex]<<" "<<candidatePoints[i].size()<<endl;
+		Mat tmpImg=(*img).clone();
+		for (int l=0;l<candidatePoints[i].size();l++)
+		{
+		circle(tmpImg,candidatePoints[i][l],2,255);
+		}
+		namedWindow("ProbMap");
+		imshow("ProbMap",tmpImg);
+		waitKey();
 		}*/
-		
+
 		/*if (i==12)
 		{
-			cout<<"size "<<i<<" "<<candidatePoints[i].size()<<endl;
+		cout<<"size "<<i<<" "<<candidatePoints[i].size()<<endl;
 		}*/
 	}
-		//out.close();
+	//out.close();
 	//	out1.close();
 }
 
@@ -5015,11 +5014,11 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 	int width=depthImg.cols;
 	int height=depthImg.rows;
 
-	
+
 
 	//Step 1: transfer the data to gpu
 
-	#pragma omp parallel for
+#pragma omp parallel for
 	for (int i=0;i<depthImg.rows;i++)
 	{
 		for (int j=0;j<depthImg.cols;j++)
@@ -5030,7 +5029,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 	}
 	setData_onrun_shared(host_colorImage_global,host_depthImage_global,width, height);
 
-	
+
 
 
 	/*Mat tmpImg;
@@ -5041,7 +5040,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 
 	/*for (int i=0;i<10;i++)
 	{
-		cout<<host_colorImage[i]<<" ";
+	cout<<host_colorImage[i]<<" ";
 	}
 	cout<<endl;*/
 
@@ -5049,19 +5048,19 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 	vector<int> finalInd;
 
 	//if (state!=1||(state==1&&!hasVelocity))
-		{
+	{
 		//GTB("A");
-			bool enoughVisibleNum;
+		bool enoughVisibleNum;
 
-			if (!initialPara)
-			{
-				enoughVisibleNum=predict_GPU_separated_combination(depthImg.cols,depthImg.rows,hostDetectionResult,finalPos,maximumProb,sx,ex,sy,ey,initialPara&&TemporalTracking,showProbMap);
-			}
-			else
-			{
-				enoughVisibleNum=predict_GPU_separated_combination(depthImg.cols,depthImg.rows,hostDetectionResult,finalPos,maximumProb,sx,ex,sy,ey,initialPara&&TemporalTracking,showProbMap,lastTheta);
-			}
-		
+		if (!initialPara)
+		{
+			enoughVisibleNum=predict_GPU_separated_combination(depthImg.cols,depthImg.rows,hostDetectionResult,finalPos,maximumProb,sx,ex,sy,ey,initialPara&&TemporalTracking,showProbMap);
+		}
+		else
+		{
+			enoughVisibleNum=predict_GPU_separated_combination(depthImg.cols,depthImg.rows,hostDetectionResult,finalPos,maximumProb,sx,ex,sy,ey,initialPara&&TemporalTracking,showProbMap,lastTheta);
+		}
+
 		if (showProbMap)
 		{
 			//probMap[j*width+k+cIndex*width*height];
@@ -5093,7 +5092,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 		/*GTE("A");
 		gCodeTimer.printTimeTree();
 		double time = total_fps;
-		cout<<"used time per iteration: "<<time<<endl;*/
+		cout<<"used time per iteration: "<<time<<" ms"<<endl;*/
 
 		if (!enoughVisibleNum)
 		{
@@ -5152,7 +5151,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 		}
 
 		//then, KNN. Currently, on CPU
-		
+
 		//ransac_noSampling(finalPos,depthImg.cols,depthImg.rows,finalInd,maximumProb);
 		//tmpImg=colorImg.clone();
 		//ransac_noSampling_parrllel(finalPos,depthImg.cols,depthImg.rows,finalInd,maximumProb,&colorImg);
@@ -5234,9 +5233,16 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 		//QueryPerformanceCounter((LARGE_INTEGER   *)&t1); 
 
 		//2ms
+		//GTB("A");
 
 		bool isS;
 		isS=geoHashing_Candidates_nearestInlier(finalPos,depthImg.cols,depthImg.rows,finalInd,maximumProb,"",NULL,NULL,candidatePoints);
+
+		/*GTE("A");
+		gCodeTimer.printTimeTree();
+		double time = total_fps;
+		cout<<"used time per iteration: "<<time<<" ms"<<endl;*/
+
 		if (!isS)
 		{
 			//cout<<"no nn found!\n";
@@ -5288,7 +5294,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 
 	}
 
-	
+
 	//else
 	//{
 	//	for (int i=0;i<AAM_exp->shape_dim;i++)
@@ -5296,9 +5302,9 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 	//		AAM_exp->s_weight[i]=0;
 	//	}
 	//}
-		
-	
-	
+
+
+
 
 
 	//1 3 6 10 12 14
@@ -5309,7 +5315,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 	//		finalInd.erase(finalInd.begin()+specialInd[i]);
 	//	}
 	//}
-	
+
 
 
 
@@ -5332,15 +5338,25 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 	//float *absInd=new float[MAX_LABEL_NUMBER];
 
 
-	
+
 
 
 	//step .3: optimization on GPU
 	//status=iterate_combination(colorImg.cols,colorImg.rows,0,0,currentShape,isAAMOnly&&!bigChange,showNN);
-	status=iterate_combination(colorImg.cols,colorImg.rows,0,0,lastTheta,currentShape,isAAMOnly,showNN);
+	bool readyToTransferBack=AAM_exp->getCurrentStatus();
+	status=iterate_combination(colorImg.cols,colorImg.rows,0,0,lastTheta,currentShape,isAAMOnly,showNN,readyToTransferBack);
 
+	if (readyToTransferBack)
+	{
+		AAM_exp->setCurrentStatus(false);
+	}
 
-		//obtain the theta using eye angle
+	if (status==1)//ready to update
+	{
+		updateModelCPU_thread();
+	}
+
+	//obtain the theta using eye angle
 	//Point2f lEye=Point2f((currentShape[18]+currentShape[22])/2.0f,(currentShape[18+ptsNum]+currentShape[22+ptsNum])/2.0f);
 	//Point2f rEye=Point2f((currentShape[26]+currentShape[30])/2.0f,(currentShape[26+ptsNum]+currentShape[30+ptsNum])/2.0f);
 	//Point2f e_dist=rEye-lEye;
@@ -5372,7 +5388,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 			lastPts[i]=finalPos[i][0];
 			lastPts[i+fullIndNum]=finalPos[i][1];
 		}
-	
+
 	}
 
 	//pridict pts
@@ -5410,11 +5426,11 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 	int width=depthImg.cols;
 	int height=depthImg.rows;
 
-	
+
 
 	//Step 1: transfer the data to gpu
 
-	#pragma omp parallel for
+#pragma omp parallel for
 	for (int i=0;i<depthImg.rows;i++)
 	{
 		for (int j=0;j<depthImg.cols;j++)
@@ -5425,7 +5441,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 	}
 	setData_onrun_shared(host_colorImage_global,host_depthImage_global,width, height);
 
-	
+
 
 
 	/*Mat tmpImg;
@@ -5436,12 +5452,12 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 
 	/*for (int i=0;i<10;i++)
 	{
-		cout<<host_colorImage[i]<<" ";
+	cout<<host_colorImage[i]<<" ";
 	}
 	cout<<endl;*/
 
-	
-		
+
+
 	//GTB("A");
 	bool enoughVisibleNum=predict_GPU_separated_combination(depthImg.cols,depthImg.rows,hostDetectionResult,finalPos,maximumProb,sx,ex,sy,ey,initialPara&&TemporalTracking,showProbMap);
 
@@ -5450,7 +5466,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 		//probMap[j*width+k+cIndex*width*height];
 		//visualize the probMap
 		Mat curProbMap=depthImg.clone()*0;
-	//	cvtColor(curProbMap,curProbMap,CV_GRAY2BGR);
+		//	cvtColor(curProbMap,curProbMap,CV_GRAY2BGR);
 		int w_size=5;
 		for (int i=0;i<fullIndNum;i++)
 		{
@@ -5460,7 +5476,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 				{
 					curProbMap.at<float>(k,j)=hostDetectionResult[k*width+j+i*width*height];
 				}
-				
+
 			}
 
 			//circle(curProbMap,Point(finalPos[i][0],finalPos[i][1]),3,Scalar(1));
@@ -5486,24 +5502,24 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 
 	//check the probability map
 	/*{
-		checkProbMap(hostDetectionResult);
-		return false;
+	checkProbMap(hostDetectionResult);
+	return false;
 	}*/
-	
+
 	/*if (state==2)
 	{
-		for (int i=0;i<ptsNum*2;i++)
-		{
-			currentShape[i]=0;
-		}
-		for (int i=0;i<fullIndNum;i++)
-		{
-			currentShape[combineIndList[i]]=finalPos[i][0];
-			currentShape[combineIndList[i]+ptsNum]=finalPos[i][1];
-		}
-		return true;
+	for (int i=0;i<ptsNum*2;i++)
+	{
+	currentShape[i]=0;
+	}
+	for (int i=0;i<fullIndNum;i++)
+	{
+	currentShape[combineIndList[i]]=finalPos[i][0];
+	currentShape[combineIndList[i]+ptsNum]=finalPos[i][1];
+	}
+	return true;
 	}*/
-	
+
 	bool bigChange=true;
 	if (state==1)
 	{
@@ -5529,10 +5545,10 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 		//	cout<<abs(lastPts[18]-finalPos[18][0])<<" "<<abs(lastPts[18+fullIndNum]-finalPos[18][1])<<endl;
 		/*if (bigChange)
 		{
-			cout<<rand()<<" big change\n";
+		cout<<rand()<<" big change\n";
 		}*/
 	}
-	
+
 	//then, KNN. Currently, on CPU
 	vector<int> finalInd;
 	//ransac_noSampling(finalPos,depthImg.cols,depthImg.rows,finalInd,maximumProb);
@@ -5546,30 +5562,30 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 		candidatePoints[i].clear();
 		/*if (hasVelocity)
 		{
-			
-			if (abs(pridictedPts[i]-finalPos[i][0])<10&&abs(pridictedPts[i+fullIndNum]-finalPos[i][1])<10)
-			{
-				candidatePoints[i].push_back(Point2f(pridictedPts[i],pridictedPts[i+fullIndNum]));
-			}
-			
+
+		if (abs(pridictedPts[i]-finalPos[i][0])<10&&abs(pridictedPts[i+fullIndNum]-finalPos[i][1])<10)
+		{
+		candidatePoints[i].push_back(Point2f(pridictedPts[i],pridictedPts[i+fullIndNum]));
+		}
+
 		}*/
 		/*if (state==1&&!bigChange)
 		{
-			candidatePoints[i].push_back(Point2f(lastPts[i],lastPts[i+fullIndNum]));
+		candidatePoints[i].push_back(Point2f(lastPts[i],lastPts[i+fullIndNum]));
 		}
 		else*/
-			candidatePoints[i].push_back(Point2f(finalPos[i][0],finalPos[i][1]));
+		candidatePoints[i].push_back(Point2f(finalPos[i][0],finalPos[i][1]));
 
 		if (initialPara&&state!=2)
 		{
-			
+
 			//if (abs(pridictedPts[i]-finalPos[i][0])<10&&abs(pridictedPts[i+fullIndNum]-finalPos[i][1])<10)
 			/*if((combineIndList[i]<42||combineIndList[i]>63)&&(i!=1&&i!=3&&i!=6&&i!=10&&i!=12&&i!=14))*/
 			if((combineIndList[i]<42||combineIndList[i]>63))
 			{
 				candidatePoints[i].push_back(Point2f(lastPts[i],lastPts[i+fullIndNum]));
 			}
-			
+
 		}
 	}
 
@@ -5581,28 +5597,28 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 	QueryPerformanceFrequency((LARGE_INTEGER   *)&persecond);
 	QueryPerformanceCounter((LARGE_INTEGER   *)&t1);*/
 	//cout<<"mean Shift\n";
-//	findSecondModes_Meanshift(finalPos,depthImg.cols,depthImg.rows,totalInd,hostDetectionResult,maximumProb,&colorImg,startX,endX,startY,endY);
+	//	findSecondModes_Meanshift(finalPos,depthImg.cols,depthImg.rows,totalInd,hostDetectionResult,maximumProb,&colorImg,startX,endX,startY,endY);
 
 	/*{
-		for (int i=0;i<ptsNum*2;i++)
-		{
-			currentShape[i]=0;
-		}
-		for (int i=0;i<fullIndNum;i++)
-		{
-			currentShape[combineIndList[i]]=finalPos[i][0];
-			currentShape[combineIndList[i]+ptsNum]=finalPos[i][1];
-		}
+	for (int i=0;i<ptsNum*2;i++)
+	{
+	currentShape[i]=0;
+	}
+	for (int i=0;i<fullIndNum;i++)
+	{
+	currentShape[combineIndList[i]]=finalPos[i][0];
+	currentShape[combineIndList[i]+ptsNum]=finalPos[i][1];
+	}
 	}
 	return false;*/
 
 	/*for (int i=0;i<fullIndNum;i++)
 	{
-		for (int j=0;j<candidatePoints[i].size();j++)
-		{
-			cout<<i<<" "<<candidatePoints[i][j].x<<" "<<candidatePoints[i][j].y<<endl;
-		}
-		
+	for (int j=0;j<candidatePoints[i].size();j++)
+	{
+	cout<<i<<" "<<candidatePoints[i][j].x<<" "<<candidatePoints[i][j].y<<endl;
+	}
+
 	}*/
 
 	//return true;
@@ -5616,7 +5632,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 	//QueryPerformanceCounter((LARGE_INTEGER   *)&t1); 
 
 	//2ms
-	
+
 	bool isS;
 	isS=geoHashing_Candidates_nearestInlier(finalPos,depthImg.cols,depthImg.rows,finalInd,maximumProb,"",NULL,NULL,candidatePoints);
 	if (!isS)
@@ -5633,7 +5649,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 	//		finalInd.erase(finalInd.begin()+specialInd[i]);
 	//	}
 	//}
-	
+
 
 	if (state==2)
 	{
@@ -5645,31 +5661,31 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 		{
 			currentDetection[combineIndList[finalInd[i]]]=finalPos[finalInd[i]][0];
 			currentDetection[combineIndList[finalInd[i]]+ptsNum]=finalPos[finalInd[i]][1];
-				/*currentDetection[combineIndList[finalInd[i]]]=candidatePoints[finalInd[i]][0].x;
+			/*currentDetection[combineIndList[finalInd[i]]]=candidatePoints[finalInd[i]][0].x;
 			currentDetection[combineIndList[finalInd[i]]+ptsNum]=candidatePoints[finalInd[i]][0].y;*/
 		}
 		/*for (int i=0;i<ptsNum*2;i++)
 		{
-			currentShape[i]=0;
+		currentShape[i]=0;
 		}
 		for (int i=0;i<finalInd.size();i++)
 		{
-			currentShape[combineIndList[finalInd[i]]]=finalPos[finalInd[i]][0];
-			currentShape[combineIndList[finalInd[i]]+ptsNum]=finalPos[finalInd[i]][1];
+		currentShape[combineIndList[finalInd[i]]]=finalPos[finalInd[i]][0];
+		currentShape[combineIndList[finalInd[i]]+ptsNum]=finalPos[finalInd[i]][1];
 		}	
 		return true;*/
 	}
 
 	/*{
-		for (int i=0;i<ptsNum*2;i++)
-		{
-			currentShape[i]=0;
-		}
-		for (int i=0;i<fullIndNum;i++)
-		{
-			currentShape[combineIndList[i]]=finalPos[i][0];
-			currentShape[combineIndList[i]+ptsNum]=finalPos[i][1];
-		}
+	for (int i=0;i<ptsNum*2;i++)
+	{
+	currentShape[i]=0;
+	}
+	for (int i=0;i<fullIndNum;i++)
+	{
+	currentShape[combineIndList[i]]=finalPos[i][0];
+	currentShape[combineIndList[i]+ptsNum]=finalPos[i][1];
+	}
 	}
 	return false;*/
 
@@ -5682,14 +5698,14 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 
 
 	//return;
-	
+
 	/*QueryPerformanceCounter((LARGE_INTEGER   *)&t2); 
 	time=(t2-t1)*1000/persecond; 
 	cout<<"calculation on CPU time: "<<time<<"ms "<<endl;*/
 	//return;
 	//save the modes and KNN search result
-	
-	
+
+
 
 	//finally, AAM with detection on GPU, 0.7ms
 	int minInd=bestFitTrainingSampleInd;
@@ -5699,7 +5715,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 		AAM_exp->s_weight[i]=eigenVectors.at<double>(i,minInd);
 	}
 
-	
+
 	float scale=sqrtf(globalTransformation.at<float>(0,0)*globalTransformation.at<float>(0,0)+
 		globalTransformation.at<float>(1,0)*globalTransformation.at<float>(1,0));
 	float theta=-atan2(globalTransformation.at<float>(1,0),globalTransformation.at<float>(0,0));
@@ -5733,11 +5749,11 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 	}
 	setupConv_featurePts(colorImg.cols,colorImg.rows,20,finalPos,finalInd,absInd_Global);
 
-	
+
 
 
 	//step .3: optimization on GPU
-	
+
 	//iterate_combination(colorImg.cols,colorImg.rows,0,0,currentShape,isAAMOnly&&!bigChange,showNN);
 
 	//update v
@@ -5760,7 +5776,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int sx
 			lastPts[i]=finalPos[i][0];
 			lastPts[i+fullIndNum]=finalPos[i][1];
 		}
-	
+
 	}
 
 	//pridict pts
@@ -5842,7 +5858,7 @@ void AAM_Detection_Combination::prepareModel(bool isApt)
 	//rt_colorRef->treeNum=treeNum;
 	////////////////////////////////////////////////////////////////////////
 
-	
+
 
 	rt=new RandTree(15,3,0,17,48,25);
 
@@ -5854,9 +5870,9 @@ void AAM_Detection_Combination::prepareModel(bool isApt)
 	//no threshold
 	//rt->trainStyle=2;rt->load("D:\\Fuhao\\face dataset\\train_all_final\\trainedTree_17_15_48_22_depthColor.txt");
 	//rt->trainStyle=1;rt->load("D:\\Fuhao\\face dataset\\train_all_final\\trainedTree_17_15_48_22_color.txt");
-	
-		//rt->trainStyle=0;rt->load_prob("D:\\Fuhao\\face dataset\\train_synDepthTest\\trainedTree_17_15_48_22_synDepth_Thres1.txt");
-		//rt->trainStyle=0;rt->load_prob("D:\\Fuhao\\face dataset\\train_synDepthTest\\trainedTree_17_15_48_22_synDepth_noThres113.txt");
+
+	//rt->trainStyle=0;rt->load_prob("D:\\Fuhao\\face dataset\\train_synDepthTest\\trainedTree_17_15_48_22_synDepth_Thres1.txt");
+	//rt->trainStyle=0;rt->load_prob("D:\\Fuhao\\face dataset\\train_synDepthTest\\trainedTree_17_15_48_22_synDepth_noThres113.txt");
 	//rt->trainStyle=0;rt->load("D:\\Fuhao\\face dataset\\train_all_final\\trainedTree_17_15_48_22_depth.txt");
 	rt->trainStyle=0;rt->load_prob(depthRT_dir.c_str(),1);
 	//cout<<rt->labelNum<<endl;
@@ -5864,7 +5880,7 @@ void AAM_Detection_Combination::prepareModel(bool isApt)
 
 	//color with threshold
 	//rt->trainStyle=1;rt->load_prob("D:\\Fuhao\\face dataset\\train_all_final\\trainedTree_17_15_48_22_color_thres.txt");
-		//rt->trainStyle=1;rt->load("D:\\Fuhao\\face dataset\\train_all_final\\trainedTree_17_15_48_22_colorThres.txt");
+	//rt->trainStyle=1;rt->load("D:\\Fuhao\\face dataset\\train_all_final\\trainedTree_17_15_48_22_colorThres.txt");
 
 	//both with threshold
 	///////////rt->trainStyle=2;rt->load_prob("D:\\Fuhao\\face dataset\\train_all_final\\trainedTree_17_15_48_22_both_thres.txt");//older version, the threshold of depth is not good
@@ -5925,7 +5941,7 @@ void AAM_Detection_Combination::buildHashTabel(string name)
 	int cshapeNum,cfullPtsNum;
 	int cptsNum=sizeof(combineIndList)/sizeof(int);
 	//ifstream in("D:\\Fuhao\\face dataset\\lfpw\\train_78\\selected\\allignedshape_feature.txt",ios::in);
-//	ifstream in("D:\\Fuhao\\face dataset\\train_larger database\\allignedshape_feature_90_90.txt",ios::in);
+	//	ifstream in("D:\\Fuhao\\face dataset\\train_larger database\\allignedshape_feature_90_90.txt",ios::in);
 	//ifstream in("D:\\Fuhao\\face dataset\\lfpw\\train_78\\selected\\allignedshape_feature_91_90.txt",ios::in);
 
 	ifstream in(name.c_str(),ios::in);
@@ -5981,13 +5997,13 @@ void AAM_Detection_Combination::buildHashTabel(Mat &shape)
 	Mat cfullData=Mat::zeros(cshapeNum,cfullPtsNum*2,CV_64FC1);
 	for (int i=0;i<cshapeNum;i++)
 	{
-		for (int j=0;j<cfullPtsNum*2;j++)
-		{
-			in>>tmpVal;
-			cfullData.at<double>(i,j)=tmpVal;
-		}
+	for (int j=0;j<cfullPtsNum*2;j++)
+	{
+	in>>tmpVal;
+	cfullData.at<double>(i,j)=tmpVal;
 	}
-*/
+	}
+	*/
 	Mat data=Mat::zeros(cshapeNum,cptsNum*2,CV_64FC1);
 	for (int i=0;i<cshapeNum;i++)
 	{
@@ -6065,11 +6081,11 @@ void AAM_Detection_Combination::geoHashing_Candidates(int **sampledPos,int width
 	///////////////////////////////////////////////////////////////////////////
 
 	//using all the index
-		finalInd.clear();
-		for (int i=0;i<fullIndNum;i++)
-		{
-			finalInd.push_back(i);
-		}
+	finalInd.clear();
+	for (int i=0;i<fullIndNum;i++)
+	{
+		finalInd.push_back(i);
+	}
 	for (int ii=0;ii<finalInd.size();ii++)
 	{
 		int cindex=finalInd[ii];
@@ -6081,15 +6097,15 @@ void AAM_Detection_Combination::geoHashing_Candidates(int **sampledPos,int width
 				(newU.at<float>(cindex+fullIndNum,0)-candidatePoints[cindex][j].y)));
 			float probAll=powf(e,-currentDis*currentDis/50);
 			//probAll*=powf(e,-(maximumProb[finalInd[ii]]-1)*(maximumProb[finalInd[ii]]-1)/
-						//(2*sigma1*sigma1));
+			//(2*sigma1*sigma1));
 			AAM_exp->probForEachFeatureCandidates[ii][j]=probAll;
 
-		/*	if (finalInd[ii]==2)
+			/*	if (finalInd[ii]==2)
 			{
-				cout<<j<<" "<<currentDis<<" "<<probAll<<" "<<candidatePoints[cindex][j].x<<" "<<candidatePoints[cindex][j].y<<endl;
-				
+			cout<<j<<" "<<currentDis<<" "<<probAll<<" "<<candidatePoints[cindex][j].x<<" "<<candidatePoints[cindex][j].y<<endl;
+
 			}*/
-			
+
 		}
 		AAM_exp->candidateNum[ii]=candidatePoints[cindex].size();
 		//AAM_exp->probForEachFeature[ii]=1;
@@ -6105,175 +6121,176 @@ void AAM_Detection_Combination::geoHashing_Candidates(int **sampledPos,int width
 		}
 	}
 
-	
+
 	Mat KNNVec=Mat::zeros(eigenVectors.rows,NNNum,CV_64FC1);
 	for (int i=0;i<NNNum;i++)
 	{
 		KNNVec.col(i)+=eigenVectors.col(KNNID[i]);
 	}
-	
+
 	//if (localWeight>0)
 	{
-	//update the mean
-	Mat mean_KNN=KNNVec.col(0)*0;
-	for (int i=0;i<KNNVec.cols;i++)
-	{
-		mean_KNN+=KNNVec.col(i);
-	}
-	mean_KNN/=KNNVec.cols;
-	for (int i=0;i<mean_KNN.rows;i++)
-	{
-		AAM_exp->priorMean[i]=mean_KNN.at<double>(i,0);
-	}
-
-	//update the conv
-	for (int i=0;i<KNNVec.cols;i++)
-	{
-		KNNVec.col(i)-=mean_KNN;
-	}
-	Mat KNNVec_tran;
-	transpose(KNNVec,KNNVec_tran);
-	Mat convKNN=KNNVec*KNNVec_tran/KNNVec.cols;
-
-	Mat conv_inv_KNN=convKNN.inv();
-
-//	cout<<AAM_exp->priorSigma.cols<<" "<<AAM_exp->priorSigma.rows<<endl;
-	for (int i=0;i<conv_inv_KNN.rows;i++)
-	{
-		for (int j=0;j<conv_inv_KNN.cols;j++)
+		//update the mean
+		Mat mean_KNN=KNNVec.col(0)*0;
+		for (int i=0;i<KNNVec.cols;i++)
 		{
-			AAM_exp->priorSigma.at<double>(i,j)=conv_inv_KNN.at<double>(i,j);
+			mean_KNN+=KNNVec.col(i);
 		}
-	}
-
-	if (AAM_exp->usingGPU)
-	{
-		float *p_mean=new float[mean_KNN.rows];
-		int totalDim=(AAM_exp->shape_dim+AAM_exp->texture_dim+4);
-		float *p_sigma=new float[totalDim*totalDim];
-
+		mean_KNN/=KNNVec.cols;
 		for (int i=0;i<mean_KNN.rows;i++)
 		{
-			p_mean[i]=mean_KNN.at<double>(i,0);
+			AAM_exp->priorMean[i]=mean_KNN.at<double>(i,0);
 		}
 
-		for (int i=0;i<totalDim*totalDim;i++)
+		//update the conv
+		for (int i=0;i<KNNVec.cols;i++)
 		{
-			p_sigma[i]=0;
+			KNNVec.col(i)-=mean_KNN;
 		}
+		Mat KNNVec_tran;
+		transpose(KNNVec,KNNVec_tran);
+		Mat convKNN=KNNVec*KNNVec_tran/KNNVec.cols;
+
+		Mat conv_inv_KNN=convKNN.inv();
+
+		//	cout<<AAM_exp->priorSigma.cols<<" "<<AAM_exp->priorSigma.rows<<endl;
 		for (int i=0;i<conv_inv_KNN.rows;i++)
 		{
 			for (int j=0;j<conv_inv_KNN.cols;j++)
 			{
-				p_sigma[i*totalDim+j]=conv_inv_KNN.at<double>(i,j);
+				AAM_exp->priorSigma.at<double>(i,j)=conv_inv_KNN.at<double>(i,j);
 			}
 		}
-		setLocalPrior(p_mean,p_sigma,mean_KNN.rows,AAM_exp->texture_dim);
 
-		delete []p_mean;
-		delete []p_sigma;
-	}
-
-	if (localWeight>0)
-	{
-
-
-		//train the local PCA model
-		int s_dim=eigenVectors.rows;
-		//use KNNVec_tran to train
-		CvMat *pData=cvCreateMat(KNNVec_tran.rows,KNNVec_tran.cols,CV_64FC1);
-		for (int i=0;i<KNNVec_tran.rows;i++)
+		if (AAM_exp->usingGPU)
 		{
-			for (int j=0;j<KNNVec_tran.cols;j++)
+			float *p_mean=new float[mean_KNN.rows];
+			int totalDim=(AAM_exp->shape_dim+AAM_exp->texture_dim+4);
+			float *p_sigma=new float[totalDim*totalDim];
+
+			for (int i=0;i<mean_KNN.rows;i++)
 			{
-				//CV_MAT_ELEM(*pData,double,i,j)=shape[i]->ptsForMatlab[j];
-
-				//here,we keep the shape in the same scale with the meanshape
-				CV_MAT_ELEM(*pData,double,i,j)=KNNVec_tran.at<double>(i,j);
+				p_mean[i]=mean_KNN.at<double>(i,0);
 			}
 
-		}
-		if (AAM_exp->local_s_mean==NULL)
-		{
-			AAM_exp->local_s_mean = cvCreateMat(1, KNNVec_tran.cols, CV_64FC1);
-			AAM_exp->m_local_s_mean=cvarrToMat(AAM_exp->local_s_mean);
-		}
-
-		if (AAM_exp->local_s_vec==NULL)
-		{
-			AAM_exp->local_s_vec=cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
-		}
-
-		CvMat* s_value = cvCreateMat(1, min(KNNVec_tran.cols,KNNVec_tran.rows), CV_64FC1);
-		//CvMat *s_PCAvec = cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
-		cvCalcPCA( pData, AAM_exp->local_s_mean, s_value, AAM_exp->local_s_vec, CV_PCA_DATA_AS_ROW );
-		AAM_exp->m_local_mean=cvarrToMat(AAM_exp->local_s_mean);
-
-		double sumEigVal=0;
-		for (int i=0;i<s_value->cols;i++)
-		{
-			sumEigVal+=CV_MAT_ELEM(*s_value,double,0,i);
-		}
-
-		double sumCur=0;
-		for (int i=0;i<s_value->cols;i++)
-		{
-			sumCur+=CV_MAT_ELEM(*s_value,double,0,i);
-			if (sumCur/sumEigVal>=0.98)
+			for (int i=0;i<totalDim*totalDim;i++)
 			{
-				AAM_exp->local_shape_dim=i+1;
-				break;
+				p_sigma[i]=0;
 			}
-		}
-		//cout<<"local dim: "<<AAM_exp->local_shape_dim<<endl;
-
-		Mat curEigenVec=cvarrToMat(AAM_exp->local_s_vec);
-		Mat usedEigenVec=curEigenVec.rowRange(Range(0,AAM_exp->local_shape_dim));
-		Mat usedEigenVec_tran;
-		transpose(usedEigenVec,usedEigenVec_tran);
-		Mat localHessian=usedEigenVec_tran*usedEigenVec;
-		localHessian=Mat::eye(localHessian.rows,localHessian.cols,CV_64FC1)-localHessian;
-
-		Mat localHessian_tran;
-		transpose(localHessian,localHessian_tran);
-		localHessian=localHessian_tran*localHessian;
-		for (int i=0;i<localHessian.rows;i++)
-		{
-			for (int j=0;j<localHessian.cols;j++)
+			for (int i=0;i<conv_inv_KNN.rows;i++)
 			{
-				AAM_exp->m_localHessian.at<double>(i,j)=localHessian.at<double>(i,j);
+				for (int j=0;j<conv_inv_KNN.cols;j++)
+				{
+					p_sigma[i*totalDim+j]=conv_inv_KNN.at<double>(i,j);
+				}
+			}
+			setLocalPrior(p_mean,p_sigma,mean_KNN.rows,AAM_exp->texture_dim);
+
+			delete []p_mean;
+			delete []p_sigma;
+		}
+
+		if (localWeight>0)
+		{
+
+
+			//train the local PCA model
+			int s_dim=eigenVectors.rows;
+			//use KNNVec_tran to train
+			CvMat *pData=cvCreateMat(KNNVec_tran.rows,KNNVec_tran.cols,CV_64FC1);
+			for (int i=0;i<KNNVec_tran.rows;i++)
+			{
+				for (int j=0;j<KNNVec_tran.cols;j++)
+				{
+					//CV_MAT_ELEM(*pData,double,i,j)=shape[i]->ptsForMatlab[j];
+
+					//here,we keep the shape in the same scale with the meanshape
+					CV_MAT_ELEM(*pData,double,i,j)=KNNVec_tran.at<double>(i,j);
+				}
+
+			}
+			if (AAM_exp->local_s_mean==NULL)
+			{
+				AAM_exp->local_s_mean = cvCreateMat(1, KNNVec_tran.cols, CV_64FC1);
+				AAM_exp->m_local_s_mean=cvarrToMat(AAM_exp->local_s_mean);
+			}
+
+			if (AAM_exp->local_s_vec==NULL)
+			{
+				AAM_exp->local_s_vec=cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
+			}
+
+			CvMat* s_value = cvCreateMat(1, min(KNNVec_tran.cols,KNNVec_tran.rows), CV_64FC1);
+			//CvMat *s_PCAvec = cvCreateMat( min(KNNVec_tran.rows,KNNVec_tran.cols), KNNVec_tran.cols, CV_64FC1); 
+			cvCalcPCA( pData, AAM_exp->local_s_mean, s_value, AAM_exp->local_s_vec, CV_PCA_DATA_AS_ROW );
+			AAM_exp->m_local_mean=cvarrToMat(AAM_exp->local_s_mean);
+
+			double sumEigVal=0;
+			for (int i=0;i<s_value->cols;i++)
+			{
+				sumEigVal+=CV_MAT_ELEM(*s_value,double,0,i);
+			}
+
+			double sumCur=0;
+			for (int i=0;i<s_value->cols;i++)
+			{
+				sumCur+=CV_MAT_ELEM(*s_value,double,0,i);
+				if (sumCur/sumEigVal>=0.98)
+				{
+					AAM_exp->local_shape_dim=i+1;
+					break;
+				}
+			}
+			//cout<<"local dim: "<<AAM_exp->local_shape_dim<<endl;
+
+			Mat curEigenVec=cvarrToMat(AAM_exp->local_s_vec);
+			Mat usedEigenVec=curEigenVec.rowRange(Range(0,AAM_exp->local_shape_dim));
+			Mat usedEigenVec_tran;
+			transpose(usedEigenVec,usedEigenVec_tran);
+			Mat localHessian=usedEigenVec_tran*usedEigenVec;
+			localHessian=Mat::eye(localHessian.rows,localHessian.cols,CV_64FC1)-localHessian;
+
+			Mat localHessian_tran;
+			transpose(localHessian,localHessian_tran);
+			localHessian=localHessian_tran*localHessian;
+			for (int i=0;i<localHessian.rows;i++)
+			{
+				for (int j=0;j<localHessian.cols;j++)
+				{
+					AAM_exp->m_localHessian.at<double>(i,j)=localHessian.at<double>(i,j);
+				}
 			}
 		}
-	}
 
 	}
 	//delete []distance;
-	
+
 
 	return;
 }
 
 bool AAM_Detection_Combination::geoHashing_Candidates_nearestInlier(float **sampledPos,int width,int height,vector<int>&finalInd,float *maximumProb,char *saveName,Mat *img,Mat *depthImg,vector<Point2f>*candidatePts)
 {
-	
-	
+
+
 	/*int cptsNum=sizeof(combineIndList)/sizeof(int);
 	Mat inData=Mat::zeros(2,cptsNum,CV_64FC1);
 	Mat inDataOldFormat=Mat::zeros(1,cptsNum*2,CV_64FC1);
 	for (int i=0;i<cptsNum;i++)
 	{
-		inData.at<double>(0,i)=sampledPos[i][0];
-		inData.at<double>(1,i)=sampledPos[i][1];
-		inDataOldFormat.at<double>(0,i)=sampledPos[i][0];
-		inDataOldFormat.at<double>(0,cptsNum+i)=sampledPos[i][1];
+	inData.at<double>(0,i)=sampledPos[i][0];
+	inData.at<double>(1,i)=sampledPos[i][1];
+	inDataOldFormat.at<double>(0,i)=sampledPos[i][0];
+	inDataOldFormat.at<double>(0,cptsNum+i)=sampledPos[i][1];
 	}
 	vector<int> KNNID;
 	geohashSearch->vote_countAllVec(inData,inDataOldFormat,finalInd,KNNID,cptsNum*0.8,NNNum,candidatePoints);
-*/
+	*/
 
 	//GTB("S");
 	//for (int ll=0;ll<500;ll++)
 	//{
+//	GTB("A");
 
 	int cptsNum=sizeof(combineIndList)/sizeof(int);
 	Mat inData=Mat::zeros(1,cptsNum*2,CV_64FC1);
@@ -6290,8 +6307,15 @@ bool AAM_Detection_Combination::geoHashing_Candidates_nearestInlier(float **samp
 	{
 		return false;
 	}
-	
-	
+
+	//GTE("A");
+	//gCodeTimer.printTimeTree();
+	//double time = total_fps;
+	//cout<<"used time per iteration: "<<time<<" ms"<<endl;
+
+
+
+	//GTB("B");
 
 	for (int i=0;i<cptsNum;i++)
 	{
@@ -6309,21 +6333,21 @@ bool AAM_Detection_Combination::geoHashing_Candidates_nearestInlier(float **samp
 
 	//////////////////////visulization/////////////////////////////////
 	/*Mat tmpIMg=(colorImgBackUP).clone();
-	
 
-		Point c;
-		for (int j=0;j<fullIndNum;j++)
-		{
-			c.x=sampledPos[j][0];
-			c.y=sampledPos[j][1];
-			circle(tmpIMg,c,5,Scalar(0,255,0));
-		}
+
+	Point c;
+	for (int j=0;j<fullIndNum;j++)
+	{
+	c.x=sampledPos[j][0];
+	c.y=sampledPos[j][1];
+	circle(tmpIMg,c,5,Scalar(0,255,0));
+	}
 
 	for (int i=0;i<finalInd.size();i++)
 	{
-		c.x=sampledPos[finalInd[i]][0];
-		c.y=sampledPos[finalInd[i]][1];
-		circle(tmpIMg,c,5,Scalar(0,0,255));
+	c.x=sampledPos[finalInd[i]][0];
+	c.y=sampledPos[finalInd[i]][1];
+	circle(tmpIMg,c,5,Scalar(0,0,255));
 	}
 	namedWindow("to be used inliers");
 	imshow("to be used inliers",tmpIMg);
@@ -6366,7 +6390,7 @@ bool AAM_Detection_Combination::geoHashing_Candidates_nearestInlier(float **samp
 
 		}
 	}
-	
+
 
 	/*LONGLONG   t1,t2; 
 	LONGLONG   persecond; 
@@ -6385,73 +6409,77 @@ bool AAM_Detection_Combination::geoHashing_Candidates_nearestInlier(float **samp
 	{
 		KNNVec.col(i)+=eigenVectors.col(KNNID[i]);
 	}
-	
-	
-	
-		//update the mean
-		Mat mean_KNN=KNNVec.col(0)*0;
-		for (int i=0;i<KNNVec.cols;i++)
-		{
-			mean_KNN+=KNNVec.col(i);
-		}
-		mean_KNN/=KNNVec.cols;
-		for (int i=0;i<mean_KNN.rows;i++)
-		{
-			AAM_exp->priorMean[i]=mean_KNN.at<double>(i,0);
-		}
 
-		//update the conv
-		for (int i=0;i<KNNVec.cols;i++)
-		{
-			KNNVec.col(i)-=mean_KNN;
-		}
-		Mat KNNVec_tran;
-		transpose(KNNVec,KNNVec_tran);
-		Mat convKNN=KNNVec*KNNVec_tran/KNNVec.cols;
 
-		Mat conv_inv_KNN=convKNN.inv();
+
+	//update the mean
+	Mat mean_KNN=KNNVec.col(0)*0;
+	for (int i=0;i<KNNVec.cols;i++)
+	{
+		mean_KNN+=KNNVec.col(i);
+	}
+	mean_KNN/=KNNVec.cols;
+	for (int i=0;i<mean_KNN.rows;i++)
+	{
+		AAM_exp->priorMean[i]=mean_KNN.at<double>(i,0);
+	}
+
+	//update the conv
+	for (int i=0;i<KNNVec.cols;i++)
+	{
+		KNNVec.col(i)-=mean_KNN;
+	}
+	Mat KNNVec_tran;
+	transpose(KNNVec,KNNVec_tran);
+	Mat convKNN=KNNVec*KNNVec_tran/KNNVec.cols;
+
+	Mat conv_inv_KNN=convKNN.inv();
 
 	/*	QueryPerformanceCounter((LARGE_INTEGER   *)&t2); 
-		double   time=(t2-t1)*1000/persecond; 
-		cout<<"Local prior CPU: "<<time<<"ms "<<endl;*/
+	double   time=(t2-t1)*1000/persecond; 
+	cout<<"Local prior CPU: "<<time<<"ms "<<endl;*/
 
-		//	cout<<AAM_exp->priorSigma.cols<<" "<<AAM_exp->priorSigma.rows<<endl;
-		
-		if (!AAM_exp->usingGPU)
+	//	cout<<AAM_exp->priorSigma.cols<<" "<<AAM_exp->priorSigma.rows<<endl;
+
+	if (!AAM_exp->usingGPU)
+	{
+		for (int i=0;i<conv_inv_KNN.rows;i++)
 		{
-			for (int i=0;i<conv_inv_KNN.rows;i++)
+			for (int j=0;j<conv_inv_KNN.cols;j++)
 			{
-				for (int j=0;j<conv_inv_KNN.cols;j++)
-				{
-					AAM_exp->priorSigma.at<double>(i,j)=conv_inv_KNN.at<double>(i,j);
-				}
+				AAM_exp->priorSigma.at<double>(i,j)=conv_inv_KNN.at<double>(i,j);
 			}
 		}
-	
-		if (AAM_exp->usingGPU)
-		{
-			
-			int totalDim=(AAM_exp->shape_dim+AAM_exp->texture_dim+4);
-			
+	}
+
+	if (AAM_exp->usingGPU)
+	{
+
+		int totalDim=(AAM_exp->shape_dim+AAM_exp->texture_dim+4);
+
 
 		/*	for (int i=0;i<mean_KNN.rows;i++)
-			{
-				
-			}*/
-			//#pragma omp parallel for
-			for (int i=0;i<conv_inv_KNN.rows;i++)
-			{
-				p_mean_global[i]=mean_KNN.at<double>(i,0);
+		{
 
-				for (int j=0;j<conv_inv_KNN.cols;j++)
-				{
-					p_sigma_global[i*totalDim+j]=conv_inv_KNN.at<double>(i,j);
-				}
+		}*/
+		//#pragma omp parallel for
+		for (int i=0;i<conv_inv_KNN.rows;i++)
+		{
+			p_mean_global[i]=mean_KNN.at<double>(i,0);
+
+			for (int j=0;j<conv_inv_KNN.cols;j++)
+			{
+				p_sigma_global[i*totalDim+j]=conv_inv_KNN.at<double>(i,j);
 			}
-			setLocalPrior(p_mean_global,p_sigma_global,mean_KNN.rows,AAM_exp->texture_dim);
-
 		}
+		setLocalPrior(p_mean_global,p_sigma_global,mean_KNN.rows,AAM_exp->texture_dim);
 
+	}
+
+	/*GTE("B");
+	gCodeTimer.printTimeTree();
+	double time = total_fps;
+	cout<<"remained iteration: "<<time<<" ms"<<endl;*/
 	return true;
 
 	//}

@@ -7,8 +7,9 @@
 #include <iostream>
 #include <fstream>
 #include <map>
-#include "HashTable.h"
+//#include "HashTable.h"
 #include "LSAlignment.h"
+#include "Hash_Table_Fast.h"
 
 using namespace std;
 using namespace cv;
@@ -47,11 +48,17 @@ struct basisPair
 class GeoHashing
 {
 public:
+
+	//new added 
+	Mat  **totalVec;
+	void setupTotalVec();
+
+
 	GeoHashing(Mat &shapes,float _dsize);
 
 	float dSize;
 
-	HashTable *table;
+	HashTableFast *table;
 
 	int ptsNum;
 

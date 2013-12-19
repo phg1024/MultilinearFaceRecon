@@ -8,6 +8,8 @@ using namespace Eigen;
 
 #include "mkl.h"
 #include "mkl_lapacke.h"
+
+#include "CodeTimer.h"
 //int main()
 //{
 //	MatrixXd m(2,2);
@@ -58,11 +60,30 @@ extern "C" void solveAb(float *inputHessian, float *b,float *deltaX,int dim)
 	}
 }
 
+extern "C" void setNewMeanVec(float * _newMean)
+{
+	adpPcaGlobal->setNewMeanVec(_newMean);
+}
+
+extern "C" void updateModelCPU_thread()
+{
+	//adpPcaGlobal->updateModel();
+	//cout<<"textureModel address: "<<adpPcaGlobal<<endl;
+	//cout<<"updating model\n";
+	_beginthreadex(0,0,Adp_PCA_float::threadProc,(void*)adpPcaGlobal,0,0);
+	//adpPcaGlobal->updateModel();
+}
+
 extern "C" void updateModelCPU(float *dataBlock,int sampleNum,float *newMeanVec)
 {
 	//cout<<adpPcaGlobal->dataForUse.cols()<<" "<<adpPcaGlobal->dataForUse.rows()<<endl;
+	//GTB("updateModel");
 	adpPcaGlobal->updateModel(dataBlock,sampleNum,true);
 	adpPcaGlobal->getMeanAndModel(newMeanVec);
+	//GTE("updateModel");
+	//gCodeTimer.printTimeTree();
+	//double time = total_fps;
+	//cout<<"update model time: "<<time<<" ms"<<endl;
 }
 
 extern "C" void invHessian(float *inputHessian, float *outputHessian,int dim)
@@ -241,6 +262,16 @@ extern "C" void checkIterationResult(float *parameters,int ptsNum,int s_dim,int 
 void AAM_RealGlobal_GPU::setGlobalStartNum(int num)
 {
 	globalCurrentNum=num;
+}
+
+bool AAM_RealGlobal_GPU::getCurrentStatus()
+{
+	return adpPcaGlobal->readyToTransfer;
+}
+
+void AAM_RealGlobal_GPU::setCurrentStatus(bool s)
+{
+	adpPcaGlobal->readyToTransfer=s;
 }
 
 void AAM_RealGlobal_GPU::setSaveName(char* name)
@@ -1826,7 +1857,21 @@ void AAM_RealGlobal_GPU::calculateData_onrun_AAM_combination(Mat &m_img,vector<i
 	else
 	{
 		//cout<<"using previous info\n";
-		parameters[0]=-1000000000;
+
+		for (int i=0;i<shape_dim;i++)
+		{
+			parameters[i]=s_weight[i];
+		}
+		/*for (int i=0;i<texture_dim;i++)
+		{
+			parameters[shape_dim+i]=0;
+		}*/
+		parameters[shape_dim+texture_dim]=initialTheta;
+		parameters[shape_dim+texture_dim+1]=initialScale;
+		parameters[shape_dim+texture_dim+2]=initialTx;
+		parameters[shape_dim+texture_dim+3]=initialTy;
+
+		parameters[shape_dim]=-1000000000;
 		/*for (int i=0;i<texture_dim;i++)
 		{
 			parameters[shape_dim+i]=0;
