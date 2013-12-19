@@ -15,6 +15,9 @@ extern "C" void checkIterationResult(float *parameters,int ptsNum,int s_dim,int 
 extern "C" void solveAb(float *inputHessian, float *b,float *deltaX,int dim);
 extern "C" void updateModelCPU(float *,int,float *);
 
+extern "C" void updateModelCPU_thread();
+extern "C" void setNewMeanVec(float *);
+
 struct Node
 {
 	Node()

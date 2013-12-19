@@ -6,6 +6,9 @@
 #include <fstream>
 #include <Eigen/Eigen>
 using namespace Eigen;
+#include<windows.h>
+#include<stdio.h>
+#include<process.h>
 
 using Eigen::MatrixXf;
 
@@ -19,6 +22,23 @@ using namespace cv;
 class Adp_PCA_float
 {
 public:
+
+
+	static unsigned int __stdcall threadProc(void* pV) { 
+		//cout<<"updating model\n";
+		Adp_PCA_float* p = (Adp_PCA_float*)pV;
+		//cout<<p->blockNum<<endl;
+		p->updateModel();
+		//cout<<"finished updating model\n";
+		return 0;
+	}
+
+	//multi-thread
+	bool readyToTransfer;
+	void setNewMeanVec(float *);
+	float *newMeanVec_GPU;
+	void updateModel();
+
 	Adp_PCA_float(int dim,int maximumDim,bool outputData=false,int blockNum=10);
 	void updateModel(MatrixXf &data,bool isNormalize=false);
 

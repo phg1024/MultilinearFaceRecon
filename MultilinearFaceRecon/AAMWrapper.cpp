@@ -165,8 +165,10 @@ const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigne
 
 		bool isSecceed=false;
 		bool isDrop=false;
-		//if(1)
-		if (((curStatus==0&&engine->AAM_exp->isAdaptive)&&(startNum%5!=4))||(!engine->AAM_exp->isAdaptive&&startNum%5!=4))
+
+		//GTB("START");
+		if(1)
+		//if (((curStatus==0&&engine->AAM_exp->isAdaptive)&&(startNum%5!=4))||(!engine->AAM_exp->isAdaptive&&startNum%5!=4))
 			//if (startNum%5!=3)
 		{
 			//	GTB("START");
@@ -197,6 +199,11 @@ const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigne
 			isDrop=true;
 
 		}
+		//GTE("START");
+
+		/*gCodeTimer.printTimeTree();
+		double time = total_fps;
+		cout<<"used time per iteration: "<<time<<" ms\n";*/
 
 		if(isSecceed)
 		{
@@ -341,13 +348,13 @@ const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigne
 
 		if( isSecceed )		
 		{
-			cout << "Succeeded." << endl;
+			//cout << "Succeeded." << endl;
 			f.assign(lastShape, lastShape + cptsNum*2);
 			return f;
 		}
 		else
 		{
-			cout << "Failed." << endl;
+			//cout << "Failed." << endl;
 			return eptf;
 		}
 }

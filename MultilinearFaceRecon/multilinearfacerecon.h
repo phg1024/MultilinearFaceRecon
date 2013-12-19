@@ -11,6 +11,8 @@
 #include "BlendShapeViewer.h"
 #include "AAMWrapper.h"
 
+#include "Utils/Timer.h"
+
 class MultilinearFaceRecon : public QMainWindow
 {
 	Q_OBJECT
@@ -48,6 +50,8 @@ private:
 	vector<PhGUtils::Point3f> lms;		// landmarks got from AAM tracking
 	AAMWrapper aam;
 	shared_ptr<StreamViewer> colorView, depthView;
+
+	PhGUtils::Timer tAAM, tKman, tView, tRecon;
 };
 
 #endif // MULTILINEARFACERECON_H

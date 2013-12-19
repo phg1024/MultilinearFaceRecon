@@ -41,6 +41,9 @@ public:
 	AAM_RealGlobal_GPU(double _search_test=0,double AAM_weight=1,double _priorWeight=0,double _localPCAWeight=0,bool isApt=false);
 	~AAM_RealGlobal_GPU();
 
+	bool getCurrentStatus();
+	void setCurrentStatus(bool);
+
 	void setSaveName(char * name);
 	void setGlobalStartNum(int);
 

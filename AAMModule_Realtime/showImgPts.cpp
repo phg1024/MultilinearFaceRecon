@@ -28,7 +28,7 @@ void ShowImgPts::drawImgPts(ID2D1Bitmap* m_pBitmap,float *pts,int _ptsNum)
 	int effectiveNum=0;
 	for (int i=0;i<_ptsNum;i++)
 	{
-		ellipse[i].point.x=639-pts[i];
+		ellipse[i].point.x=pts[i];
 		ellipse[i].point.y=pts[i+_ptsNum];
 	}
 

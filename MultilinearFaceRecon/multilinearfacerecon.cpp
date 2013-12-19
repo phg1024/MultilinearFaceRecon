@@ -142,7 +142,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			//viewer->fit(MultilinearReconstructor::FIT_POSE);
 
 		QApplication::processEvents();
-		::system("pause");
+		//::system("pause");
 	}
 	tCombined.toc();
 	PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() / validFrames));
@@ -151,33 +151,36 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 
 void MultilinearFaceRecon::updateKinectStreams()
 {	
-	PhGUtils::Timer t, t2;
-	t2.tic();
-	t.tic();
+
+	tKman.tic();
 	kman.updateStream();
 	int w = kman.getWidth(), h = kman.getHeight();
 	const vector<unsigned char>& colordata = kman.getRGBData();
 	const vector<unsigned char>& depthdata = kman.getDepthData();
 	const vector<USHORT>& depthvalues = kman.getDepthValues();
+	tKman.toc();
 
+	tView.tic();
 	colorView->bindStreamData(&(colordata[0]), w, h);
 	depthView->bindStreamData(&(depthdata[0]), w, h);
-	t.toc("Update views");
+	tView.toc();
 	//QImage rgbimg = PhGUtils::toQImage(&(kman.getRGBData()[0]), kman.getWidth(), kman.getHeight());
 	//QImage depthimg = PhGUtils::toQImage(&(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
 
 	//rgbimg.save("rgb.png");
 	//depthimg.save("depth.png");
-	t.tic();
+	tAAM.tic();
 	const vector<float>& f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
-	t.toc("AAM");
-	t.tic();
-	colorView->bindLandmarks(f);
-	
+	tAAM.toc();
 
+	tView.tic();
+	colorView->bindLandmarks(f);
+	tView.toc();
+	
 	// do not update the mesh if the landmarks are unknown
 	if( f.empty() ) return;
 
+	tRecon.tic();
 	// get the 3D landmarks and feed to recon manager
 	int npts = f.size()/2;
 	for(int i=0;i<npts;i++) {
@@ -198,18 +201,25 @@ void MultilinearFaceRecon::updateKinectStreams()
 	}
 	else
 		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
-
-	t.toc("Reconstruction total");
-	t2.toc();
-	PhGUtils::message("Frame rate = " + PhGUtils::toString(1.0 / t2.gap()) + " fps");
+	tRecon.toc();
 }
 
 void MultilinearFaceRecon::toggleKinectInput()
 {
 	useKinectInput = !useKinectInput;
-	frameIdx = 0;
-	if( useKinectInput ) timer.start();
-	else timer.stop();
+	if( useKinectInput ){
+		tAAM.reset(); tView.reset(); tKman.reset(); tRecon.reset();
+		frameIdx = 0;
+		timer.start();
+	}
+	else{
+		timer.stop();
+		PhGUtils::message("Total frames = " + PhGUtils::toString(frameIdx));
+		PhGUtils::message("Time cost for AAM = " + PhGUtils::toString(tAAM.elapsed() / frameIdx ) + " seconds.");
+		PhGUtils::message("Time cost for Kinect = " + PhGUtils::toString(tKman.elapsed() / frameIdx) + " seconds.");
+		PhGUtils::message("Time cost for Views = " + PhGUtils::toString(tView.elapsed() / frameIdx) + " seconds.");
+		PhGUtils::message("Time cost for Reconstruction = " + PhGUtils::toString(tRecon.elapsed() / frameIdx) + " seconds.");
+	}
 }
 
 void MultilinearFaceRecon::resetAAM()
