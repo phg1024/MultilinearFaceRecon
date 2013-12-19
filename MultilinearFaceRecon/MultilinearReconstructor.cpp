@@ -966,7 +966,6 @@ bool MultilinearReconstructor::fitExpressionWeights()
 void MultilinearReconstructor::transformMesh()
 {
 	int nverts = tplt.length()/3;
-	cout << nverts << endl;
 	arma::fmat pt(3, nverts);
 	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
 		pt(0, i) = tplt(idx);

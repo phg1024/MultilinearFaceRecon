@@ -348,13 +348,13 @@ const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigne
 
 		if( isSecceed )		
 		{
-			cout << "Succeeded." << endl;
+			//cout << "Succeeded." << endl;
 			f.assign(lastShape, lastShape + cptsNum*2);
 			return f;
 		}
 		else
 		{
-			cout << "Failed." << endl;
+			//cout << "Failed." << endl;
 			return eptf;
 		}
 }
