@@ -25,6 +25,12 @@ public slots:
 	void toggleKinectInput();
 	void resetAAM();
 	void reconstructionWithBatchInput();
+	int reconstructionWithSingleFrame(
+		const unsigned char* colordata,
+		const unsigned char* depthdata,
+		vector<float>& pose,
+		vector<float>& fpts
+	);
 
 private:
 	void setupStreamViews();

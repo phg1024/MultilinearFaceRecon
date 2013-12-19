@@ -45,6 +45,10 @@ public:
 		return tmesh;
 	}
 
+	const float* getPose() const {
+		return RTparams;
+	}
+
 	// for reconstruction with 2D feature points, first obtain
 	// corresponding 3D locations, then use the reconstruction
 	// for 3D points
@@ -163,8 +167,7 @@ private:
 
 	// workspace for rigid fitting
 	struct PoseWorkspace{
-		static const int npts = 78;
-		float meas[npts];
+		vector<float> meas;
 		// for cminpack
 		//int workspace[npts];
 		//float w2[12*npts+32];

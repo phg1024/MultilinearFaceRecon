@@ -18,6 +18,10 @@ public:
 	void fit(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void generatePrior();
 
+	const MultilinearReconstructor& getReconstructor() const {
+		return recon;
+	}
+
 protected:
 	virtual void initializeGL();
 	virtual void paintGL();

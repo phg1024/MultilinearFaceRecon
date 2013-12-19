@@ -19,6 +19,7 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 
 	setupKinectManager();
 	lms.resize(128);
+	frameIdx = 0;
 
 	connect(ui.actionLoad_Target, SIGNAL(triggered()), this, SLOT(loadTargetMesh()));
 	connect(ui.actionFit, SIGNAL(triggered()), this, SLOT(fit()));
@@ -69,6 +70,59 @@ void MultilinearFaceRecon::generatePrior() {
 	viewer->generatePrior();
 }
 
+int MultilinearFaceRecon::reconstructionWithSingleFrame(
+	const unsigned char* colordata,
+	const unsigned char* depthdata,
+	vector<float>& pose,
+	vector<float>& fpts
+	) 
+{
+	const int w = 640, h = 480;
+
+
+	// AAM tracking
+	fpts = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+	if( fpts.empty() ) {
+		// tracking failed
+		cerr << "AAM tracking failed." << endl;
+		return -1;
+	}
+	else {
+		// get the 3D landmarks and feed to recon manager
+		int npts = fpts.size()/2;
+		for(int i=0;i<npts;i++) {
+			int u = fpts[i];
+			// flip y coordinates
+			int v = fpts[i+npts];
+			int idx = (v*w+u)*4;
+			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+
+			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
+			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
+
+			// minus one is a hack to bring the model nearer
+			//lms[i].z += 1.0;
+		}
+
+		viewer->bindTargetLandmarks(lms);
+		if( frameIdx++ == 0 ) {
+			// fit the pose first, then fit the identity and pose together
+			
+			viewer->fit(MultilinearReconstructor::FIT_ALL);
+		}
+		else{
+			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+		}
+
+		const MultilinearReconstructor& recon = viewer->getReconstructor();
+		pose.assign(recon.getPose(), recon.getPose()+7);
+		for(int i=0;i<pose.size();i++)
+			cout << pose[i] << ((i==pose.size()-1)?'\n':'\t');
+
+		return 0;
+	}
+}
+
 void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
@@ -83,6 +137,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 
 	PhGUtils::Timer tRecon, tCombined;
 	int validFrames = 0;
+	frameIdx = 0;
 
 	tCombined.tic();
 	for(int imgidx=1;imgidx<=imageCount;imgidx++) {
@@ -95,12 +150,22 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 		colorView->bindStreamData(&(colordata[0]), w, h);
 		depthView->bindStreamData(&(depthdata[0]), w, h);
 
-		//QImage rgbimg = PhGUtils::toQImage(&(kman.getRGBData()[0]), kman.getWidth(), kman.getHeight());
-		//QImage depthimg = PhGUtils::toQImage(&(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
-
 		//rgbimg.save("rgb.png");
 		//depthimg.save("depth.png");
+#if 1
+		vector<float> f, pose;
+		tRecon.tic();
+		reconstructionWithSingleFrame(&(colordata[0]), &(depthdata[0]), pose, f);
+		tRecon.toc();
+				
+		validFrames++;
 
+		if( f.empty() ) continue;
+
+		colorView->bindLandmarks(f);
+
+		QApplication::processEvents();
+#else
 		vector<float> f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
 		colorView->bindLandmarks(f);
 
@@ -143,6 +208,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 
 		QApplication::processEvents();
 		//::system("pause");
+#endif	
 	}
 	tCombined.toc();
 	PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() / validFrames));
