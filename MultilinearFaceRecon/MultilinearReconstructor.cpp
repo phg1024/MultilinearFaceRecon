@@ -6,13 +6,13 @@
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
 #define USELEVMAR4WEIGHTS 0
-#define USE_MKL_LS 0		// use mkl least square solver
-#define OUTPUT_STATS 1
+#define USE_MKL_LS 1		// use mkl least square solver
+#define OUTPUT_STATS 0
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {	
-	w_prior_id = 1e-2;
-	w_prior_exp = 1e-2;
+	w_prior_id = 1e-3;
+	w_prior_exp = 1e-4;
 	w_boundary = 1e-6;
 
 	meanX = meanY = meanZ = 0;
@@ -36,7 +36,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	w_landmarks.resize(512);
 
 	cc = 1e-4;
-	errorThreshold = 1e-5;
+	errorThreshold = 5e-5;
 	errorDiffThreshold = errorThreshold * 0.01;
 	usePrior = true;
 

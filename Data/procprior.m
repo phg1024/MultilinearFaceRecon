@@ -18,7 +18,7 @@ mean_w = mean(w);
 sigma_w = cov(w);
 
 % fix the cov matrix
-sigma_w(1, 1) = trace(sigma_w)/(ndims-1);
+%sigma_w(1, 1) = trace(sigma_w)/(ndims-1);
 
 fid = fopen(outfile, 'w');
 fwrite(fid, ndims, 'int');
