@@ -122,7 +122,7 @@ private:
 private:
 	// convergence criteria
 	float cc;
-	float errorThreshold;
+	float errorThreshold, errorDiffThreshold;
 	static const int MAXITERS = 8;	// this should be enough
 	bool usePrior;
 

@@ -116,9 +116,10 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 
 		const MultilinearReconstructor& recon = viewer->getReconstructor();
 		pose.assign(recon.getPose(), recon.getPose()+7);
+		/*
 		for(int i=0;i<pose.size();i++)
 			cout << pose[i] << ((i==pose.size()-1)?'\n':'\t');
-
+		*/
 		return 0;
 	}
 }
@@ -127,7 +128,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const int startIdx = 10000;
-	const int imageCount = 200;
+	const int imageCount = 250;
 	const int endIdx = startIdx + imageCount;
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
@@ -152,19 +153,19 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 
 		//rgbimg.save("rgb.png");
 		//depthimg.save("depth.png");
-#if 1
+#if 0
 		vector<float> f, pose;
 		tRecon.tic();
 		reconstructionWithSingleFrame(&(colordata[0]), &(depthdata[0]), pose, f);
 		tRecon.toc();
-				
-		validFrames++;
-
+					
 		if( f.empty() ) continue;
+		validFrames++;
 
 		colorView->bindLandmarks(f);
 
-		QApplication::processEvents();
+		QApplication::processEvents();		
+		::system("pause");
 #else
 		vector<float> f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
 		colorView->bindLandmarks(f);
@@ -207,7 +208,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			//viewer->fit(MultilinearReconstructor::FIT_POSE);
 
 		QApplication::processEvents();
-		//::system("pause");
+		::system("pause");
 #endif	
 	}
 	tCombined.toc();

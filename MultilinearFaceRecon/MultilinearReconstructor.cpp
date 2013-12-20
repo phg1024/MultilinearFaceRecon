@@ -6,15 +6,15 @@
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
 #define USELEVMAR4WEIGHTS 0
-#define USE_MKL_LS 1		// use mkl least square solver
+#define USE_MKL_LS 0		// use mkl least square solver
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {	
-	w_prior_id = 5e-2;
-	w_prior_exp = 5e-2;
+	w_prior_id = 1e-2;
+	w_prior_exp = 3e-2;
 	w_boundary = 1e-6;
 
-	//meanX = meanY = meanZ = 0;
+	meanX = meanY = meanZ = 0;
 	
 	// initialize CULA
 	//culaStatus s = culaInitialize();
@@ -34,8 +34,9 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 
 	w_landmarks.resize(512);
 
-	cc = 1e-6;
-	errorThreshold = 1e-4;
+	cc = 1e-4;
+	errorThreshold = 1e-5;
+	errorDiffThreshold = errorThreshold * 0.01;
 	usePrior = true;
 
 	frameCounter = 0;
@@ -72,7 +73,7 @@ void MultilinearReconstructor::loadPrior()
 	// covariance matrix
 
 	cout << "loading prior data ..." << endl;
-	const string fnwid  = "../Data/wid_trainingdata.bin";
+	const string fnwid  = "../Data/wid.bin";
 	ifstream fwid(fnwid, ios::in | ios::binary );
 
 	int ndims;
@@ -97,7 +98,7 @@ void MultilinearReconstructor::loadPrior()
 	mu_wid_weighted = mu_wid * w_prior_id;
 	PhGUtils::message("done");
 
-	const string fnwexp = "../Data/wexp_trainingdata.bin";
+	const string fnwexp = "../Data/wexp.bin";
 	ifstream fwexp(fnwexp, ios::in | ios::binary );
 
 	fwexp.read(reinterpret_cast<char*>(&ndims), sizeof(int));
@@ -332,8 +333,9 @@ void MultilinearReconstructor::fit_withPrior() {
 		PhGUtils::error("No target set!");
 		return;
 	}
-	PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform;
+	PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
 
+	timerTotal.tic();
 	int iters = 0;
 	float E0 = 0;
 	bool converged = false;
@@ -415,13 +417,13 @@ void MultilinearReconstructor::fit_withPrior() {
 		float E = computeError();
 		//PhGUtils::debug("iters", iters, "Error", E);
 
-		converged |= E < errorThreshold;		
+		converged |= E < errorThreshold;
+		converged |= fabs(E - E0) < errorDiffThreshold;
 		E0 = E;
 		timerOther.toc();
 		//emit oneiter();
 		//QApplication::processEvents();
 	}
-	//cout << "Total iterations = " << iters << endl;
 
 	timerTransform.tic();
 	if( fitIdentity && !fitExpression ) { 
@@ -453,14 +455,15 @@ void MultilinearReconstructor::fit_withPrior() {
 	transformMesh();
 	timerTransform.toc();
 	//emit oneiter();
+	timerTotal.toc();
 
-	/*
-	PhGUtils::message("Time cost for pose fitting = " + PhGUtils::toString(timerRT.elapsed()) + " seconds.");
-	PhGUtils::message("Time cost for wid fitting = " + PhGUtils::toString(timerID.elapsed()) + " seconds.");
-	PhGUtils::message("Time cost for wexp fitting = " + PhGUtils::toString(timerExp.elapsed()) + " seconds.");
-	PhGUtils::message("Time cost for tensor transformation = " + PhGUtils::toString(timerTransform.elapsed()) + " seconds.");
-	PhGUtils::message("Time cost for other computation = " + PhGUtils::toString(timerOther.elapsed()) + " seconds.");
-	*/
+	cout << "Total iterations = " << iters << endl;
+	PhGUtils::message("Time cost for pose fitting = " + PhGUtils::toString(timerRT.elapsed()*1000) + " ms.");
+	PhGUtils::message("Time cost for wid fitting = " + PhGUtils::toString(timerID.elapsed()*1000) + " ms.");
+	PhGUtils::message("Time cost for wexp fitting = " + PhGUtils::toString(timerExp.elapsed()*1000) + " ms.");
+	PhGUtils::message("Time cost for tensor transformation = " + PhGUtils::toString(timerTransform.elapsed()*1000) + " ms.");
+	PhGUtils::message("Time cost for other computation = " + PhGUtils::toString(timerOther.elapsed()*1000) + " ms.");
+	PhGUtils::message("Total time cost for reconstruction = " + PhGUtils::toString(timerTotal.elapsed()*1000) + " ms.");
 }
 
 vector<float> MultilinearReconstructor::computeWeightedMeanPose() {
@@ -617,7 +620,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	// use levmar
 	//int iters = slevmar_dif(evalCost, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
 	int iters = slevmar_der(evalCost, evalJacobian, RTparams, 
-		&(pws.meas[0]), 7, npts, 32, NULL, NULL, NULL, NULL, this);
+		&(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
 	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// use minpack
@@ -1037,10 +1040,17 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		validCount += isValid;
 	}
 
-	meanX = 0; //= validCount;
-	meanY = 0;//= validCount;
-	meanZ = 0; //= validCount;
+	meanX /= validCount;
+	meanY /= validCount;
+	meanZ /= validCount;
 
+	if( updateTC ) {
+		// initialize rotation and translation
+		RTparams[3] = meanX;
+		RTparams[4] = meanY;
+		RTparams[5] = meanZ;
+		RTparams[6] = fabs(targets[64].first.x - targets[74].first.x);
+	}
 	//PhGUtils::debug("valid landmarks", validCount);
 }
 
@@ -1199,5 +1209,7 @@ float MultilinearReconstructor::computeError()
 
 		E += p.squaredDistanceTo(targets[i].first) * w_landmarks[vidx];
 	}
+
+	E /= npts;
 	return E;
 }

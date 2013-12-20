@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 
 	glutInit(&argc, argv);
 
-#if 1
+#if 0
 	testPoseTracker();
 #else
 	MultilinearFaceRecon w;
