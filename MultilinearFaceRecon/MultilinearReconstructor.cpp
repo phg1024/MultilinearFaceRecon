@@ -7,11 +7,12 @@
 #include "Geometry/Mesh.h"
 #define USELEVMAR4WEIGHTS 0
 #define USE_MKL_LS 0		// use mkl least square solver
+#define OUTPUT_STATS 1
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {	
 	w_prior_id = 1e-2;
-	w_prior_exp = 3e-2;
+	w_prior_exp = 1e-2;
 	w_boundary = 1e-6;
 
 	meanX = meanY = meanZ = 0;
@@ -26,8 +27,8 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	mkl_set_num_threads(8);
 
 	loadCoreTensor();
-	initializeWeights();
 	loadPrior();
+	initializeWeights();
 	createTemplateItem();
 	//updateComputationTensor();
 	init();
@@ -80,9 +81,11 @@ void MultilinearReconstructor::loadPrior()
 	fwid.read(reinterpret_cast<char*>(&ndims), sizeof(int));
 	cout << "identity prior dim = " << ndims << endl;
 
+	mu_wid0.resize(ndims);
 	mu_wid.resize(ndims);
 	sigma_wid.resize(ndims, ndims);
 
+	fwid.read(reinterpret_cast<char*>(mu_wid0.memptr()), sizeof(float)*ndims);
 	fwid.read(reinterpret_cast<char*>(mu_wid.memptr()), sizeof(float)*ndims);
 	fwid.read(reinterpret_cast<char*>(sigma_wid.memptr()), sizeof(float)*ndims*ndims);
 
@@ -104,9 +107,11 @@ void MultilinearReconstructor::loadPrior()
 	fwexp.read(reinterpret_cast<char*>(&ndims), sizeof(int));
 	cout << "expression prior dim = " << ndims << endl;
 
+	mu_wexp0.resize(ndims);
 	mu_wexp.resize(ndims);
 	sigma_wexp.resize(ndims, ndims);
 
+	fwexp.read(reinterpret_cast<char*>(mu_wexp0.memptr()), sizeof(float)*ndims);
 	fwexp.read(reinterpret_cast<char*>(mu_wexp.memptr()), sizeof(float)*ndims);
 	fwexp.read(reinterpret_cast<char*>(sigma_wexp.memptr()), sizeof(float)*ndims*ndims);
 
@@ -145,19 +150,15 @@ void MultilinearReconstructor::initializeWeights()
 	Wid.resize(core.dim(0));
 	Wexp.resize(core.dim(1));
 
-	float w0 = 1.0 / core.dim(0);
+	// use the first person initially
 	for(int i=0;i<Wid.length();i++) {
-		//Wid(i) = mu_wid(i);
-		Wid(i) = 0;
+		Wid(i) = mu_wid0(i);
 	}
-	Wid(0) = 1;
 
 	// use neutral face initially
 	for(int i=0;i<Wexp.length();i++) {
-		Wexp(i) = 0;
-		//Wexp(i) = mu_wexp(i);
+		Wexp(i) = mu_wexp0(i);
 	}
-	Wexp(0) = 1.0;
 
 	tm0 = core.modeProduct(Wid, 0);
 	tm1 = core.modeProduct(Wexp, 1);
@@ -457,7 +458,7 @@ void MultilinearReconstructor::fit_withPrior() {
 	//emit oneiter();
 	timerTotal.toc();
 
-	/*
+#if OUTPUT_STATS
 	cout << "Total iterations = " << iters << endl;
 	PhGUtils::message("Time cost for pose fitting = " + PhGUtils::toString(timerRT.elapsed()*1000) + " ms.");
 	PhGUtils::message("Time cost for wid fitting = " + PhGUtils::toString(timerID.elapsed()*1000) + " ms.");
@@ -465,7 +466,7 @@ void MultilinearReconstructor::fit_withPrior() {
 	PhGUtils::message("Time cost for tensor transformation = " + PhGUtils::toString(timerTransform.elapsed()*1000) + " ms.");
 	PhGUtils::message("Time cost for other computation = " + PhGUtils::toString(timerOther.elapsed()*1000) + " ms.");
 	PhGUtils::message("Total time cost for reconstruction = " + PhGUtils::toString(timerTotal.elapsed()*1000) + " ms.");
-	*/
+#endif
 }
 
 vector<float> MultilinearReconstructor::computeWeightedMeanPose() {

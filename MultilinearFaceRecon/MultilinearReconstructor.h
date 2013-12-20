@@ -196,6 +196,7 @@ private:
 	Tensor1<float> Wid, Wexp;
 
 	// weights prior
+	arma::fvec mu_wid0, mu_wexp0;
 	arma::fvec mu_wid, mu_wexp;
 	arma::fvec mu_wid_weighted, mu_wexp_weighted;
 	arma::fmat sigma_wid, sigma_wexp;
