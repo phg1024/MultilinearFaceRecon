@@ -128,7 +128,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const int startIdx = 10000;
-	const int imageCount = 250;
+	const int imageCount = 500;
 	const int endIdx = startIdx + imageCount;
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
@@ -195,8 +195,8 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			//viewer->fit(MultilinearReconstructor::FIT_POSE);
 			//viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
 			//::system("pause");
-			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
-			//viewer->fit(MultilinearReconstructor::FIT_ALL);
+			//viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+			viewer->fit(MultilinearReconstructor::FIT_ALL);
 		}
 		else{
 			validFrames++;
