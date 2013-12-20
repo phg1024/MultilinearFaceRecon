@@ -42,11 +42,11 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	frameCounter = 0;
 
 	useHistory = true;
-	historyWeights[0] = 0.01;
-	historyWeights[1] = 0.02;
-	historyWeights[2] = 0.04;
-	historyWeights[3] = 0.08;
-	historyWeights[4] = 0.16;
+	historyWeights[0] = 0.02;
+	historyWeights[1] = 0.04;
+	historyWeights[2] = 0.07;
+	historyWeights[3] = 0.10;
+	historyWeights[4] = 0.15;
 }
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
@@ -457,6 +457,7 @@ void MultilinearReconstructor::fit_withPrior() {
 	//emit oneiter();
 	timerTotal.toc();
 
+	/*
 	cout << "Total iterations = " << iters << endl;
 	PhGUtils::message("Time cost for pose fitting = " + PhGUtils::toString(timerRT.elapsed()*1000) + " ms.");
 	PhGUtils::message("Time cost for wid fitting = " + PhGUtils::toString(timerID.elapsed()*1000) + " ms.");
@@ -464,6 +465,7 @@ void MultilinearReconstructor::fit_withPrior() {
 	PhGUtils::message("Time cost for tensor transformation = " + PhGUtils::toString(timerTransform.elapsed()*1000) + " ms.");
 	PhGUtils::message("Time cost for other computation = " + PhGUtils::toString(timerOther.elapsed()*1000) + " ms.");
 	PhGUtils::message("Total time cost for reconstruction = " + PhGUtils::toString(timerTotal.elapsed()*1000) + " ms.");
+	*/
 }
 
 vector<float> MultilinearReconstructor::computeWeightedMeanPose() {
@@ -616,11 +618,11 @@ int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cm
 
 bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	int npts = targets.size();
-	
+	float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
 	// use levmar
 	//int iters = slevmar_dif(evalCost, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
 	int iters = slevmar_der(evalCost, evalJacobian, RTparams, 
-		&(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+		&(pws.meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
 	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// use minpack
@@ -1009,13 +1011,6 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 	targets = pts;
 	int npts = targets.size();
 
-	if( updateTC ) {
-		pws.meas.resize(npts);
-		updateComputationTensor();
-		updateMatrices();
-	}
-
-
 	const float DEPTH_THRES = 1e-6;
 	int validCount = 0;
 	meanZ = 0;
@@ -1045,6 +1040,10 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 	meanZ /= validCount;
 
 	if( updateTC ) {
+		pws.meas.resize(npts);
+		updateComputationTensor();
+		updateMatrices();
+
 		// initialize rotation and translation
 		RTparams[3] = meanX;
 		RTparams[4] = meanY;
