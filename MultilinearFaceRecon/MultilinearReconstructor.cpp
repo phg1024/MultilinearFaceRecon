@@ -14,7 +14,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	w_prior_exp = 5e-2;
 	w_boundary = 1e-6;
 
-	//meanX = meanY = meanZ = 0;
+	meanX = meanY = meanZ = 0;
 	
 	// initialize CULA
 	//culaStatus s = culaInitialize();
@@ -33,6 +33,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	init();
 
 	w_landmarks.resize(512);
+	pws.meas.resize(128);
 
 	cc = 1e-6;
 	errorThreshold = 1e-4;
