@@ -11,7 +11,10 @@ PoseTracker::PoseTracker(void)
 	loadLandmarks();
 
 	lms.resize(128);
+	labeledLandmarks.resize(128);
+
 	frameIdx = 0;
+	trackedFrames = 0;
 }
 
 
@@ -42,12 +45,11 @@ bool PoseTracker::loadLandmarks()
 
 void PoseTracker::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms )
 {
-	vector<pair<PhGUtils::Point3f, int>> pts;
 	for(int i=0;i<landmarks.size();i++) {
 		int vidx = landmarks[i];
-		pts.push_back(make_pair(lms[i], vidx));
+		labeledLandmarks[i] = (make_pair(lms[i], vidx));
 	}
-	recon.bindTarget(pts);
+	recon.bindTarget(labeledLandmarks);
 }
 
 bool PoseTracker::reconstructionWithSingleFrame(
@@ -60,19 +62,24 @@ bool PoseTracker::reconstructionWithSingleFrame(
 	const int w = 640, h = 480;
 
 	// AAM tracking
+	tAAM.tic();
+	trackedFrames++;
 	fpts = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+	tAAM.toc();
+
 	if( fpts.empty() ) {
 		// tracking failed
 		cerr << "AAM tracking failed." << endl;
 		return false;
 	}
 	else {
+		tOther.tic();
 		// get the 3D landmarks and feed to recon manager
 		int npts = fpts.size()/2;
-		for(int i=0;i<npts;i++) {
+		for(int i=0, j=npts;i<npts;i++,j++) {
 			int u = fpts[i];
 			// flip y coordinates
-			int v = fpts[i+npts];
+			int v = fpts[j];
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
@@ -82,9 +89,10 @@ bool PoseTracker::reconstructionWithSingleFrame(
 			// minus one is a hack to bring the model nearer
 			//lms[i].z += 1.0;
 		}
-
 		bindTargetLandmarks(lms);
+		tOther.toc();
 
+		tRecon.tic();
 		if( frameIdx++ == 0 ) {
 			// fit the pose first, then fit the identity and pose together
 			recon.fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
@@ -92,8 +100,11 @@ bool PoseTracker::reconstructionWithSingleFrame(
 		else{
 			recon.fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
 		}
+		tRecon.toc();
 
+		tOther.tic();
 		pose.assign(recon.getPose(), recon.getPose()+7);
+		tOther.toc();
 
 		return true;
 	}

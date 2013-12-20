@@ -1,6 +1,6 @@
 #include "AAMWrapper.h"
-#include "Utils/Timer.h"
 
+#include <omp.h>
 
 AAMWrapper::AAMWrapper(void)
 {
@@ -17,7 +17,7 @@ AAMWrapper::~AAMWrapper(void)
 }
 
 void AAMWrapper::setup() {
-	string datapath = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\model\\";
+	string datapath = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\model\\";
 	string searchPicDir;
 	string savePrefix;
 	string AAMSearchPrefix;
@@ -35,6 +35,10 @@ void AAMWrapper::setup() {
 	AAMModelPath= datapath + "trainedResult_90_90.txt";
 	alignedShapeDir= datapath + "allignedshape_90_90.txt";
 
+	/// @attention: ONLY 640x480 images accepted
+	colorImage.create(480, 640, CV_8UC4);
+	depthImg = cv::Mat::zeros(480, 640, CV_32FC1);
+
 	engine=new AAM_Detection_Combination(0.9,0.05,0.003,0,colorRT_model,depthRT_model,AAMModelPath,alignedShapeDir,true);
 
 	// initialize the wrapper
@@ -49,18 +53,15 @@ void AAMWrapper::setup() {
 const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigned char* dimg, int w, int h )
 {
 		/// realtime tracking related
-
+		tPrep.tic();
 		// copy the image over here
-		Mat colorImage;
-		colorImage.create(h, w, CV_8UC4);
 		memcpy(colorImage.ptr<BYTE>(), cimg, sizeof(unsigned char)*w*h*4);
 
 		// convert to gray image
-		Mat colorIMG_Gray;
 		cvtColor(colorImage, colorIMG_Gray, CV_BGR2GRAY);
 
-		Mat depthImg = cv::Mat::zeros(h, w, CV_32FC1);
 		const float standardDepth = 750.0;
+#pragma omp parallel for
 		for (int i=0, idx=0;i<depthImg.rows;i++)
 		{
 			for (int j=0;j<depthImg.cols;j++,idx+=4)
@@ -71,6 +72,7 @@ const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigne
 		}
 
 		medianBlur(depthImg,depthImg,3);
+		tPrep.toc();
 
 		/*
 		// for debug
