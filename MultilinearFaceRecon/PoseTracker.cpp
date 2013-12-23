@@ -24,7 +24,7 @@ PoseTracker::~PoseTracker(void)
 
 bool PoseTracker::loadLandmarks()
 {
-	const string filename = "../Data/landmarks.txt";
+	const string filename = "../Data/model/landmarks.txt";
 	ifstream fin(filename, ios::in);
 	if( fin.is_open() ) {
 		landmarks.reserve(128);
@@ -61,6 +61,8 @@ bool PoseTracker::reconstructionWithSingleFrame(
 {
 	const int w = 640, h = 480;
 
+	tTotal.tic();
+
 	// AAM tracking
 	tAAM.tic();
 	trackedFrames++;
@@ -70,6 +72,7 @@ bool PoseTracker::reconstructionWithSingleFrame(
 	if( fpts.empty() ) {
 		// tracking failed
 		cerr << "AAM tracking failed." << endl;
+		tTotal.toc();
 		return false;
 	}
 	else {
@@ -106,6 +109,7 @@ bool PoseTracker::reconstructionWithSingleFrame(
 		pose.assign(recon.getPose(), recon.getPose()+7);
 		tOther.toc();
 
+		tTotal.toc();
 		return true;
 	}
 }

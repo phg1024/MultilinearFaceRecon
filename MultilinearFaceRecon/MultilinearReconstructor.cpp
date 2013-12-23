@@ -74,7 +74,7 @@ void MultilinearReconstructor::loadPrior()
 	// covariance matrix
 
 	cout << "loading prior data ..." << endl;
-	const string fnwid  = "../Data/wid.bin";
+	const string fnwid  = "../Data/blendshape/wid.bin";
 	ifstream fwid(fnwid, ios::in | ios::binary );
 
 	int ndims;
@@ -101,7 +101,7 @@ void MultilinearReconstructor::loadPrior()
 	mu_wid_weighted = mu_wid * w_prior_id;
 	PhGUtils::message("done");
 
-	const string fnwexp = "../Data/wexp.bin";
+	const string fnwexp = "../Data/blendshape/wexp.bin";
 	ifstream fwexp(fnwexp, ios::in | ios::binary );
 
 	fwexp.read(reinterpret_cast<char*>(&ndims), sizeof(int));
@@ -126,7 +126,7 @@ void MultilinearReconstructor::loadPrior()
 
 void MultilinearReconstructor::loadCoreTensor()
 {
-	const string filename = "../Data/blendshape_core.tensor";
+	const string filename = "../Data/blendshape/core.bin";
 	core.read(filename);
 }
 
@@ -583,7 +583,7 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 	}
 }
 
-
+#if USE_CMINPACK
 // function to evaluate residue when using cminpack
 int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cminpack_real__ *hx,
 					 int iflag) 
@@ -616,6 +616,7 @@ int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cm
 
 	return 0;
 }
+#endif
 
 bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	int npts = targets.size();

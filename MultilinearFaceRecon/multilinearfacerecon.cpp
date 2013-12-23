@@ -125,7 +125,7 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 }
 
 void MultilinearFaceRecon::reconstructionWithBatchInput() {
-	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\images\\";
+	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const int startIdx = 10000;
 	const int imageCount = 500;

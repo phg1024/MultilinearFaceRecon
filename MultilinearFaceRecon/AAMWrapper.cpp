@@ -17,7 +17,7 @@ AAMWrapper::~AAMWrapper(void)
 }
 
 void AAMWrapper::setup() {
-	string datapath = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\model\\";
+	string datapath = "..\\Data\\model\\";
 	string searchPicDir;
 	string savePrefix;
 	string AAMSearchPrefix;
@@ -71,6 +71,7 @@ const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigne
 			}
 		}
 
+		// smoothing
 		medianBlur(depthImg,depthImg,3);
 		tPrep.toc();
 

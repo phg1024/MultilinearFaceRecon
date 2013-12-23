@@ -10,10 +10,13 @@
 // levmar header
 #include "levmar.h"
 
+#define USE_CMINPACK 0
+#if USE_CMINPACK
 // cminpack header
 #define __cminpack_float__
 #define CMINPACK_NO_DLL
 #include "../cminpack-1.3.2/cminpack.h"
+#endif
 
 #include <cula.h>
 
@@ -98,8 +101,10 @@ private:
 	void transformTM1C();
 
 private:
+#if USE_CMINPACK
 	friend int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cminpack_real__ *hx,
 		int iflag);
+#endif
 	friend void evalCost(float *p, float *hx, int m, int n, void* adata);
 	friend void evalJacobian(float *p, float *J, int m, int n, void* adata);
 	friend void evalCost2(float *p, float *hx, int m, int n, void* adata);

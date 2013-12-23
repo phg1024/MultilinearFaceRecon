@@ -207,7 +207,8 @@ CColorDepthBasics::CColorDepthBasics() :
 		string AAMModelPath;
 		string alignedShapeDir;
 
-		const string datapath = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\model\\";
+		//const string datapath = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\model\\";
+		const string datapath = "../Data/model/";
 		//colorRT_model="D:\\Fuhao\\face dataset\\train_RGBD_finalEnlarged\\NoGarrett\\trainedTree_15_12_56_22_1.txt";
 		//depthRT_model="D:\\Fuhao\\face dataset\\train_RGBD_finalEnlarged\\NoGarrett\\trainedTree_15_12_56_22_0.txt";
 		//depthRT_model="D:\\Fuhao\\face dataset\\train_RGBD_finalEnlarged\\NoGarrett\\trainedTree_15_12_64_22_0.txt";

@@ -77,7 +77,7 @@ void BlendShapeViewer::paintGL() {
 
 bool BlendShapeViewer::loadLandmarks()
 {
-	const string filename = "../Data/landmarks.txt";
+	const string filename = "../Data/model/landmarks.txt";
 	ifstream fin(filename, ios::in);
 	if( fin.is_open() ) {
 		landmarks.reserve(128);
@@ -226,7 +226,7 @@ void BlendShapeViewer::fit(MultilinearReconstructor::FittingOption ops) {
 }
 
 void BlendShapeViewer::generatePrior() {
-	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\FaceWarehouse_Data_0\\";
+	const string path = "C:\\Users\\PhG\\Desktop\\Data\\FaceWarehouse_Data_0\\";
 	const string foldername = "Tester_";
 	//const string meshFolder = "Blendshape";
 	const string meshFolder = "TrainingPose";
