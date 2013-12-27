@@ -165,6 +165,7 @@ void BlendShapeViewer::drawLandmarks() {
 			*/
 			glNormal3f(0, 0, 1.0);
 			glVertex3f(p.x, p.y, p.z);
+			//cout << p << endl;
 		});
 		glEnd();
 	}
@@ -184,16 +185,33 @@ void BlendShapeViewer::updateMeshWithReconstructor() {
 }
 
 // @note	lms may have larger size than landmarks, so always use the length of landmarks
-void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms )
+void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor::TargetType ttp )
 {
-	targetLandmarks = lms;
+	switch( ttp ) {
+	case MultilinearReconstructor::TargetType_2D:
+		{
+			targetLandmarks.clear();
+			for(int i=0;i<lms.size();i++) {
+				PhGUtils::Point3f p;
+				PhGUtils::colorToWorld(lms[i].x, lms[i].y, lms[i].z, p.x, p.y, p.z);
+				targetLandmarks.push_back(p);
+			}
+			break;
+		}
+	case MultilinearReconstructor::TargetType_3D:
+		{
+			targetLandmarks = lms;
+			break;
+		}
+	}
+	
 	vector<pair<PhGUtils::Point3f, int>> pts;
 	for(int i=0;i<landmarks.size();i++) {
 		int vidx = landmarks[i];
 		pts.push_back(make_pair(lms[i], vidx));
 	}
 
-	recon.bindTarget(pts);
+	recon.bindTarget(pts, ttp);
 	targetSet = true;
 }
 

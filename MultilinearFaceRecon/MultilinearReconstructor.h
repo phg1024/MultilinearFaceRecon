@@ -28,6 +28,11 @@ class MultilinearReconstructor : public QObject
 {
 	Q_OBJECT
 public:
+	enum TargetType {
+		TargetType_2D,
+		TargetType_3D
+	};
+
 	enum FittingOption {
 		FIT_POSE,
 		FIT_IDENTITY,
@@ -57,7 +62,8 @@ public:
 	// for 3D points
 
 	// for reconstruction with 3D locations of feature points
-	void bindTarget(const vector<pair<PhGUtils::Point3f, int>>& pts);
+	void bindTarget(const vector<pair<PhGUtils::Point3f, int>>& pts,
+		TargetType ttp = TargetType_3D);
 	void init();
 	void fit(FittingOption ops = FIT_ALL);
 	void fit_withPrior();
@@ -115,10 +121,18 @@ private:
 	void transformMesh();
 	float computeError();
 
-	bool fitRigidTransformationOnly();
 	bool fitRigidTransformationAndScale();
 	bool fitIdentityWeights_withPrior();
 	bool fitExpressionWeights_withPrior();
+
+	friend void evalCost_2D(float *p, float *hx, int m, int n, void* adata);
+	friend void evalJacobian_2D(float *p, float *J, int m, int n, void* adata);
+
+	bool fitRigidTransformationAndScale_2D();
+	bool fitIdentityWeights_withPrior_2D();
+	bool fitExpressionWeights_withPrior_2D();
+
+	float computeError_2D();
 
 	vector<float> computeWeightedMeanPose();
 
@@ -126,7 +140,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold, errorDiffThreshold;
-	static const int MAXITERS = 8;	// this should be enough
+	static const int MAXITERS = 32;	// this should be enough
 	bool usePrior;
 
 	// weights for prior

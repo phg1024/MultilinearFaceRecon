@@ -25,11 +25,13 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	connect(ui.actionFit, SIGNAL(triggered()), this, SLOT(fit()));
 	connect(ui.actionGenerate_Prior, SIGNAL(triggered()), this, SLOT(generatePrior()));
 	connect(ui.actionStart_Kinect, SIGNAL(triggered()), this, SLOT(toggleKinectInput()));
+	connect(ui.actionStart_Kinect_2D, SIGNAL(triggered()), this, SLOT(toggleKinectInput_2D()));
 	connect(ui.actionReset_Tracking, SIGNAL(triggered()), this, SLOT(resetAAM()));
 	connect(ui.actionBatch_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithBatchInput()));
 
 	// timer for kinect input
 	connect(&timer, SIGNAL(timeout()), this, SLOT(updateKinectStreams()));
+	connect(&timer2d, SIGNAL(timeout()), this, SLOT(updateKinectStreams_2D()));
 
 	useKinectInput = false;
 }
@@ -44,6 +46,9 @@ void MultilinearFaceRecon::setupKinectManager() {
 	
 	// 30 frames per second
 	timer.setInterval(33);
+
+	// 30 frames per second
+	timer2d.setInterval(33);
 }
 
 void MultilinearFaceRecon::setupStreamViews() {
@@ -97,7 +102,7 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
-			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
+			PhGUtils::colorToWorld((w-1) - u, v, d, lms[i].x, lms[i].y, lms[i].z);
 			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 
 			// minus one is a hack to bring the model nearer
@@ -182,7 +187,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
-			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
+			PhGUtils::colorToWorld((w-1) - u, v, d, lms[i].x, lms[i].y, lms[i].z);
 			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 
 			// minus one is a hack to bring the model nearer
@@ -256,17 +261,17 @@ void MultilinearFaceRecon::updateKinectStreams_2D()
 		int v = f[i+npts];
 		int idx = (v*w+u)*4;
 		float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
-		lms[i].x = u;
+		lms[i].x = (w-1) - u;
 		lms[i].y = v;
 		lms[i].z = d;
 		//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 	}
-	viewer->bindTargetLandmarks(lms);
+	viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
 	if( frameIdx++ == 0 ) {
-		viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+		viewer->fit2d(MultilinearReconstructor::FIT_POSE);
 	}
 	else
-		viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+		viewer->fit2d(MultilinearReconstructor::FIT_POSE);
 	tRecon.toc();
 }
 
@@ -310,9 +315,19 @@ void MultilinearFaceRecon::updateKinectStreams()
 		int v = f[i+npts];
 		int idx = (v*w+u)*4;
 		float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
-		PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
-		//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
-		
+		PhGUtils::colorToWorld((w-1) - u, v, d, lms[i].x, lms[i].y, lms[i].z);
+
+		/*
+		cout << u << " " << v << " " << d << "\t"
+			<< lms[i].x << " " << lms[i].y << " " << lms[i].z << endl;
+		*/
+
+		/*
+		int uu, vv;
+		PhGUtils::worldToColor(lms[i].x, lms[i].y, lms[i].z, uu, vv);
+		assert( d == 0 || (uu == u && vv == v) );
+		*/
+
 		// minus one is a hack to bring the model nearer
 		//lms[i].z += 1.0;
 	}
@@ -348,4 +363,22 @@ void MultilinearFaceRecon::resetAAM()
 	timer.stop();
 	aam.reset();
 	timer.start();
+}
+
+void MultilinearFaceRecon::toggleKinectInput_2D()
+{
+	useKinectInput = !useKinectInput;
+	if( useKinectInput ){
+		tAAM.reset(); tView.reset(); tKman.reset(); tRecon.reset();
+		frameIdx = 0;
+		timer2d.start();
+	}
+	else{
+		timer2d.stop();
+		PhGUtils::message("Total frames = " + PhGUtils::toString(frameIdx));
+		PhGUtils::message("Time cost for AAM = " + PhGUtils::toString(tAAM.elapsed() / frameIdx ) + " seconds.");
+		PhGUtils::message("Time cost for Kinect = " + PhGUtils::toString(tKman.elapsed() / frameIdx) + " seconds.");
+		PhGUtils::message("Time cost for Views = " + PhGUtils::toString(tView.elapsed() / frameIdx) + " seconds.");
+		PhGUtils::message("Time cost for Reconstruction = " + PhGUtils::toString(tRecon.elapsed() / frameIdx) + " seconds.");
+	}
 }

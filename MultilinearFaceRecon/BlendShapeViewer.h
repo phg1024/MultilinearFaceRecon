@@ -14,7 +14,7 @@ public:
 	~BlendShapeViewer(void);
 
 	void bindTargetMesh(const string& filename);
-	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts);
+	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts, MultilinearReconstructor::TargetType ttp = MultilinearReconstructor::TargetType_3D);
 	void fit(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void fit2d(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void generatePrior();
@@ -49,7 +49,7 @@ private:
 	vector<PhGUtils::Point3f> targetLandmarks;
 	vector<int> landmarks;
 	MultilinearReconstructor recon;
-	MultilinearReconstructorGPU GPURecon;
+	//MultilinearReconstructorGPU GPURecon;
 
 	PhGUtils::Matrix4x4f mProj, mMv;
 };

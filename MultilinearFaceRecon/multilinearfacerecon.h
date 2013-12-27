@@ -23,6 +23,7 @@ public:
 
 public slots:
 	void toggleKinectInput();
+	void toggleKinectInput_2D();
 	void resetAAM();
 	void reconstructionWithBatchInput();
 	int reconstructionWithSingleFrame(
@@ -47,7 +48,7 @@ private:
 	Ui::MultilinearFaceReconClass ui;
 
 private:
-	QTimer timer;
+	QTimer timer, timer2d;
 	BlendShapeViewer* viewer;
 
 	// kinect input related
