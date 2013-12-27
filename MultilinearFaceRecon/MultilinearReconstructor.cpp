@@ -11,19 +11,15 @@
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {	
-	w_prior_id = 1e-3;
-	w_prior_exp = 1e-4;
-	w_boundary = 1e-6;
+	w_prior_id = 5e-4;
+	// for 25 expression dimensions
+	//w_prior_exp = 1e-4;
+	// for 47 expression dimensions
+	w_prior_exp = 5e-4;
+	w_boundary = 1e-8;
 
 	meanX = meanY = meanZ = 0;
 	
-	// initialize CULA
-	//culaStatus s = culaInitialize();
-	//if(s != culaNoError)
-	//{
-	//	printf("%s\n", culaGetStatusString(s));
-	//}
-
 	mkl_set_num_threads(8);
 
 	loadCoreTensor();
@@ -186,6 +182,11 @@ void MultilinearReconstructor::init()
 	updateMatrices();
 }
 
+void MultilinearReconstructor::fit2d(FittingOption ops /*= FIT_ALL*/)
+{
+
+}
+
 void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops )
 {
 	switch( ops ) {
@@ -247,81 +248,30 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 
 		return;
 	}
+	else {
+		float w_prior_exp_tmp = w_prior_exp;
+		float w_prior_id_tmp = w_prior_id;
 
-	//cout << "simple fit" << endl;
-	//init();
+		// set the prior weights to 0
+		w_prior_exp = 0;
+		w_prior_id = 0;
 
-	if(targets.empty())
-	{
-		PhGUtils::error("No target set!");
+		fit_withPrior();
+
+		if( ops == FIT_POSE_AND_IDENTITY ) {
+			updateTM0();
+		}
+		if( ops == FIT_ALL ) {
+			updateTM0();
+			updateTM1();
+		}
+
+		// restore the priors
+		w_prior_exp = w_prior_exp_tmp;
+		w_prior_id = w_prior_id_tmp;
+
 		return;
 	}
-	int iters = 0;
-	float E0 = 0;
-	bool converged = false;
-	while( !converged && iters++ < MAXITERS ) {
-		converged = true;
-
-		if( fitPose ) {
-			converged &= fitRigidTransformationAndScale();		
-		}
-
-		if( fitIdentity ) {
-			// apply the new global transformation to tm1c
-			// because tm1c is required in fitting identity weights
-			transformTM1C();
-
-			converged &= fitIdentityWeights();
-
-			// update tm0c with the new identity weights
-			// now the tensor is not updated with global rigid transformation
-			tm0c = corec.modeProduct(Wid, 0);
-		}
-
-		if( fitExpression ) {
-
-			// apply the global transformation to tm0c
-			// because tm0c is required in fitting expression weights
-			transformTM0C();
-
-			converged &= fitExpressionWeights();	
-			// update tm1c with the new expression weights
-			// now the tensor is not updated with global rigid transformation
-			tm1c = corec.modeProduct(Wexp, 1);
-		}
-
-		// compute tmc from the new tm1c
-		if( fitIdentity || fitExpression ) {
-			// compute tmc from the new tm1c
-			updateTMC();
-		}		
-
-		// uncomment to show the transformation process
-		//transformMesh();
-
-		float E = computeError();
-		PhGUtils::debug("iters", iters, "Error", E);
-
-		converged |= E < errorThreshold;		
-		E0 = E;
-		//emit oneiter();
-		//QApplication::processEvents();
-	}
-	//cout << "Total iterations = " << iters << endl;
-
-	if( fitIdentity && !fitExpression ) 
-		tplt = tm1.modeProduct(Wid, 0);
-
-	if( fitExpression && !fitIdentity ) {
-		cout << tm0.dim(0) << ", " << tm0.dim(1) << endl;
-		tplt = tm0.modeProduct(Wexp, 0);
-	}
-
-	if( fitIdentity && fitExpression )
-		tplt = core.modeProduct(Wexp, 1).modeProduct(Wid, 0);
-
-	transformMesh();
-	//emit oneiter();
 }
 
 void MultilinearReconstructor::fit_withPrior() {
@@ -775,51 +725,6 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 }
 
 
-bool MultilinearReconstructor::fitIdentityWeights()
-{
-#if USELEVMAR4WEIGHTS
-	int nparams = core.dim(0);
-	vector<float> params(nparams);
-	int npts = targets.size();
-	vector<float> meas(npts);
-	int iters = slevmar_dif(evalCost2, &(params[0]), &(meas[0]), nparams, npts, 1024, NULL, NULL, NULL, NULL, this);
-	cout << "finished in " << iters << " iterations." << endl;
-
-	for(int i=0;i<nparams;i++) {
-		Wid(i) = params[i];		
-		//cout << params[i] << ' ';
-	}
-	//cout << endl;
-#else
-	// to use this method, the tensor tm1c must first be updated using the rotation matrix and translation vector
-	int nparams = core.dim(0);
-
-	// assemble the matrix
-	for(int i=0;i<tm1cRT.dim(0);i++) {
-		for(int j=0;j<tm1cRT.dim(1);j++) {
-			Aid(j, i) = tm1cRT(i, j);
-		}
-	}
-
-	for(int i=0;i<q.length();i++) {
-		brhs(i) = q(i);
-	}
-
-	int rtn = leastsquare<float>(Aid, brhs);
-	//debug("rtn", rtn);
-	float diff = 0;
-	//b.print("b");
-	for(int i=0;i<nparams;i++) {
-		diff += fabs(Wid(i) - brhs(i));
-		Wid(i) = brhs(i);		
-		//cout << params[i] << ' ';
-	}
-	//cout << endl;
-#endif
-
-	return diff / nparams < cc;
-}
-
 void evalCost3(float *p, float *hx, int m, int n, void* adata) {
 	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
 
@@ -920,53 +825,6 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 
 	// normalize Wexp
 
-	//cout << endl;
-	//cout << endl;
-#endif
-
-	return diff / nparams < cc;
-}
-
-bool MultilinearReconstructor::fitExpressionWeights()
-{
-#if USELEVMAR4WEIGHTS
-	// fix both rotation and identity weights, solve for expression weights
-	int nparams = core.dim(1);
-	vector<float> params(nparams);
-	int npts = targets.size();
-	vector<float> meas(npts);
-	int iters = slevmar_dif(evalCost3, &(params[0]), &(meas[0]), nparams, npts, 1024, NULL, NULL, NULL, NULL, this);
-
-	cout << "finished in " << iters << " iterations." << endl;
-
-	for(int i=0;i<nparams;i++) {
-		Wexp(i) = params[i];
-		//cout << params[i] << ' ';
-	}
-	//cout << endl;
-#else
-	int nparams = core.dim(1);
-
-	for(int i=0;i<tm0cRT.dim(0);i++) {
-		for(int j=0;j<tm0cRT.dim(1);j++) {
-			Aexp(j, i) = tm0cRT(i, j);
-		}
-	}
-
-	for(int i=0;i<q.length();i++) {
-		brhs(i) = q(i);
-	}
-
-	int rtn = leastsquare<float>(Aexp, brhs);
-	//debug("rtn", rtn);
-
-	//b.print("b");
-	float diff = 0;
-	for(int i=0;i<nparams;i++) {
-		diff += fabs(Wexp(i) - brhs(i));
-		Wexp(i) = brhs(i);
-		//cout << params[i] << ' ';
-	}
 	//cout << endl;
 	//cout << endl;
 #endif

@@ -23,6 +23,12 @@ public:
 	MultilinearReconstructorGPU();
 	~MultilinearReconstructorGPU();
 
+	void bindTarget(const vector<PhGUtils::Point3f>& tgt);
+	bool fitPose();
+	bool fitPoseAndIdentity();
+	bool fitPoseAndExpression();
+	bool fitAll();
+
 protected:
 	void init();
 	void preprocess();
@@ -59,7 +65,6 @@ private:
 	// fitting control
 	static const int INITFRAMES = 5;
 	int frameCounter;
-	bool fitPose, fitIdentity, fitExpression;
 
 private:
 	// the input core tensor
@@ -106,7 +111,7 @@ private:
 	float *d_mu_wid0, *d_mu_wexp0;
 	float *d_mu_wid, *d_mu_wexp;
 	float *d_mu_wid_weighted, *d_mu_wexp_weighted;
-	int ndims_wid, ndims_wexp;
+	int ndims_wid, ndims_wexp, ndims_pts;
 	float *d_sigma_wid, *d_sigma_wexp;
 	float *d_sigma_wid_weighted, *d_sigma_wexp_weighted;
 

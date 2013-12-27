@@ -41,6 +41,7 @@ private slots:
 	void fit();
 	void generatePrior();
 	void updateKinectStreams();
+	void updateKinectStreams_2D();
 
 private:
 	Ui::MultilinearFaceReconClass ui;

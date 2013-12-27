@@ -16,6 +16,7 @@ public:
 	void bindTargetMesh(const string& filename);
 	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts);
 	void fit(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
+	void fit2d(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void generatePrior();
 
 	const MultilinearReconstructor& getReconstructor() const {

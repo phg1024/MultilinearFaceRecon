@@ -216,9 +216,63 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() / validFrames));
 }
 
+
+void MultilinearFaceRecon::updateKinectStreams_2D()
+{
+	tKman.tic();
+	kman.updateStream();
+	int w = kman.getWidth(), h = kman.getHeight();
+	const vector<unsigned char>& colordata = kman.getRGBData();
+	const vector<unsigned char>& depthdata = kman.getDepthData();
+	const vector<USHORT>& depthvalues = kman.getDepthValues();
+	tKman.toc();
+
+	tView.tic();
+	colorView->bindStreamData(&(colordata[0]), w, h);
+	depthView->bindStreamData(&(depthdata[0]), w, h);
+	tView.toc();
+	//QImage rgbimg = PhGUtils::toQImage(&(kman.getRGBData()[0]), kman.getWidth(), kman.getHeight());
+	//QImage depthimg = PhGUtils::toQImage(&(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
+
+	//rgbimg.save("rgb.png");
+	//depthimg.save("depth.png");
+	tAAM.tic();
+	const vector<float>& f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+	tAAM.toc();
+
+	tView.tic();
+	colorView->bindLandmarks(f);
+	tView.toc();
+
+	// do not update the mesh if the landmarks are unknown
+	if( f.empty() ) return;
+
+	tRecon.tic();
+	// get the 3D landmarks and feed to recon manager
+	int npts = f.size()/2;
+	for(int i=0;i<npts;i++) {
+		int u = f[i];
+		// flip y coordinates
+		int v = f[i+npts];
+		int idx = (v*w+u)*4;
+		float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+		lms[i].x = u;
+		lms[i].y = v;
+		lms[i].z = d;
+		//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
+	}
+	viewer->bindTargetLandmarks(lms);
+	if( frameIdx++ == 0 ) {
+		viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+	}
+	else
+		viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+	tRecon.toc();
+}
+
+
 void MultilinearFaceRecon::updateKinectStreams()
 {	
-
 	tKman.tic();
 	kman.updateStream();
 	int w = kman.getWidth(), h = kman.getHeight();

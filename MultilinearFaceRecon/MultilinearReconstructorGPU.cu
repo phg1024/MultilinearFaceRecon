@@ -1,7 +1,5 @@
 #include "MultilinearReconstructorGPU.cuh"
 
-extern "C" void modeProduct3_1(float* t3, float* v, float* t2);
-
 MultilinearReconstructorGPU::MultilinearReconstructorGPU() {
 	w_prior_id = 1e-3;
 	w_prior_exp = 1e-4;
@@ -72,14 +70,24 @@ __host__ void MultilinearReconstructorGPU::preprocess() {
 
 	// initialize tm0, tm1
 
-	// tm0 = tu0 * Wid
+	// tm0 = tu0 * Wid, use cublas
+	// tu0: ndims_wid * (ndims_wexp * ndims_pts) matrix, each row corresponds to an identity
+	//		inside each row, the vertices are arranged by expression
+	//		That is, a row in tu0 can be see as a row-major matrix where each row corresponds to an expression
+	// tm0: a row-major matrix where each row corresponds to an expression
+	cublasSgemv('N', ndims_wexp * ndims_pts, ndims_wid, 1.0, d_tu0, ndims_wid, d_Wid, 1, 0, d_tm0, 1);
 
-	// tm1 = tu1 * Wexp
+	// tm1 = tu1 * Wexp, use cublas
+	// tu1: ndims_wexp * (ndims_wid * ndims_pts) matrix, each row corresponds to an expression
+	//		inside each row, the vertices are arraged using index-major
+	//		That is, a row in tu1 can be see as a column-major matrix where each column corresponds to an identity
+	// tm1: a column-major matrix where each column corresponds to an identity
+	cublasSgemv('N', ndims_wid * ndims_pts, ndims_wexp, 1.0, d_tu1, ndims_wexp, d_Wid, 1, 0, d_tm0, 1);
 
 	// create template mesh
-	// tplt = tm1 * Wid
+	// tplt = tm1 * Wid, use cublas
 
-
+	// initialize tm0c, tm1c
 }
 
 __host__ void MultilinearReconstructorGPU::init() {
@@ -205,13 +213,14 @@ __host__ void MultilinearReconstructorGPU::init() {
 	else {
 		PhGUtils::abort("Failed to load landmarks!");
 	}
+	ndims_pts = landmarkIdx.size() * 3;	// constraints by the points
 
 	// allocate space for landmarks
 	checkCudaErrors(cudaMalloc((void**) &d_fptsIdx, sizeof(int)*landmarkIdx.size()));
-	checkCudaErrors(cudaMalloc((void**) &d_targets, sizeof(float)*landmarkIdx.size()*3));
+	checkCudaErrors(cudaMalloc((void**) &d_targets, sizeof(float)*ndims_pts));
 
 	// build the truncated tensor
-	Tensor3<float> corec(core.dim(0), core.dim(1), landmarkIdx.size()*3);
+	Tensor3<float> corec(core.dim(0), core.dim(1), ndims_pts);
 
 	for(int i=0;i<core.dim(0);i++) {
 		for(int j=0;j<core.dim(1);j++) {
@@ -223,7 +232,6 @@ __host__ void MultilinearReconstructorGPU::init() {
 			}
 		}
 	}
-	int ndims_pts = landmarkIdx.size() * 3;	// constraints by the points
 	int truncatedSize = core_dim[0] * core_dim[1] * ndims_pts;
 	Tensor2<float> tu0c = corec.unfold(0), tu1c = corec.unfold(1);
 
@@ -246,4 +254,24 @@ __host__ void MultilinearReconstructorGPU::init() {
 	checkCudaErrors(cudaMalloc((void **) &d_brhs, sizeof(float)*(ndims_pts + max(ndims_wid, ndims_wexp))));
 	checkCudaErrors(cudaMalloc((void **) &d_w_landmarks, sizeof(float)*512));
 	PhGUtils::message("done.");
+}
+
+__host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Point3f>& tgt) {
+
+}
+
+__host__ bool MultilinearReconstructorGPU::fitPose() {
+	return true;
+}
+
+__host__ bool MultilinearReconstructorGPU::fitPoseAndIdentity() {
+	return true;
+}
+
+__host__ bool MultilinearReconstructorGPU::fitPoseAndExpression() {
+	return true;
+}
+
+__host__ bool MultilinearReconstructorGPU::fitAll() {
+	return true;
 }

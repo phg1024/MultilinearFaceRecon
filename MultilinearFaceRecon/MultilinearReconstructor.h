@@ -61,6 +61,8 @@ public:
 	void init();
 	void fit(FittingOption ops = FIT_ALL);
 	void fit_withPrior();
+	void fit2d(FittingOption ops = FIT_ALL);
+	void fit2d_withPrior();
 
 	// force update computation tensors
 	void updateTM0() {
@@ -111,15 +113,11 @@ private:
 	friend void evalCost3(float *p, float *hx, int m, int n, void* adata);
 
 	void transformMesh();
-	void transformMesh_id();
-	void transformMesh_exp();
 	float computeError();
 
 	bool fitRigidTransformationOnly();
 	bool fitRigidTransformationAndScale();
-	bool fitIdentityWeights();
 	bool fitIdentityWeights_withPrior();
-	bool fitExpressionWeights();
 	bool fitExpressionWeights_withPrior();
 
 	vector<float> computeWeightedMeanPose();

@@ -225,6 +225,16 @@ void BlendShapeViewer::fit(MultilinearReconstructor::FittingOption ops) {
 	updateMeshWithReconstructor();
 }
 
+void BlendShapeViewer::fit2d(MultilinearReconstructor::FittingOption ops /*= MultilinearReconstructor::FIT_ALL*/)
+{
+	//PhGUtils::Timer t;
+	//t.tic();
+	recon.fit2d(ops);
+	//t.toc("reconstruction");
+
+	updateMeshWithReconstructor();
+}
+
 void BlendShapeViewer::generatePrior() {
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\FaceWarehouse_Data_0\\";
 	const string foldername = "Tester_";
