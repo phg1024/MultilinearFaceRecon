@@ -127,6 +127,8 @@ private:
 
 	friend void evalCost_2D(float *p, float *hx, int m, int n, void* adata);
 	friend void evalJacobian_2D(float *p, float *J, int m, int n, void* adata);
+	friend void evalCost2_2D(float *p, float *hx, int m, int n, void* adata);
+	friend void evalCost3_2D(float *p, float *hx, int m, int n, void* adata);
 
 	bool fitRigidTransformationAndScale_2D();
 	bool fitIdentityWeights_withPrior_2D();
@@ -146,6 +148,8 @@ private:
 	// weights for prior
 	float w_prior_id, w_prior_exp;
 	float w_boundary;
+
+	float w_prior_id_2D, w_prior_exp_2D;
 
 	// the input core tensor
 	Tensor3<float> core;
@@ -213,8 +217,13 @@ private:
 	Tensor1<float> Wid, Wexp;
 
 	// weights prior
+	// average identity and neutral expression
 	arma::fvec mu_wid0, mu_wexp0;
+	// mean wid and mean wexp
+	arma::fvec mu_wid_orig, mu_wexp_orig;
+	// mean wid and mean wexp, multiplied by the inverse of sigma_?
 	arma::fvec mu_wid, mu_wexp;
+	// weighted version of mu_wid and mu_wexp
 	arma::fvec mu_wid_weighted, mu_wexp_weighted;
 	arma::fmat sigma_wid, sigma_wexp;
 	arma::fmat sigma_wid_weighted, sigma_wexp_weighted;

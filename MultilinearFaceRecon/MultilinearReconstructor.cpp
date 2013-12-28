@@ -19,6 +19,9 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	w_prior_exp = 5e-4;
 	w_boundary = 1e-8;
 
+	w_prior_exp_2D = 1e2;
+	w_prior_id_2D = 1e3;
+
 	meanX = meanY = meanZ = 0;
 	
 	mkl_set_num_threads(8);
@@ -94,6 +97,7 @@ void MultilinearReconstructor::loadPrior()
 	//sigma_wid.print("sigma_wid");
 	sigma_wid = arma::inv(sigma_wid);
 	sigma_wid_weighted = sigma_wid * w_prior_id;
+	mu_wid_orig = mu_wid;
 	mu_wid = sigma_wid * mu_wid;
 	mu_wid_weighted = mu_wid * w_prior_id;
 	PhGUtils::message("done");
@@ -117,6 +121,7 @@ void MultilinearReconstructor::loadPrior()
 	//sigma_wexp.print("sigma_wexp");
 	sigma_wexp = arma::inv(sigma_wexp);
 	sigma_wexp_weighted = sigma_wexp * w_prior_exp;
+	mu_wexp_orig = mu_wexp;
 	mu_wexp = sigma_wexp * mu_wexp;
 	mu_wexp_weighted = mu_wexp * w_prior_exp;
 }
@@ -364,15 +369,16 @@ void MultilinearReconstructor::fit2d_withPrior() {
 		timerOther.toc();
 
 		// uncomment to show the transformation process		
+		
 		/*
 		transformMesh();
 		Rmat.print("R");
 		Tvec.print("T");
 		emit oneiter();
 		QApplication::processEvents();
-
 		::system("pause");
 		*/
+		
 	}
 
 	timerTransform.tic();
@@ -1000,6 +1006,69 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	return diff / 7 < cc;
 }
 
+void evalCost2_2D(float *p, float *hx, int m, int n, void* adata) {
+	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+
+	float s, rx, ry, rz, tx, ty, tz;
+	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
+
+	auto targets = recon->targets;
+	int npts = targets.size();
+	auto tm1cRT = recon->tm1cRT;
+	auto w_landmarks = recon->w_landmarks;
+	auto w_prior_id_2D = recon->w_prior_id_2D;
+	auto mu_wid_orig = recon->mu_wid_orig;
+
+	// set up rotation matrix and translation vector
+	const PhGUtils::Point3f& T = recon->Tvec;
+	const PhGUtils::Matrix3x3f& R = recon->Rmat;
+
+	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
+		float wpt = w_landmarks[vidx];
+
+		float x = 0, y = 0, z = 0;
+		for(int j=0;j<m;j++) {
+			x += tm1cRT(j, vidx) * p[j];
+			y += tm1cRT(j, vidx+1) * p[j];
+			z += tm1cRT(j, vidx+2) * p[j];
+		}
+		const PhGUtils::Point3f& q = targets[i].first;
+
+		float u, v, d;
+		PhGUtils::worldToColor(x + T.x, y + T.y, z + T.z, u, v, d);
+		
+		float dx = q.x - u, dy = q.y - v, dz = q.z==0?0:(q.z - d);
+		hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
+	}
+
+	// regularization term
+	for(int i=0, cidx=npts;i<m;i++, cidx++) {
+		float diff = p[i] - mu_wid_orig(i);
+		hx[cidx] = diff * diff * w_prior_id_2D;
+	}
+}
+
+bool MultilinearReconstructor::fitIdentityWeights_withPrior_2D()
+{
+	int nparams = core.dim(0);
+	vector<float> params(Wid.rawptr(), Wid.rawptr()+nparams);
+	int npts = targets.size();
+	vector<float> meas(npts+nparams);
+	int iters = slevmar_dif(evalCost2_2D, &(params[0]), &(meas[0]), nparams, npts + nparams, 128, NULL, NULL, NULL, NULL, this);
+	//cout << "finished in " << iters << " iterations." << endl;
+
+	//debug("rtn", rtn);
+	float diff = 0;
+	//b.print("b");
+	for(int i=0;i<nparams;i++) {
+		diff += fabs(Wid(i) - params[i]);
+		Wid(i) = params[i];		
+		//cout << params[i] << ' ';
+	}
+
+	return diff / nparams < cc;
+}
+
 void evalCost2(float *p, float *hx, int m, int n, void* adata) {
 	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
 
@@ -1028,53 +1097,6 @@ void evalCost2(float *p, float *hx, int m, int n, void* adata) {
 
 		hx[i] = pp.distanceTo(q);
 	}
-}
-
-bool MultilinearReconstructor::fitIdentityWeights_withPrior_2D()
-{
-	// to use this method, the tensor tm1c must first be updated using the rotation matrix and translation vector
-	int nparams = core.dim(0);	
-
-	// assemble the matrix, fill in the upper part
-	// the lower part is already filled in
-	for(int i=0;i<tm1cRT.dim(0);i++) {
-		for(int j=0;j<tm1cRT.dim(1);j++) {
-			Aid(j, i) = tm1cRT(i, j);
-		}
-	}
-
-	for(int j=0;j<Aid.cols();j++) {
-		for(int i=0, ridx=tm1c.dim(1);i<nparams;i++, ridx++) {
-			Aid(ridx, j) = sigma_wid_weighted(i, j);
-		}
-	}
-
-	//PhGUtils::Matrix3x3f invRmat = Rmat.inv();
-
-	int npts = targets.size();
-	// assemble the right hand side, fill in the upper part as usual
-	for(int i=0, vidx=0;i<npts;vidx+=3, i++) {
-		brhs(vidx) = (q(vidx) - Tvec.x) * w_landmarks[vidx];
-		brhs(vidx+1) = (q(vidx+1) - Tvec.y) * w_landmarks[vidx+1];
-		brhs(vidx+2) = (q(vidx+2) - Tvec.z) * w_landmarks[vidx+2];
-	}
-	// fill in the lower part with the mean vector of identity weights
-	int ndim_id = mu_wid.size();
-	for(int i=0, idx=q.length();i<ndim_id;i++,idx++) {
-		brhs(idx) = mu_wid_weighted(i);
-	}
-
-	int rtn = leastsquare<float>(Aid, brhs);
-	//debug("rtn", rtn);
-	float diff = 0;
-	//b.print("b");
-	for(int i=0;i<nparams;i++) {
-		diff += fabs(Wid(i) - brhs(i));
-		Wid(i) = brhs(i);		
-		//cout << params[i] << ' ';
-	}
-
-	return diff / nparams < cc;
 }
 
 bool MultilinearReconstructor::fitIdentityWeights_withPrior()
@@ -1142,6 +1164,68 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 }
 
 
+void evalCost3_2D(float *p, float *hx, int m, int n, void* adata) {
+	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+
+	float s, rx, ry, rz, tx, ty, tz;
+	s = p[0], rx = p[1], ry = p[2], rz = p[3], tx = p[4], ty = p[5], tz = p[6];
+
+	auto targets = recon->targets;
+	int npts = targets.size();
+	auto tm0cRT = recon->tm0cRT;
+	auto w_landmarks = recon->w_landmarks;
+	auto mu_wexp_orig = recon->mu_wexp_orig;
+	auto w_prior_exp_2D = recon->w_prior_exp_2D;
+
+	// set up rotation matrix and translation vector
+	const PhGUtils::Point3f& T = recon->Tvec;
+	const PhGUtils::Matrix3x3f& R = recon->Rmat;
+
+	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
+		float wpt = w_landmarks[vidx];
+
+		float x = 0, y = 0, z = 0;
+		for(int j=0;j<m;j++) {
+			x += tm0cRT(j, vidx) * p[j];
+			y += tm0cRT(j, vidx+1) * p[j];
+			z += tm0cRT(j, vidx+2) * p[j];
+		}
+		const PhGUtils::Point3f& q = targets[i].first;
+
+		float u, v, d;
+		PhGUtils::worldToColor(x + T.x, y + T.y, z + T.z, u, v, d);
+
+		float dx = q.x - u, dy = q.y - v, dz = q.z==0?0:(q.z - d);
+		hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
+	}
+
+	// regularization term
+	for(int i=0, cidx=npts;i<m;i++, cidx++) {
+		float diff = p[i] - mu_wexp_orig(i);
+		hx[cidx] = diff * diff * w_prior_exp_2D;
+	}
+}
+
+bool MultilinearReconstructor::fitExpressionWeights_withPrior_2D()
+{
+	// fix both rotation and identity weights, solve for expression weights
+	int nparams = core.dim(1);
+	vector<float> params(Wexp.rawptr(), Wexp.rawptr() + nparams);
+	int npts = targets.size();
+	vector<float> meas(npts+nparams);
+	int iters = slevmar_dif(evalCost3_2D, &(params[0]), &(meas[0]), nparams, npts + nparams, 128, NULL, NULL, NULL, NULL, this);
+
+	//cout << "finished in " << iters << " iterations." << endl;
+
+	float diff = 0;
+	for(int i=0;i<nparams;i++) {
+		diff += fabs(Wexp(i) - params[i]);
+		Wexp(i) = params[i];
+	}
+
+	return diff / nparams < cc;
+}
+
 void evalCost3(float *p, float *hx, int m, int n, void* adata) {
 	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
 
@@ -1170,62 +1254,6 @@ void evalCost3(float *p, float *hx, int m, int n, void* adata) {
 
 		hx[i] = pp.distanceTo(q);
 	}
-}
-
-bool MultilinearReconstructor::fitExpressionWeights_withPrior_2D()
-{
-	int nparams = core.dim(1);
-	int npts = q.length() / 3;
-
-	// fill in the upper part of the matrix, the lower part is already filled
-	for(int i=0;i<tm0cRT.dim(0);i++) {
-		for(int j=0;j<npts;j++) {
-			Aexp(j, i) = tm0cRT(i, j);// * w_landmarks[j];
-		}
-	}
-
-	// fill in the lower part
-	for(int j=0;j<Aexp.cols();j++) {
-		for(int i=0, ridx=tm0c.dim(1);i<nparams;i++, ridx++) {
-			Aexp(ridx, j) = sigma_wexp_weighted(i, j);
-		}
-	}
-
-	// fill in the upper part of the right hand side
-	for(int i=0;i<q.length();i++) {
-		brhs(i) = q(i) * w_landmarks[i];
-	}
-
-	// fill in the lower part with the mean vector of expression weights
-	int ndim_exp = mu_wexp.size();
-	for(int i=0, idx=q.length();i<ndim_exp;i++,idx++) {
-		brhs(idx) = mu_wexp_weighted(i);
-	}
-
-#if USE_MKL_LS
-	int rtn = leastsquare<float>(Aexp, brhs);
-	//debug("rtn", rtn);
-
-	//b.print("b");
-	float diff = 0;
-	for(int i=0;i<nparams;i++) {
-		diff += fabs(Wexp(i) - brhs(i));
-		Wexp(i) = brhs(i);
-	}
-#else
-	int rtn = leastsquare_normalmat(Aexp, brhs, AexptAexp, Aexptb);
-	float diff = 0;
-	for(int i=0;i<nparams;i++) {
-		//cout << brhs(i) << ", " << Aexptb(i) << "\tdiff #" << i << " = " << fabs(brhs(i) - Aexptb(i)) << endl;
-		diff += fabs(Wexp(i) - Aexptb(i));
-		Wexp(i) = Aexptb(i);
-		//cout << params[i] << ' ';
-	}
-	//PhGUtils::message("done");
-	//::system("pause");
-#endif
-
-	return diff / nparams < cc;
 }
 
 bool MultilinearReconstructor::fitExpressionWeights_withPrior()

@@ -268,10 +268,10 @@ void MultilinearFaceRecon::updateKinectStreams_2D()
 	}
 	viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
 	if( frameIdx++ == 0 ) {
-		viewer->fit2d(MultilinearReconstructor::FIT_POSE);
+		viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 	}
 	else
-		viewer->fit2d(MultilinearReconstructor::FIT_POSE);
+		viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
 	tRecon.toc();
 }
 
