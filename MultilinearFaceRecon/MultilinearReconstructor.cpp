@@ -18,9 +18,12 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	// for 47 expression dimensions
 	w_prior_exp = 5e-4;
 	w_boundary = 1e-8;
+	w_chin = 1e-3;
 
-	w_prior_exp_2D = 1e2;
+	w_prior_exp_2D = 1e3;
 	w_prior_id_2D = 1e3;
+
+	w_history = 0.0075;
 
 	meanX = meanY = meanZ = 0;
 	
@@ -37,7 +40,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 
 	cc = 1e-4;
 	errorThreshold = 5e-5;
-	errorDiffThreshold = errorThreshold * 0.01;
+	errorDiffThreshold = errorThreshold * 0.005;
 	usePrior = true;
 
 	frameCounter = 0;
@@ -45,14 +48,18 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	useHistory = true;
 	historyWeights[0] = 0.02;
 	historyWeights[1] = 0.04;
-	historyWeights[2] = 0.07;
-	historyWeights[3] = 0.10;
-	historyWeights[4] = 0.15;
+	historyWeights[2] = 0.08;
+	historyWeights[3] = 0.16;
+	historyWeights[4] = 0.32;
+	historyWeights[5] = 0.64;
+	historyWeights[6] = 1.28;
+	historyWeights[7] = 2.56;
+	historyWeights[8] = 5.12;
+	historyWeights[9] = 10.24;
 }
 
 MultilinearReconstructor::~MultilinearReconstructor(void)
 {
-	culaShutdown();
 }
 
 
@@ -632,9 +639,8 @@ void MultilinearReconstructor::fit_withPrior() {
 		// post process, impose a moving average for pose
 		RTHistory.push_back(vector<float>(RTparams, RTparams+7));
 		if( RTHistory.size() > historyLength ) RTHistory.pop_front();
-		vector<float> meanRT = computeWeightedMeanPose();
-		// copy back the mean pose
-		for(int i=0;i<7;i++) RTparams[i] = meanRT[i];
+		vector<float> mRT = computeWeightedMeanPose();
+		for(int i=0;i<7;i++) meanRT[i] = mRT[i];
 	}
 
 	timerTransform.tic();
@@ -829,6 +835,9 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	auto tmc = recon->tmc;
 
 	auto w_landmarks = recon->w_landmarks;
+	auto w_chin = recon->w_chin;
+	auto w_history = recon->w_history;
+	auto meanRT = recon->meanRT;
 
 	// set up rotation matrix and translation vector
 	PhGUtils::Point3f T(tx, ty, tz);
@@ -836,17 +845,27 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 
 	// apply the new global transformation
 	for(int i=0, vidx=0;i<npts;i++) {
-		//PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
 		float wpt = w_landmarks[vidx];
+
+		// exclude the mouth region
+		if( i>41 && i < 64 ) {
+			wpt = 0;
+		}
+
 		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
 		const PhGUtils::Point3f& q = targets[i].first;
 
-		//PhGUtils::Point3f pp = R * p + T;
+		// p = R * p + T
 		PhGUtils::transformPoint( px, py, pz, R, T );
 
-		//hx[i] = p.distanceTo(q) * w_landmarks[vidx];
 		float dx = px - q.x, dy = py - q.y, dz = pz - q.z;
 		hx[i] = (dx * dx + dy * dy + dz * dz) * wpt;
+	}
+
+	// regularization terms
+	for(int i=0, tidx=npts;i<7;i++, tidx++) {
+		float diff = p[i] - meanRT[i];
+		hx[tidx] = diff * diff * w_history;
 	}
 }
 
@@ -862,6 +881,9 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 	auto tmc = recon->tmc;
 
 	auto w_landmarks = recon->w_landmarks;
+	auto w_chin = recon->w_chin;
+	auto w_history = recon->w_history;
+	auto meanRT = recon->meanRT;
 
 	// set up rotation matrix and translation vector
 	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz);
@@ -911,6 +933,19 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 
 		// \frac{\partial r_i}{\partial s}
 		J[jidx++] = wpt * 2.0 * (rpx * rkx + rpy * rky + rpz * rkz);
+	}
+
+	// regularization terms
+	for(int i=0, jidx=npts*7;i<7;i++) {
+		float diff = p[i] - meanRT[i];
+		if( diff == 0 ) diff = numeric_limits<float>::min();
+		for(int j=0;j<7;j++) {
+			if( j == i ) {
+				J[jidx] = 2.0 * p[i] * diff * w_history;
+			}
+			else J[jidx] = 0;
+			jidx++;
+		}
 	}
 }
 
@@ -980,7 +1015,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	// use levmar
 	//int iters = slevmar_dif(evalCost, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
 	int iters = slevmar_der(evalCost, evalJacobian, RTparams, 
-		&(pws.meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
+		&(pws.meas[0]), 7, npts + 7, 128, opts, NULL, NULL, NULL, this);
 	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// use minpack
@@ -1409,7 +1444,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 	meanZ /= validCount;
 
 	if( updateTC ) {
-		pws.meas.resize(npts);
+		pws.meas.resize(npts + 7);
 		updateComputationTensor();
 		updateMatrices();
 
@@ -1424,18 +1459,30 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 				PhGUtils::colorToWorld(targets[74].first.x, targets[74].first.y, targets[74].first.z, rx, ry, rz);
 				PhGUtils::colorToWorld(meanX, meanY, meanZ, mx, my, mz);
 
+				RTparams[0] = 0;
+				RTparams[1] = 0;
+				RTparams[2] = 0;
 				RTparams[3] = mx;
 				RTparams[4] = my;
 				RTparams[5] = mz;
 				RTparams[6] = fabs(lx - rx);
+
+				// set the initial mean RT
+				for(int i=0;i<7;i++) meanRT[i] = RTparams[i];
 				break;	
 			}
 		case TargetType_3D:
 			{
+				RTparams[0] = 0;
+				RTparams[1] = 0;
+				RTparams[2] = 0;
 				RTparams[3] = meanX;
 				RTparams[4] = meanY;
 				RTparams[5] = meanZ;
 				RTparams[6] = fabs(targets[64].first.x - targets[74].first.x);
+
+				// set the initial mean RT
+				for(int i=0;i<7;i++) meanRT[i] = RTparams[i];
 				break;
 			}
 		default:

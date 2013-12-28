@@ -147,7 +147,9 @@ private:
 
 	// weights for prior
 	float w_prior_id, w_prior_exp;
-	float w_boundary;
+	// outer contour: 64~74
+	// chin: 42~63
+	float w_boundary, w_chin;
 
 	float w_prior_id_2D, w_prior_exp_2D;
 
@@ -195,11 +197,14 @@ private:
 	} pws;
 
 	float RTparams[7]; /* sx, ry, rz, tx, ty, tz, scale */
+	float meanRT[7];
 	
 	bool useHistory;
-	static const int historyLength = 5;
+	float w_history;
+	static const int historyLength = 10;
 	float historyWeights[historyLength];
 	deque<vector<float>> RTHistory;	// stores the RT parameters for last 5 frames
+	
 	// used to avoid local minima
 	float meanX, meanY, meanZ;
 	float scale;

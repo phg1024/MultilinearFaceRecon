@@ -257,10 +257,11 @@ void MultilinearFaceRecon::updateKinectStreams_2D()
 	int npts = f.size()/2;
 	for(int i=0;i<npts;i++) {
 		int u = f[i];
-		// flip y coordinates
 		int v = f[i+npts];
 		int idx = (v*w+u)*4;
 		float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+
+		// flip x coordinate
 		lms[i].x = (w-1) - u;
 		lms[i].y = v;
 		lms[i].z = d;
@@ -308,14 +309,28 @@ void MultilinearFaceRecon::updateKinectStreams()
 
 	tRecon.tic();
 	// get the 3D landmarks and feed to recon manager
+	int mfilterSize = 3;
+	int neighbors[] = {-1, 0, 1};
+
 	int npts = f.size()/2;
 	for(int i=0;i<npts;i++) {
 		int u = f[i];
-		// flip y coordinates
 		int v = f[i+npts];
-		int idx = (v*w+u)*4;
-		float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
-		PhGUtils::colorToWorld((w-1) - u, v, d, lms[i].x, lms[i].y, lms[i].z);
+
+		// get median filtered depth
+		vector<float> depths;
+		depths.reserve(16);
+		for(int nu=0;nu<mfilterSize;nu++) {
+			for(int nv=0;nv<mfilterSize;nv++) {
+				int idx = ((v+neighbors[nv])*w+(u+neighbors[nu]))*4;		
+				float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+				depths.push_back(d);
+			}
+		}
+		std::sort(depths.begin(), depths.end());
+
+		// flip x coordinate
+		PhGUtils::colorToWorld((w-1) - u, v, depths[mfilterSize*mfilterSize/2], lms[i].x, lms[i].y, lms[i].z);
 
 		/*
 		cout << u << " " << v << " " << d << "\t"
