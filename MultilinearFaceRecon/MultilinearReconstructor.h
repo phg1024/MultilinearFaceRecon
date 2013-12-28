@@ -140,7 +140,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold, errorDiffThreshold;
-	static const int MAXITERS = 32;	// this should be enough
+	static const int MAXITERS = 8;	// this should be enough
 	bool usePrior;
 
 	// weights for prior
@@ -164,10 +164,10 @@ private:
 	// tm1c: corec mode product with wexp
 	Tensor2<float> tm0c, tm1c;
 
-	// the tensor after mode product, with truncation, and after rigid transformation
+	// the tensor after mode product, with truncation, and with rotation but not translation
 	// they are changed ONLY if the rigid transformation changes
-	// tm0c: corec mode product with wid, after rigid transformation
-	// tm1c: corec mode product with wexp, after rigid transformation
+	// tm0cRT: corec mode product with wid, with rotation
+	// tm1cRT: corec mode product with wexp, with rotation
 	Tensor2<float> tm0cRT, tm1cRT;
 
 	// the tensor after 2 mode products, with truncation; 

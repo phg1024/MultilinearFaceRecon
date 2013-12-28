@@ -17,7 +17,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	//w_prior_exp = 1e-4;
 	// for 47 expression dimensions
 	w_prior_exp = 5e-4;
-	w_boundary = 1e-6;
+	w_boundary = 1e-8;
 
 	meanX = meanY = meanZ = 0;
 	
@@ -356,7 +356,7 @@ void MultilinearReconstructor::fit2d_withPrior() {
 		timerOther.tic();
 
 		float E = computeError_2D();
-		PhGUtils::debug("iters", iters, "Error", E);
+		//PhGUtils::debug("iters", iters, "Error", E);
 
 		converged |= E < errorThreshold;
 		converged |= fabs(E - E0) < errorDiffThreshold;
@@ -531,7 +531,7 @@ void MultilinearReconstructor::fit_withPrior() {
 		}
 
 		if( fitIdentity ) {			
-			// apply the new global transformation to tm1c
+			// apply the new global rotation to tm1c
 			// because tm1c is required in fitting identity weights
 			timerOther.tic();
 			transformTM1C();
@@ -553,7 +553,7 @@ void MultilinearReconstructor::fit_withPrior() {
 
 		if( fitExpression ) {
 			timerOther.tic();
-			// apply the global transformation to tm0c
+			// apply the global rotation to tm0c
 			// because tm0c is required in fitting expression weights
 			transformTM0C();
 			timerOther.toc();
@@ -695,12 +695,27 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 		PhGUtils::transformPoint( px, py, pz, R, T );
 
 		// Projection to image plane
-		float u, v;
-		PhGUtils::worldToColor( px, py, pz, u, v );
+		float u, v, d;
+		PhGUtils::worldToColor( px, py, pz, u, v, d );
 
-		//hx[i] = p.distanceTo(q) * w_landmarks[vidx];
-		float dx = u - q.x, dy = v - q.y;
-		hx[i] = (dx * dx + dy * dy) * wpt;
+		/*
+		// Back-Projection to world space
+		float qx, qy, qz;
+		PhGUtils::colorToWorld(q.x, q.y, q.z, qx, qy, qz);
+		
+		if( q.z == 0 ) {
+			// no depth info, use 2d point
+			float dx = u - q.x, dy = v - q.y;
+			hx[i] = (dx * dx + dy * dy);
+		}
+		else {
+			// use 3d point
+			float dx = qx - px, dy = qy - py, dz = qz - pz;
+			hx[i] = (dx * dx + dy * dy + dz * dz);// * wpt;
+		}
+		*/
+		float dx = q.x - u, dy = q.y - v, dz = q.z==0?0:(q.z - d);
+		hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
 	}
 }
 
@@ -750,8 +765,8 @@ void evalJacobian_2D(float *p, float *J, int m, int n, void *adata) {
 		Jf[4] = f_y * inv_z; Jf[5] = -f_y * pky * inv_z2;
 
 		// project p to color image plane
-		float pu, pv;
-		PhGUtils::worldToColor(pkx, pky, pkz, pu, pv);
+		float pu, pv, pd;
+		PhGUtils::worldToColor(pkx, pky, pkz, pu, pv, pd);
 
 		// residue
 		float rkx = pu - q.x, rky = pv - q.y;
@@ -936,11 +951,6 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 	//int iters = slevmar_der(evalCost_2D, evalJacobian_2D, RTparams, &(pws.meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
 	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
-#if USE_CMINPACK
-	int iters = __cminpack_func__(lmdif1)(evalCost_minpack, this, npts, 7, RTparams, &(meas[0]), 1e-6, &(workspace[0]), &(w2[0]), w2.size());
-	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
-#endif
-
 	// set up the matrix and translation vector
 	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
 	float diff = 0;
@@ -1022,7 +1032,49 @@ void evalCost2(float *p, float *hx, int m, int n, void* adata) {
 
 bool MultilinearReconstructor::fitIdentityWeights_withPrior_2D()
 {
-	return false;
+	// to use this method, the tensor tm1c must first be updated using the rotation matrix and translation vector
+	int nparams = core.dim(0);	
+
+	// assemble the matrix, fill in the upper part
+	// the lower part is already filled in
+	for(int i=0;i<tm1cRT.dim(0);i++) {
+		for(int j=0;j<tm1cRT.dim(1);j++) {
+			Aid(j, i) = tm1cRT(i, j);
+		}
+	}
+
+	for(int j=0;j<Aid.cols();j++) {
+		for(int i=0, ridx=tm1c.dim(1);i<nparams;i++, ridx++) {
+			Aid(ridx, j) = sigma_wid_weighted(i, j);
+		}
+	}
+
+	//PhGUtils::Matrix3x3f invRmat = Rmat.inv();
+
+	int npts = targets.size();
+	// assemble the right hand side, fill in the upper part as usual
+	for(int i=0, vidx=0;i<npts;vidx+=3, i++) {
+		brhs(vidx) = (q(vidx) - Tvec.x) * w_landmarks[vidx];
+		brhs(vidx+1) = (q(vidx+1) - Tvec.y) * w_landmarks[vidx+1];
+		brhs(vidx+2) = (q(vidx+2) - Tvec.z) * w_landmarks[vidx+2];
+	}
+	// fill in the lower part with the mean vector of identity weights
+	int ndim_id = mu_wid.size();
+	for(int i=0, idx=q.length();i<ndim_id;i++,idx++) {
+		brhs(idx) = mu_wid_weighted(i);
+	}
+
+	int rtn = leastsquare<float>(Aid, brhs);
+	//debug("rtn", rtn);
+	float diff = 0;
+	//b.print("b");
+	for(int i=0;i<nparams;i++) {
+		diff += fabs(Wid(i) - brhs(i));
+		Wid(i) = brhs(i);		
+		//cout << params[i] << ' ';
+	}
+
+	return diff / nparams < cc;
 }
 
 bool MultilinearReconstructor::fitIdentityWeights_withPrior()
@@ -1048,7 +1100,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 	// the lower part is already filled in
 	for(int i=0;i<tm1cRT.dim(0);i++) {
 		for(int j=0;j<tm1cRT.dim(1);j++) {
-			Aid(j, i) = tm1cRT(i, j);// * w_landmarks[j];
+			Aid(j, i) = tm1cRT(i, j);
 		}
 	}
 
@@ -1063,13 +1115,9 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 	int npts = targets.size();
 	// assemble the right hand side, fill in the upper part as usual
 	for(int i=0, vidx=0;i<npts;vidx+=3, i++) {
-		//brhs(vidx) = (q(vidx) - Tvec.x) * w_landmarks[vidx];
-		//brhs(vidx+1) = (q(vidx+1) - Tvec.y) * w_landmarks[vidx+1];
-		//brhs(vidx+2) = (q(vidx+2) - Tvec.z) * w_landmarks[vidx+2];
-		//PhGUtils::rotatePoint(brhs(vidx), brhs(vidx+1), brhs(vidx+2), invRmat);
-		brhs(vidx) = q(vidx) * w_landmarks[vidx];
-		brhs(vidx+1) = q(vidx+1) * w_landmarks[vidx+1];
-		brhs(vidx+2) = q(vidx+2) * w_landmarks[vidx+2];
+		brhs(vidx) = (q(vidx) - Tvec.x) * w_landmarks[vidx];
+		brhs(vidx+1) = (q(vidx+1) - Tvec.y) * w_landmarks[vidx+1];
+		brhs(vidx+2) = (q(vidx+2) - Tvec.z) * w_landmarks[vidx+2];
 	}
 	// fill in the lower part with the mean vector of identity weights
 	int ndim_id = mu_wid.size();
@@ -1126,7 +1174,58 @@ void evalCost3(float *p, float *hx, int m, int n, void* adata) {
 
 bool MultilinearReconstructor::fitExpressionWeights_withPrior_2D()
 {
-	return false;
+	int nparams = core.dim(1);
+	int npts = q.length() / 3;
+
+	// fill in the upper part of the matrix, the lower part is already filled
+	for(int i=0;i<tm0cRT.dim(0);i++) {
+		for(int j=0;j<npts;j++) {
+			Aexp(j, i) = tm0cRT(i, j);// * w_landmarks[j];
+		}
+	}
+
+	// fill in the lower part
+	for(int j=0;j<Aexp.cols();j++) {
+		for(int i=0, ridx=tm0c.dim(1);i<nparams;i++, ridx++) {
+			Aexp(ridx, j) = sigma_wexp_weighted(i, j);
+		}
+	}
+
+	// fill in the upper part of the right hand side
+	for(int i=0;i<q.length();i++) {
+		brhs(i) = q(i) * w_landmarks[i];
+	}
+
+	// fill in the lower part with the mean vector of expression weights
+	int ndim_exp = mu_wexp.size();
+	for(int i=0, idx=q.length();i<ndim_exp;i++,idx++) {
+		brhs(idx) = mu_wexp_weighted(i);
+	}
+
+#if USE_MKL_LS
+	int rtn = leastsquare<float>(Aexp, brhs);
+	//debug("rtn", rtn);
+
+	//b.print("b");
+	float diff = 0;
+	for(int i=0;i<nparams;i++) {
+		diff += fabs(Wexp(i) - brhs(i));
+		Wexp(i) = brhs(i);
+	}
+#else
+	int rtn = leastsquare_normalmat(Aexp, brhs, AexptAexp, Aexptb);
+	float diff = 0;
+	for(int i=0;i<nparams;i++) {
+		//cout << brhs(i) << ", " << Aexptb(i) << "\tdiff #" << i << " = " << fabs(brhs(i) - Aexptb(i)) << endl;
+		diff += fabs(Wexp(i) - Aexptb(i));
+		Wexp(i) = Aexptb(i);
+		//cout << params[i] << ' ';
+	}
+	//PhGUtils::message("done");
+	//::system("pause");
+#endif
+
+	return diff / nparams < cc;
 }
 
 bool MultilinearReconstructor::fitExpressionWeights_withPrior()
@@ -1148,11 +1247,12 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	//cout << endl;
 #else
 	int nparams = core.dim(1);
+	int npts = tm0cRT.dim(1) / 3;
 
 	// fill in the upper part of the matrix, the lower part is already filled
 	for(int i=0;i<tm0cRT.dim(0);i++) {
 		for(int j=0;j<tm0cRT.dim(1);j++) {
-			Aexp(j, i) = tm0cRT(i, j);// * w_landmarks[j];
+			Aexp(j, i) = tm0cRT(i, j);
 		}
 	}
 
@@ -1164,8 +1264,10 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	}
 
 	// fill in the upper part of the right hand side
-	for(int i=0;i<q.length();i++) {
-		brhs(i) = q(i) * w_landmarks[i];
+	for(int i=0, vidx=0;i<npts;i++,vidx+=3) {
+		brhs(vidx) = (q(vidx) - Tvec.x) * w_landmarks[vidx];
+		brhs(vidx+1) = (q(vidx+1) - Tvec.y) * w_landmarks[vidx];
+		brhs(vidx+2) = (q(vidx+2) - Tvec.z) * w_landmarks[vidx];
 	}
 
 	// fill in the lower part with the mean vector of expression weights
@@ -1242,12 +1344,6 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		}
 	}
 
-	float w_boundary_tmp;
-	if( ttp == TargetType_2D ) {
-		w_boundary_tmp = w_boundary;
-		w_boundary = 0.5;
-	}
-
 	targets = pts;
 	int npts = targets.size();
 
@@ -1320,8 +1416,6 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 
 	}
 
-	if( ttp == TargetType_2D )
-		w_boundary = w_boundary_tmp;
 	//PhGUtils::debug("valid landmarks", validCount);
 }
 
@@ -1388,21 +1482,13 @@ void MultilinearReconstructor::transformTM0C() {
 	//tm0cRT = tm0c;
 	for(int i=0;i<tm0c.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
-			// should change this to a fast version, don't create temporary object
-
-			/*
-			PhGUtils::Point3f p(tm0c(i, vidx), tm0c(i, vidx+1), tm0c(i, vidx+2));
-			p = Rmat * p + Tvec;
-			tm0c(i, vidx) = p.x;
-			tm0c(i, vidx+1) = p.y;
-			tm0c(i, vidx+2) = p.z;
-			*/
 
 			tm0cRT(i, vidx) = tm0c(i, vidx);
 			tm0cRT(i, vidx+1) = tm0c(i, vidx+1);
 			tm0cRT(i, vidx+2) = tm0c(i, vidx+2);
-			// store the rotated and translated tensor in tm0cRT
-			PhGUtils::transformPoint( tm0cRT(i, vidx), tm0cRT(i, vidx+1), tm0cRT(i, vidx+2), Rmat, Tvec );
+			// store the rotated tensor in tm0cRT
+			PhGUtils::rotatePoint( tm0cRT(i, vidx), tm0cRT(i, vidx+1), tm0cRT(i, vidx+2), Rmat );
+
 			tm0cRT(i, vidx) *= w_landmarks[vidx];
 			tm0cRT(i, vidx+1) *= w_landmarks[vidx+1];
 			tm0cRT(i, vidx+2) *= w_landmarks[vidx+2];
@@ -1417,21 +1503,13 @@ void MultilinearReconstructor::transformTM1C() {
 	//tm1cRT = tm1c;
 	for(int i=0;i<tm1c.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
-			// should change this to a fast version, don't create temporary object
-
-			/*
-			PhGUtils::Point3f p(tm1c(i, vidx), tm1c(i, vidx+1), tm1c(i, vidx+2));
-			p = Rmat * p + Tvec;
-
-			tm1c(i, vidx) = p.x;
-			tm1c(i, vidx+1) = p.y;
-			tm1c(i, vidx+2) = p.z;
-			*/
 
 			tm1cRT(i, vidx) = tm1c(i, vidx);
 			tm1cRT(i, vidx+1) = tm1c(i, vidx+1);
 			tm1cRT(i, vidx+2) = tm1c(i, vidx+2);
-			PhGUtils::transformPoint( tm1cRT(i, vidx), tm1cRT(i, vidx+1), tm1cRT(i, vidx+2), Rmat, Tvec );
+
+			// rotation only!!!
+			PhGUtils::rotatePoint( tm1cRT(i, vidx), tm1cRT(i, vidx+1), tm1cRT(i, vidx+2), Rmat );
 		
 			// multiply weights
 			tm1cRT(i, vidx) *= w_landmarks[vidx];
@@ -1482,8 +1560,8 @@ float MultilinearReconstructor::computeError_2D()
 		PhGUtils::transformPoint(p.x, p.y, p.z, Rmat, Tvec);
 
 		// project the point
-		float u, v;
-		PhGUtils::worldToColor(p.x, p.y, p.z, u, v);
+		float u, v, d;
+		PhGUtils::worldToColor(p.x, p.y, p.z, u, v, d);
 
 		float dx, dy;
 		dx = u - targets[i].first.x;
