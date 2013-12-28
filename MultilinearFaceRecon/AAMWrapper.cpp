@@ -50,6 +50,15 @@ void AAMWrapper::setup() {
 	f.reserve(256);
 }
 
+
+void AAMWrapper::resetTracking()
+{
+	initial=true;
+	startNum=0;
+	engine->hasVelocity=false;
+	engine->lastTheta=0;
+}
+
 const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigned char* dimg, int w, int h )
 {
 		/// realtime tracking related
@@ -185,6 +194,7 @@ const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigne
 				initial=true;
 				startNum=0;
 				engine->hasVelocity=false;
+				engine->lastTheta=0;
 			}
 		}
 		else

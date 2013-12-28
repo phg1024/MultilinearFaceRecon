@@ -11,6 +11,11 @@ using namespace std;
 class AAM_Detection_Combination
 {
 public:
+
+	//tracking error, new added
+	float errorVal;
+	float getTrackingError();
+
 	AAM_Detection_Combination(double _AAMWeight=1,double _RTWeight=0,double _PriorWeight=0,double _localWeight=0,string colorDir="",string depthDir="",string aammodelPath="",string alignedShapeDir="",bool _isAdpt=false);
 	//the absolute index of visible feature points
 	//float *absInd;
