@@ -208,9 +208,14 @@ AAM_Detection_Combination::AAM_Detection_Combination(double _AAMWeight,double _R
 		}
 	}
 
+	errorVal=0;
 	//absInd=new float[MAX_LABEL_NUMBER];
 }
 
+float AAM_Detection_Combination::getTrackingError()
+{
+	return errorVal;
+}
 
 void AAM_Detection_Combination::searchPics(string listName)
 {
@@ -5343,8 +5348,9 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 
 	//step .3: optimization on GPU
 	//status=iterate_combination(colorImg.cols,colorImg.rows,0,0,currentShape,isAAMOnly&&!bigChange,showNN);
+	
 	bool readyToTransferBack=AAM_exp->getCurrentStatus();
-	status=iterate_combination(colorImg.cols,colorImg.rows,0,0,lastTheta,currentShape,isAAMOnly,showNN,readyToTransferBack);
+	status=iterate_combination_new(colorImg.cols,colorImg.rows,0,0,lastTheta,errorVal,currentShape,isAAMOnly,showNN,readyToTransferBack);
 
 	if (readyToTransferBack)
 	{
@@ -5354,6 +5360,11 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 	if (status==1)//ready to update
 	{
 		updateModelCPU_thread();
+	}
+
+	if (status==2)
+	{
+		return false;
 	}
 
 	//obtain the theta using eye angle

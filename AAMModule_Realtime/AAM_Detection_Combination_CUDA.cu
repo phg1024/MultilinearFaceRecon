@@ -5479,6 +5479,7 @@ extern "C" int iterate_combination(int width,int height,int currentFrame,int sta
 					{
 						//cout<<"bad data\n";
 						CUBLAS_CALL(cublasScopy_v2(data->blas_handle_,data->pix_num,data->cu_t_mean,1,data->cu_blockTextureData+data->currentFrameID*data->pix_num,1));
+						status=2;
 					}
 					data->currentFrameID++;
 					if (data->currentFrameID==data->blockNum)
@@ -5493,6 +5494,906 @@ extern "C" int iterate_combination(int width,int height,int currentFrame,int sta
 				CUDA_CALL(cudaMemcpy(parameters, data->cu_parameters+data->s_dim+data->t_dim, 4*sizeof(float), cudaMemcpyDeviceToHost ));
 				resultTheta=parameters[0];
 
+				//cout<<"used times: "<<times<<endl;
+				break;
+			}
+		}
+		
+
+		cu_getCurrentTexture_combination(data->cu_currentTemplate,data->cu_parameters+data->s_dim,data->cu_t_vec,data->t_dim,data->pix_num);
+			//continue;
+		
+		//normalize and devide
+		//normalize
+		float sum;
+
+		//CUBLAS_CALL(cublasSdot_v2(data->blas_handle_,data->pix_num,data->cu_currentTemplate,incx,data->cu_t_mean,incy,&sum));
+		//sum=1.0f/sum;
+		//cout<<"sum: "<<sum<<endl;
+		//CUBLAS_CALL(cublasSscal_v2(data->blas_handle_,data->pix_num,&sum,data->cu_currentTemplate,incx));
+		
+		//////////////////template check point//////////////////////
+		
+		//cu_PAWarping_float_shared<<<data->t_width*data->t_height/warpBlockSize+1,warpBlockSize>>>(data->cu_warp_tabel,data->cu_triangle_indexTabel,data->cu_currentShape,data->ptsNum,
+		//	data->cu_gradientX,data->cu_gradientY,data->cu_inputImg,width,height,
+		//	data->cu_WarpedGradientX,data->cu_WarpedGradientY,data->cu_fullCurrentTexture,data->t_width,data->t_height);
+		////cu_PAWarping_TEX<<<MAXIMUMPOINTDIM/256,256>>>(data->cu_warp_tabel,data->cu_triangle_indexTabel,data->cu_currentShape,data->ptsNum,data->cu_inputImg,width,height,data->cu_fullCurrentTexture,data->t_width,data->t_height);
+		//
+		//setCompactTexture_combination<<<(data->t_width*data->t_height+128)/128,128>>>(data->cu_fullCurrentTexture,data->cu_currentTexture,
+		//	data->cu_MaskTabel,data->t_width,data->t_height);
+
+		cu_PAWarping_float_shared_transpose<<<data->t_width*data->t_height/512+1,512>>>(data->cu_warp_tabel_transpose,data->cu_triangle_indexTabel_transpose,data->cu_currentShape,data->ptsNum,
+			data->cu_gradientX,data->cu_gradientY,data->cu_inputImg,width,height,
+			data->cu_WarpedGradientX,data->cu_WarpedGradientY,data->cu_fullCurrentTexture,data->t_width,data->t_height,data->cu_MaskTabel,data->cu_currentTexture);
+
+
+
+		CUBLAS_CALL(cublasSdot_v2(data->blas_handle_,data->pix_num,data->cu_currentTexture,incx,data->cu_allOnesForImg,incy,&sum));
+		sum/=data->pix_num;
+		vectorSubVal_combination<<<(data->pix_num+128)/128,128>>>(data->cu_currentTexture,sum,data->pix_num);
+		
+		//texture normalize
+		CUBLAS_CALL(cublasSdot_v2(data->blas_handle_,data->pix_num,data->cu_t_mean,incx,data->cu_currentTexture,incy,&result));
+		
+		tmp_scale=1.0f/result;
+		tex_scale=tmp_scale;
+		//CUBLAS_CALL(cublasSscal_v2(data->blas_handle_,data->pix_num,&tmp_scale,data->cu_currentTexture,incx));
+		CUBLAS_CALL(cublasSscal_v2(data->blas_handle_,data->pix_num+full_pix_num*2,&tex_scale,data->cu_currentTexture,incx));
+		//////////////////texture check point//////////////////////	
+		//GTE("START");
+
+	//	GTB("START");
+		if (trackEngine.RTWeight==0&&trackEngine.priorWeight==0)
+		{
+			//cout<<"fast difference\n";
+			thrust::minus<float> op;
+			thrust::transform(data->vec_curShape_curTemplate.begin()+data->ptsNum*2,
+				data->vec_curShape_curTemplate.end(),data->vec_curTexture.begin(),data->vec_errorImage.begin(),
+				op);
+		}
+		else
+		{
+			calculateDifference_withPrior<<<(data->pix_num+MAX_LABEL_NUMBER+data->s_dim)/128+1,128>>>(width,height,data->cu_currentTexture,data->cu_currentTemplate,data->pix_num,
+				data->cu_currentShape,trackEngine.cu_absVisibleIndex,trackEngine.cu_detectedFeatureLocations,trackEngine.visibleNum,
+				data->ptsNum,trackEngine.AAMWeight,trackEngine.RTWeight,data->cu_errorImage,trackEngine.cu_conv,data->s_dim,
+				data->cu_parameters,trackEngine.cuPriorMean,trackEngine.cu_priorDifference);
+		}
+////GTE("START");
+//		if (trackEngine.RTWeight>0||trackEngine.priorWeight>0)
+		/*GTB("START");
+		for (int ii=0;ii<60;ii++)
+		{*/
+		
+			
+			
+	/*	}
+		GTE("START");
+*/
+
+			//if (times>6)
+			//{
+			//	CUBLAS_CALL(cublasSdot_v2(data->blas_handle_,data->pix_num,data->cu_errorImage,incx,data->cu_errorImage,incy,&errorSum)); //thrust
+			//	errorSum/=trackEngine.AAMWeight;
+			//}
+			//else
+			//{
+			//	errorSum=1;
+			//}
+
+		
+		/*}
+		GTE("START");*/
+
+		////////////////////////////NEW ADDED, NNED TO CHECK////////////////////////////////////////////
+		//worked version without constant memory fastest
+		/*GTB("START");
+		for (int ii=0;ii<60;ii++)
+		{*/
+	
+	
+
+		if (trackEngine.RTWeight>0)
+		{
+			/*getJacobians_RT_combination<<<(data->t_width*data->t_height)/32+1,32>>>(data->cu_WarpedGradientX,data->cu_WarpedGradientY,data->cu_Jacobians,data->t_width,
+				data->t_height,data->s_dim,data->t_dim,data->cu_warp_tabel,data->cu_triangle_indexTabel,data->cu_shapeJacobians,data->cu_t_vec,data->cu_parameters,
+				data->cu_fowardIndexTabel,data->cu_currentLocalShape,data->ptsNum,data->pix_num,trackEngine.AAMWeight,trackEngine.RTWeight,trackEngine.cu_absVisibleIndex,trackEngine.visibleNum);*/
+
+			//getJacobians_RT_combination_sharedMemory<<<(data->t_width*data->t_height)/threadPerBlock_Jacobians+1,threadPerBlock_Jacobians>>>(data->cu_WarpedGradientX,data->cu_WarpedGradientY,data->cu_Jacobians,data->t_width,
+			//	data->t_height,data->s_dim,data->t_dim,data->cu_warp_tabel,data->cu_triangle_indexTabel,data->cu_shapeJacobians,data->cu_t_vec,data->cu_parameters,
+			//	data->cu_fowardIndexTabel,data->cu_currentLocalShape,data->ptsNum,data->pix_num,trackEngine.AAMWeight,trackEngine.RTWeight,trackEngine.cu_absVisibleIndex,trackEngine.visibleNum,data->cu_Jacobian_transpose);
+
+			getJacobians_RT_combination_transpose<<<(data->t_width*data->t_height)/threadPerBlock_Jacobians+1,threadPerBlock_Jacobians>>>(data->cu_WarpedGradientX,data->cu_WarpedGradientY,data->cu_Jacobians,data->t_width,
+				data->t_height,data->s_dim,data->t_dim,data->cu_warp_tabel,data->cu_triangle_indexTabel,data->cu_shapeJacobians_transpose,data->cu_t_vec,data->cu_parameters,
+				data->cu_fowardIndexTabel,data->cu_currentLocalShape,data->ptsNum,data->pix_num,trackEngine.AAMWeight,trackEngine.RTWeight,trackEngine.cu_absVisibleIndex,trackEngine.visibleNum,data->cu_Jacobian_transpose);
+
+				//	float *cpuPara=new float[trackEngine.visibleNum*2*allDim];
+				//CUDA_CALL(cudaMemcpy(cpuPara, data->cu_RT_Jacobian_transpose, (trackEngine.visibleNum*2*allDim)*sizeof(float), cudaMemcpyDeviceToHost ));
+				//ofstream out("D:\\Fuhao\\cpu gpu validation\\J_RT_new.txt",ios::out);
+				///*for (int i=0;i<trackEngine.visibleNum*2;i++)
+				//{
+				//	for (int j=0;j<allDim;j++)
+				//	{
+				//		out<<cpuPara[j*trackEngine.visibleNum*2+i]<<" ";
+				//	}
+				//	out<<endl;
+				//}
+				//out.close();*/
+
+				//for (int i=0;i<allDim;i++)
+				//{
+				//	for (int j=0;j<trackEngine.visibleNum*2;j++)
+				//	{
+				//		out<<cpuPara[i*trackEngine.visibleNum*2+j]<<" ";
+				//	}
+				//	out<<endl;
+				//}
+				//out.close();
+				//cout<<"done!\n";
+		}
+		else
+		{
+			/*getJacobians_combination<<<(data->t_width*data->t_height)/32+1,32>>>(data->cu_WarpedGradientX,data->cu_WarpedGradientY,data->cu_Jacobians,data->t_width,
+				data->t_height,data->s_dim,data->t_dim,data->cu_warp_tabel,data->cu_triangle_indexTabel,data->cu_shapeJacobians,data->cu_t_vec,data->cu_parameters,
+				data->cu_fowardIndexTabel,data->cu_currentLocalShape,data->ptsNum);*/
+
+			/*getJacobians_combination_sharedMemory<<<(data->t_width*data->t_height)/threadPerBlock_Jacobians+1,threadPerBlock_Jacobians>>>(data->cu_WarpedGradientX,data->cu_WarpedGradientY,data->cu_Jacobian_transpose,data->t_width,
+				data->t_height,data->s_dim,data->t_dim,data->cu_warp_tabel,data->cu_triangle_indexTabel,data->cu_shapeJacobians,data->cu_t_vec,data->cu_parameters,
+				data->cu_fowardIndexTabel,data->cu_currentLocalShape,data->ptsNum,data->pix_num);*/
+
+			getJacobians_combination_shapeTranspose<<<(data->t_width*data->t_height)/threadPerBlock_Jacobians+1,threadPerBlock_Jacobians>>>(data->cu_WarpedGradientX,data->cu_WarpedGradientY,data->cu_Jacobian_transpose,data->t_width,
+				data->t_height,data->s_dim,data->t_dim,data->cu_warp_tabel,data->cu_triangle_indexTabel,data->cu_shapeJacobians_transpose,data->cu_t_vec,data->cu_parameters,
+				data->cu_fowardIndexTabel,data->cu_currentLocalShape,data->ptsNum,data->pix_num);
+		}
+
+		
+
+	/*	}
+		GTE("START");*/
+		/////39-40 21
+		/*if (times>20)
+		{
+			break;
+		}
+		times++;
+		continue;*/
+
+		//float *cpuJacobian=new float[(data->t_width*data->t_height+MAX_LABEL_NUMBER*2)*(data->s_dim+data->t_dim+4)];
+		//CUDA_CALL(cudaMemcpy(cpuJacobian, data->cu_Jacobians, (data->t_width*data->t_height+MAX_LABEL_NUMBER*2)*(data->s_dim+data->t_dim+4)*sizeof(float), cudaMemcpyDeviceToHost ));
+
+		//ofstream out_J("D:\\Fuhao\\cpu gpu validation\\dj_GPU.txt",ios::out);
+		//for (int i=data->pix_num;i<data->pix_num+trackEngine.visibleNum*2;i++)
+		//{
+		//	for (int j=0;j<data->s_dim+data->t_dim+4;j++)
+		//	{
+		//		out_J<<cpuJacobian[i*(data->s_dim+data->t_dim+4)+j]<<" ";
+		//	}
+		//	out_J<<endl;
+		//}
+		//out_J.close();
+
+		////////////////////checked-0321/////////////////////////////////
+		
+
+		//Jacobians with texture memory, not correct and not as fast as the original one
+	/*	getJacobians_TEX<<<(data->t_width*data->t_height)/32+1,32>>>(data->cu_WarpedGradientX,data->cu_WarpedGradientY,data->cu_Jacobians,data->t_width,
+			data->t_height,data->s_dim,data->t_dim,data->cu_warp_tabel,data->cu_triangle_indexTabel,data->cu_shapeJacobians,data->cu_t_vec,data->cu_parameters,
+			data->cu_fowardIndexTabel,data->cu_currentLocalShape,data->ptsNum);*/
+		
+		
+			
+		//////////////////////Jacobians checked///////////////////////////
+
+	
+
+		//MatrixMVector(data->cu_Jacobians,data->pix_num,allDim,data->cu_errorImage,data->cu_deltaParameters,data);
+	//	compactError2Full<<<(data->t_width*data->t_height+128)/128,128>>>(data->cu_errorImage,data->cu_fullErrorImage,data->cu_MaskTabel,data->t_width,data->t_height);
+
+		/*GTB("START");
+		for (int ii=0;ii<60;ii++)
+		{*/
+
+
+	/*	GTB("START");
+		for (int ii=0;ii<60;ii++)
+		{*/
+		alpha=1;beta=0;
+		if (trackEngine.RTWeight>0||trackEngine.priorWeight>0)
+		{
+			//if (trackEngine.AAMWeight>0)
+			//{
+			//at least initialize it to 0
+			CUBLAS_CALL(cublasSgemv_v2(data->blas_handle_,CUBLAS_OP_T,data->pix_num,allDim,&alpha,data->cu_Jacobian_transpose,data->pix_num,data->cu_errorImage,incx,&beta,
+				data->cu_deltaParameters,incy));
+				
+			//}
+
+			if (trackEngine.RTWeight>0)
+			{
+				////////////////////////////NEW ADDED, NNED TO CHECK////////////////////////////////////////////
+				//cu_errorImage and featureNum. Also, weight need to be added in the error image.
+				/*CUBLAS_CALL(cublasSgemv_v2(data->blas_handle_,CUBLAS_OP_N,allDim,data->pix_num+trackEngine.visibleNum*2,&alpha,data->cu_Jacobians,allDim,data->cu_errorImage,incx,&beta,
+					data->cu_deltaParameters,incy));*/
+
+				beta=1;
+				/*CUBLAS_CALL(cublasSgemv_v2(data->blas_handle_,CUBLAS_OP_N,allDim,trackEngine.visibleNum*2,&alpha,data->cu_Jacobians+data->pix_num*allDim,
+					allDim,data->cu_errorImage+data->pix_num,incx,&beta,data->cu_deltaParameters,incy));*/
+			
+				CUBLAS_CALL(cublasSgemv_v2(data->blas_handle_,CUBLAS_OP_T,trackEngine.visibleNum*2,allDim,&alpha,data->cu_RT_Jacobian_transpose,
+					trackEngine.visibleNum*2,data->cu_errorImage+data->pix_num,incx,&beta,data->cu_deltaParameters,incy));
+				beta=0;
+
+			/*		float *cpuPara=new float[data->s_dim+data->t_dim+4];
+		CUDA_CALL(cudaMemcpy(cpuPara, data->cu_deltaParameters, (data->s_dim+data->t_dim+4)*sizeof(float), cudaMemcpyDeviceToHost ));
+		ofstream out_J1("D:\\Fuhao\\cpu gpu validation\\je_new.txt",ios::out);
+		for (int i=0;i<data->s_dim+data->t_dim+4;i++)
+		{
+		out_J1<<cpuPara[i]<<" ";
+		}
+		out_J1<<endl;
+		out_J1.close();*/
+
+			}
+
+			if (trackEngine.priorWeight>0)
+			{
+
+			
+				
+				/*CUBLAS_CALL( cublasSgemv_v2(data->blas_handle_, CUBLAS_OP_T, 
+					data->s_dim+data->t_dim+4,data->s_dim,
+					&alpha, trackEngine.cuHessianPrior, data->s_dim+data->t_dim+4, 
+					trackEngine.cu_priorDifference,1,
+					&beta,trackEngine.cu_priorDifference, 1) ); 
+
+				CUBLAS_CALL(cublasSaxpy_v2(data->blas_handle_,allDim,&(trackEngine.priorWeight),trackEngine.cu_priorDifference,1,data->cu_deltaParameters,1));*/
+				beta=1;
+				CUBLAS_CALL( cublasSgemv_v2(data->blas_handle_, CUBLAS_OP_T, 
+					data->s_dim+data->t_dim+4,data->s_dim,
+					&(trackEngine.priorWeight), trackEngine.cuHessianPrior, data->s_dim+data->t_dim+4, 
+					trackEngine.cu_priorDifference,1,
+					&beta,data->cu_deltaParameters, 1) ); 
+				/*CUBLAS_CALL( cublasSgemv_v2(data->blas_handle_, CUBLAS_OP_T, 
+					data->s_dim,data->s_dim,
+					&(trackEngine.priorWeight), trackEngine.cuHessianPrior, data->s_dim+data->t_dim+4, 
+					trackEngine.cu_priorDifference,1,
+					&beta,data->cu_deltaParameters, 1) ); */
+				beta=0;
+				
+				
+			}
+		}		
+		else
+		{
+			/*CUBLAS_CALL(cublasSgemv_v2(data->blas_handle_,CUBLAS_OP_N,allDim,data->pix_num,&alpha,data->cu_Jacobians,allDim,data->cu_errorImage,incx,&beta,
+			data->cu_deltaParameters,incy));*/
+
+			CUBLAS_CALL(cublasSgemv_v2(data->blas_handle_,CUBLAS_OP_T,data->pix_num,allDim,&alpha,data->cu_Jacobian_transpose,data->pix_num,data->cu_errorImage,incx,&beta,
+				data->cu_deltaParameters,incy));
+		}
+
+
+		
+	/*		}
+		GTE("START");
+		gCodeTimer.printTimeTree();
+		double time1 = total_fps;
+		cout<<"used time per iteration: "<<time1<<endl;
+		continue;*/
+	
+		/*	float *cpuPara=new float[data->s_dim+data->t_dim+4];
+		CUDA_CALL(cudaMemcpy(cpuPara, data->cu_deltaParameters, (data->s_dim+data->t_dim+4)*sizeof(float), cudaMemcpyDeviceToHost ));
+		ofstream out_J1("D:\\Fuhao\\cpu gpu validation\\dp_GPU.txt",ios::out);
+		for (int i=0;i<data->s_dim+data->t_dim+4;i++)
+		{
+		out_J1<<cpuPara[i]<<" ";
+		}
+		out_J1<<endl;
+		out_J1.close();*/
+		
+		//break;
+		///////////////////////J'E checked- 0321////////////////////////////////
+		//45/21ms
+	/*	if (times>20)
+		{
+			break;
+		}
+		times++;
+		continue;*/
+
+		
+
+	/*	GTB("START");
+		for (int ii=0;ii<60;ii++)
+		{*/
+		//getHessian.
+		if (trackEngine.RTWeight>0||trackEngine.priorWeight>0)
+		{
+			CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_T, CUBLAS_OP_N,
+			allDim, allDim, data->pix_num, 
+			&(trackEngine.AAMWeight), data->cu_Jacobian_transpose, data->pix_num, 
+			data->cu_Jacobian_transpose, data->pix_num,
+			&beta,
+			data->cu_Hessian, allDim) );
+
+
+			//using syemetric one, should be faster
+			//at least initialize it to 0
+			/*CUBLAS_CALL( cublasSsyrk_v2(data->blas_handle_,CUBLAS_FILL_MODE_LOWER,CUBLAS_OP_T,
+				allDim,data->pix_num,&(trackEngine.AAMWeight),data->cu_Jacobian_transpose,data->pix_num,&beta,
+				data->cu_Hessian,allDim));*/
+			if (trackEngine.RTWeight>0)
+			{
+				//hessian AAM first
+				/*CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_N, CUBLAS_OP_T,
+				allDim, allDim, data->pix_num, 
+				&alpha, data->cu_Jacobians, allDim, 
+				data->cu_Jacobians, allDim,
+				&beta,
+				data->cu_Hessian, allDim) );*/
+
+				//using transposed one
+
+
+
+
+				/*CUBLAS_CALL( cublasSsyrk_v2(data->blas_handle_,CUBLAS_FILL_MODE_LOWER,CUBLAS_OP_N,
+				allDim,data->pix_num,&alpha,data->cu_Jacobian_transpose,data->pix_num,&beta,
+				data->cu_Hessian,allDim));*/
+
+
+				//	float *cpuPara=new float[allDim*allDim];
+				//CUDA_CALL(cudaMemcpy(cpuPara, data->cu_Hessian, allDim*allDim*sizeof(float), cudaMemcpyDeviceToHost ));
+				//ofstream out_J("D:\\Fuhao\\cpu gpu validation\\ah_GPU.txt",ios::out);
+				//for (int i=0;i<data->s_dim+data->t_dim+4;i++)
+				//{
+				//for (int j=0;j<data->s_dim+data->t_dim+4;j++)
+				//out_J<<cpuPara[i*allDim+j]<<" ";
+				//out_J<<endl;
+				//}
+
+				//out_J.close();
+
+				////then Hessian RT
+				//CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_N, CUBLAS_OP_T,
+				//	allDim, allDim, trackEngine.visibleNum*2, 
+				//	&alpha, data->cu_Jacobians+(data->pix_num*allDim), allDim, 
+				//	trackEngine.cu_conv, allDim,
+				//	&beta,
+				//	data->cu_JConv, allDim) );
+
+				//then Hessian RT
+				/*CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_N, CUBLAS_OP_N,
+					allDim,trackEngine.visibleNum*2,trackEngine.visibleNum*2,
+					&alpha, data->cu_Jacobians+(data->pix_num*allDim), allDim, 
+					trackEngine.cu_conv, trackEngine.visibleNum*2,
+					&beta,
+					data->cu_JConv, allDim) ); 
+					CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_N, CUBLAS_OP_T,
+					allDim, allDim, trackEngine.visibleNum*2, 
+					&alpha, data->cu_JConv, allDim, 
+					data->cu_Jacobians+(data->pix_num*allDim), allDim,
+					&beta,
+					data->cu_RTHessian, allDim) );*/
+
+				CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_T, CUBLAS_OP_N,
+					allDim,trackEngine.visibleNum*2,trackEngine.visibleNum*2,
+					&alpha, data->cu_RT_Jacobian_transpose, trackEngine.visibleNum*2, 
+					trackEngine.cu_conv, trackEngine.visibleNum*2,
+					&beta,
+					data->cu_JConv, allDim) ); 
+			/*	CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_N, CUBLAS_OP_N,
+					allDim, allDim, trackEngine.visibleNum*2, 
+					&alpha, data->cu_JConv, allDim, 
+					data->cu_RT_Jacobian_transpose, trackEngine.visibleNum*2,
+					&beta,
+					data->cu_RTHessian, allDim) );
+				vectorAdd<<<allDim*allDim/128+1,128>>>(data->cu_RTHessian,data->cu_Hessian,trackEngine.RTWeight,
+					alpha,allDim*allDim);*/
+
+				////J*Sigma*J'
+				CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_N, CUBLAS_OP_N,
+					allDim, allDim, trackEngine.visibleNum*2, 
+					&trackEngine.RTWeight, data->cu_JConv, allDim, 
+					data->cu_RT_Jacobian_transpose, trackEngine.visibleNum*2,
+					&alpha,
+					data->cu_Hessian, allDim) );
+
+				//J'*(J*Sigma)'
+				/*CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_T, CUBLAS_OP_T,
+					allDim, allDim, trackEngine.visibleNum*2, 
+					&trackEngine.RTWeight, data->cu_RT_Jacobian_transpose, trackEngine.visibleNum*2, 
+					data->cu_JConv, allDim,
+					&alpha,
+					data->cu_Hessian, allDim) );*/
+		
+				
+
+
+				/*	float *cpuPara=new float[allDim*allDim];
+				CUDA_CALL(cudaMemcpy(cpuPara, data->cu_RTHessian, allDim*allDim*sizeof(float), cudaMemcpyDeviceToHost ));
+				ofstream out_J("D:\\Fuhao\\cpu gpu validation\\rtH_new.txt",ios::out);
+				for (int i=0;i<data->s_dim+data->t_dim+4;i++)
+				{
+				for (int j=0;j<data->s_dim+data->t_dim+4;j++)
+				out_J<<cpuPara[i*allDim+j]<<" ";
+				out_J<<endl;
+				}
+				out_J.close();
+				cout<<"done!\n";*/
+
+				//cout<<trackEngine.RTWeight<<" "<<trackEngine.AAMWeight<<endl;
+				//add the two hessian together
+			
+
+				//copyJacobianWithWeight<<<(data->pix_num+trackEngine.visibleNum)*allDim+1,128>>>(data->cu_Jacobians,
+				//	allDim,data->pix_num,trackEngine.visibleNum,trackEngine.AAMWeight,trackEngine.RTWeight,data->cu_FullJacobians);
+				////hessian AAM
+				//CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_N, CUBLAS_OP_T,
+				//	allDim, allDim, data->pix_num+trackEngine.visibleNum*2, 
+				//	&alpha, data->cu_FullJacobians, allDim, 
+				//	data->cu_Jacobians, allDim,
+				//	&beta,
+				//	data->cu_Hessian, allDim) );
+
+				//hessian RT
+
+				//weighted sum
+			}
+
+
+
+
+
+			if (trackEngine.priorWeight>0)
+			{
+				vectorAdd<<<allDim*data->s_dim/128+1,128>>>(trackEngine.cuHessianPrior,data->cu_Hessian,trackEngine.priorWeight,
+					1,allDim*data->s_dim);
+			}
+		}
+			/*	float *cpuPara=new float[allDim*allDim];
+				CUDA_CALL(cudaMemcpy(cpuPara, data->cu_Hessian, allDim*allDim*sizeof(float), cudaMemcpyDeviceToHost ));
+				ofstream out_J("D:\\Fuhao\\cpu gpu validation\\h_GPU.txt",ios::out);
+				for (int i=0;i<data->s_dim+data->t_dim+4;i++)
+				{
+				for (int j=0;j<data->s_dim+data->t_dim+4;j++)
+				out_J<<cpuPara[i*allDim+j]<<" ";
+				out_J<<endl;
+				}
+
+				out_J.close();*/
+		else
+		{
+			/*CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_N, CUBLAS_OP_T,
+				allDim, allDim, data->pix_num, 
+				&alpha, data->cu_Jacobians, allDim, 
+				data->cu_Jacobians, allDim,
+				&beta,
+				data->cu_Hessian, allDim) );*/
+			CUBLAS_CALL( cublasSgemm_v2(data->blas_handle_, CUBLAS_OP_T, CUBLAS_OP_N,
+				allDim, allDim, data->pix_num, 
+				&alpha, data->cu_Jacobian_transpose, data->pix_num, 
+				data->cu_Jacobian_transpose, data->pix_num,
+				&beta,
+				data->cu_Hessian, allDim) );
+		}
+
+		
+		/*}
+		GTE("START");*/
+		
+
+		////////84/21//////////
+		/*if (times>20)
+		{
+			break;
+		}
+		times++;
+		continue;*/
+
+
+	/*	float *cpuPara=new float[allDim*allDim];
+		CUDA_CALL(cudaMemcpy(cpuPara, data->cu_Hessian, allDim*allDim*sizeof(float), cudaMemcpyDeviceToHost ));
+		ofstream out_JH("D:\\Fuhao\\cpu gpu validation\\Hessian_transpose.txt",ios::out);
+		for (int i=0;i<data->s_dim+data->t_dim+4;i++)
+		{
+			for (int j=0;j<data->s_dim+data->t_dim+4;j++)
+				out_JH<<cpuPara[i*allDim+j]<<" ";
+			out_JH<<endl;
+		}
+
+		out_JH.close();
+		cout<<"done!\n";*/
+
+		///////////////////////Hessian Checked 0321////////////////////////////
+
+		//CULA_CALL( culaDeviceSgetrf(allDim, allDim, data->cu_Hessian, allDim, ipiv) );
+		//CULA_CALL( culaDeviceSgetri(allDim, data->cu_Hessian, allDim, ipiv) );
+
+		
+
+		
+
+	
+		/*	CULA_CALL(culaDeviceSgesv(allDim,1,data->cu_Hessian,allDim,data->ipiv,
+				data->cu_deltaParameters,allDim));*/
+	
+				/////////////////////////mkl version////////////////////////////////
+				//GTB("START");
+				////for (int ii=0;ii<60;ii++)
+				//{
+				CUDA_CALL(cudaMemcpy(data->host_Hessian, data->cu_Hessian,allDim*(allDim+1)*sizeof(float), cudaMemcpyDeviceToHost ));
+				//CUDA_CALL(cudaMemcpy(data->host_b, data->cu_deltaParameters,allDim*sizeof(float), cudaMemcpyDeviceToHost ));
+				solveAxB(data->host_Hessian,data->host_Hessian+allDim*allDim,allDim);
+
+				/*if (isAAMOnly)
+				{
+					for (int k=0;k<10;k++)
+					{
+						cout<<data->host_b[k]<<" ";
+					}
+					cout<<endl;
+				}*/
+				alpha=-1.0;
+				CUBLAS_CALL(cublasSaxpy_v2(data->blas_handle_,allDim,&alpha,data->cu_deltaB,1,data->cu_parameters,1));
+				/*}
+				GTE("START");*/
+				//continue;
+				////////////////////////////////////////////////////////////
+	
+		/////////////////////opencv version///////////////////////////////
+	//	CUDA_CALL(cudaMemcpy(data->host_Hessian, data->cu_Hessian,allDim*allDim*sizeof(float), cudaMemcpyDeviceToHost ));
+	//	invHessian(data->host_Hessian,data->host_inv_Hessian,allDim);
+	////	//CUDA_CALL(cudaMemcpy(data->cu_Hessian,data->host_inv_Hessian,allDim*allDim*sizeof(float),cudaMemcpyHostToDevice));
+
+	////	//get the delta
+	/////*	CUBLAS_CALL(cublasSgemv_v2(data->blas_handle_,CUBLAS_OP_T,allDim,allDim,&alpha,data->cu_Hessian,allDim,data->cu_deltaParameters,1,&beta,
+	////		data->cu_deltaParameters,1));//
+	//	CUBLAS_CALL(cublasSgemv_v2(data->blas_handle_,CUBLAS_OP_T,allDim,allDim,&alpha,data->cu_inv_Hessian,allDim,data->cu_deltaParameters,1,&beta,
+	//		data->cu_deltaParameters,1));
+	//	alpha=-1.0;
+
+	//	//update parameters
+	//	CUBLAS_CALL(cublasSaxpy_v2(data->blas_handle_,allDim,&alpha,data->cu_deltaParameters,1,data->cu_parameters,1));
+		//////////////////////////////////////////////////////////////
+
+
+		//////////////////////////////////////////////////////////////////////
+
+		/////////////////////direct solve 1//////////////////////////////////////////
+		 
+		
+		/*CULA_CALL(culaDeviceSgesv(allDim,1,data->cu_Hessian,allDim,data->ipiv,
+			data->cu_deltaParameters,allDim));*/
+		///////////////////////////////////////////////////////////////
+
+		//////////////////////////direct solve 2///////////////////////////////
+		/*CUDA_CALL(cudaMemcpy(data->host_Hessian, data->cu_Hessian,allDim*allDim*sizeof(float), cudaMemcpyDeviceToHost ));
+		CUDA_CALL(cudaMemcpy(data->host_b, data->cu_deltaParameters,allDim*sizeof(float), cudaMemcpyDeviceToHost ));
+		solveAb(data->host_Hessian,data->host_b,data->host_dx,allDim);
+		CUDA_CALL(cudaMemcpy(data->cu_deltaParameters,data->host_dx,allDim*sizeof(float),cudaMemcpyHostToDevice));*/
+		/////////////////////////////////////////////////////////////////////
+
+	/*	if (times>20)
+		{
+			break;
+		}
+		times++;
+		continue;*/
+
+	/*	float *cpuPara=new float[allDim*allDim];
+		CUDA_CALL(cudaMemcpy(cpuPara, data->cu_Hessian, allDim*allDim*sizeof(float), cudaMemcpyDeviceToHost ));
+		ofstream out_J("D:\\Fuhao\\cpu gpu validation\\HessianInv_GPU.txt",ios::out);
+		for (int i=0;i<data->s_dim+data->t_dim+4;i++)
+		{
+			for (int j=0;j<data->s_dim+data->t_dim+4;j++)
+				out_J<<cpuPara[i*allDim+j]<<" ";
+			out_J<<endl;
+		}
+		
+		out_J.close();*/
+		////////////////////////////inv checked//////////////////////////////////////////
+		
+		
+
+
+		
+
+	/*	float *cpuPara=new float[MPD_combination];
+		CUDA_CALL(cudaMemcpy(cpuPara, data->cu_deltaParameters, MPD_combination*sizeof(float), cudaMemcpyDeviceToHost ));
+		ofstream out_J1("D:\\Fuhao\\cpu gpu validation\\dp_GPU.txt",ios::out);
+		for (int i=0;i<data->s_dim+data->t_dim+4;i++)
+		{
+			out_J1<<-cpuPara[i]<<" ";
+		}
+		out_J1<<endl;
+		out_J1.close();*/
+
+	/*	ofstream out_Jj("D:\\Fuhao\\cpu gpu validation\\initialP_GPU.txt",ios::out);
+		float *cpuPara=new float[MPD_combination];
+		CUDA_CALL(cudaMemcpy(cpuPara, data->cu_parameters, MPD_combination*sizeof(float), cudaMemcpyDeviceToHost ));
+		for (int i=0;i<data->s_dim+data->t_dim+4;i++)
+		{
+			out_Jj<<cpuPara[i]<<" ";
+		}
+		out_Jj<<endl;
+		out_Jj.close();*/
+
+	
+		
+
+
+		//////////////////check parameters//////////////////////////
+		//float *cpuPara=new float[MPD_combination];
+	/*	CUDA_CALL(cudaMemcpy(cpuPara, data->cu_parameters, MPD_combination*sizeof(float), cudaMemcpyDeviceToHost ));
+		ofstream out_J("D:\\Fuhao\\cpu gpu validation\\parameter_GPU.txt",ios::out);
+		for (int i=0;i<data->s_dim+data->t_dim+4;i++)
+		{
+			out_J<<cpuPara[i]<<" ";
+		}
+		out_J<<endl;
+		out_J.close();*/
+		//check if we need to stop
+
+		//if (times>MaxIterNum||errorSum<0.2&&abs(lastError-errorSum)<0.0001)
+		//{
+		//	/*cout<<"time "<<times<<endl;*/
+		///*	float *parameters=new float[MPD_combination];
+		//	CUDA_CALL(cudaMemcpy(parameters, data->cu_parameters, MPD_combination*sizeof(float), cudaMemcpyDeviceToHost ));
+		//	checkIterationResult(parameters,data->ptsNum,data->s_dim,data->t_dim,true);
+		//	delete []parameters;*/
+
+		//	CUDA_CALL(cudaMemcpy(finalShape, data->cu_currentShape, data->ptsNum*2*sizeof(float), cudaMemcpyDeviceToHost ));
+		//	break;
+		//}
+		//GTE("START");
+
+		if (trackEngine.RTWeight_backup>0.005)
+		{
+			trackEngine.RTWeight-=0.1*trackEngine.RTWeight_backup;
+			if (trackEngine.RTWeight<=0.005)
+			{
+				trackEngine.RTWeight=0.005;
+			}
+		}
+		
+	/*	}
+		GTE("START");
+		gCodeTimer.printTimeTree();
+		double time = total_fps;
+		cout<<"used time per iteration: "<<time<<endl;*/
+		/*if (times>40)
+		{
+			trackEngine.priorWeight=0.001;
+		}*/
+		//CUBLAS_CALL(cublasScopy_v2(data->blas_handle_,data->s_dim,data->cu_currentShape,1,data->cu_lastShape,1));
+		lastError=errorSum;
+		//cout<<"errorSum: "<<errorSum<<endl;
+		times++;
+
+	
+
+	/*	if (times>20)
+		{
+				break;
+		}*/
+
+	
+
+		
+	}
+
+	return status;
+//	cout<<times<<endl;
+	//CUDA_CALL(cudaEventRecord( stop, 0 ));
+	//CUDA_CALL(cudaEventSynchronize( stop ));
+	//float elapsedTime;
+	//CUDA_CALL( cudaEventElapsedTime( &elapsedTime,
+	//	start, stop ) );
+	//cout<<"time: "<<elapsedTime<<"/"<<times<<" ms"<<endl;
+
+
+	/*cout<<"ok..\n";*/
+
+}
+
+
+extern "C" int iterate_combination_new(int width,int height,int currentFrame,int startFrame,float &resultTheta,float &trackingError,float *finalShape,bool isAAMOnly,bool showNN,bool updateOnly)
+{
+	//cout<<"in the cuda AAM\n";
+	//return;
+	int status=0;
+	AAM_Search_RealGlobal_CUDA *data=trackEngine.AAM_ENGINE;
+
+	//if (data->isAdptive&&data->currentFrameID==data->blockNum&&updateOnly)
+	//{
+	//	//cout<<"update model\n";
+	//	//GTB("updateModel");
+	//	//update texture model
+	//	CUDA_CALL(cudaMemcpy(data->host_blockTextureData, data->cu_blockTextureData, data->pix_num*data->blockNum*sizeof(float), cudaMemcpyDeviceToHost ));
+
+
+	//	updateModelCPU(data->host_blockTextureData,data->blockNum,data->newMeanAndTVec);
+
+	//	//data->exp->updateModel(data->host_blockTextureData,data->blockNum);
+	//	updateTextureModel_cuda(data->newMeanAndTVec);
+	//	data->currentFrameID=0;
+
+	//	
+	//	/*GTE("updateModel");
+	//	gCodeTimer.printTimeTree();
+	//	double time = total_fps;
+	//	cout<<"update model time: "<<time<<" ms"<<endl;*/
+
+	//	return status;
+
+	//}
+
+	if (updateOnly)
+	{
+		updateTextureModel_cuda(data->newMeanAndTVec);
+	}
+
+	//float *cu_inputImg=data->cu_inputImg;
+	int allDim=data->s_dim+data->t_dim+4;
+	int MaxIterNum=8;
+
+	if (isAAMOnly)
+	{
+		MaxIterNum=30;
+	}
+	/*if (smoothWeight>0)
+	{
+		MaxIterNum=35;
+	}*/
+	
+	int incx,incy;
+	incx=incy=1;
+	//float *cu_currentTexture;
+//	float *cu_errorImage;
+	float result;
+	float textureScale;
+	float tmp_scale,tex_scale;
+
+	//device_vector<int> d_ipiv(allDim);
+	//int *ipiv=raw_pointer_cast(&d_ipiv[0]);
+
+	//float *lastParameters;
+	//malloc Jacobians and Hessian
+	//suppose parameters are already initialized
+
+	//calculate the gradient of input image
+	//By openCV first
+	
+	int full_pix_num=data->t_width*data->t_height;
+
+
+	int times=0;
+
+	float alpha,beta;
+	float difference;
+
+	float errorSum,lastError;
+
+	
+	dim3 grid((data->t_width*data->t_height)/blockDIM_combination+1,(data->s_dim+data->t_dim+4)/blockDIM_combination+1,1);
+	dim3 threads(blockDIMX_combination,blockDIM_combination,1);
+	//cout<<"lalala\n";
+	if (isAAMOnly)
+	{
+		//trackEngine.RTWeight=trackEngine.RTWeight_backup*0;
+		//trackEngine.priorWeight=trackEngine.priorWeight_backup*0;
+		//trackEngine.RTWeight=trackEngine.priorWeight=0;
+		trackEngine.RTWeight=0;
+		trackEngine.priorWeight=0.001;
+	}
+	else
+	{
+		trackEngine.RTWeight=trackEngine.RTWeight_backup;
+		trackEngine.priorWeight=trackEngine.priorWeight_backup;
+	}
+
+
+
+	//cudaEvent_t start, stop;
+	//CUDA_CALL(cudaEventCreate(&start));
+	//CUDA_CALL(cudaEventCreate(&stop));
+	//CUDA_CALL(cudaEventRecord( start, 0 ));
+	abs_diff<float>        binary_op2;
+
+	while(1)
+	{
+
+		//show current image
+		if (data->showSingleStep)
+		//if(1)
+		{
+			cout<<"time "<<times<<endl;
+			float *parameters=new float[MPD_combination];
+			CUDA_CALL(cudaMemcpy(parameters, data->cu_parameters, MPD_combination*sizeof(float), cudaMemcpyDeviceToHost ));
+			checkIterationResult(parameters,data->ptsNum,data->s_dim,data->t_dim,false);
+			delete []parameters;
+
+		}
+
+		/*cudaEvent_t start, stop;
+		CUDA_CALL(cudaEventCreate(&start));
+		CUDA_CALL(cudaEventCreate(&stop));
+		CUDA_CALL(cudaEventRecord( start, 0 ));
+
+		for (int tesdt=0;tesdt<30;tesdt++)
+		{*/
+		
+		//copy parameters to constant memory
+		//CUDA_CALL(cudaMemcpyToSymbol(cu_currentParameters,data->cu_parameters,MPD_combination*sizeof(float),0,cudaMemcpyDeviceToDevice));
+
+		//!!need to assign mean value to current shape
+		/*CUBLAS_CALL(cublasScopy_v2(data->blas_handle_,data->s_dim,data->cu_parameters,incx,data->cu_s_weight,incy));
+		CUBLAS_CALL(cublasScopy_v2(data->blas_handle_,data->t_dim,data->cu_parameters+data->s_dim,incx,data->cu_t_weight,incy));
+	
+		CUBLAS_CALL(cublasScopy_v2(data->blas_handle_,data->ptsNum*2,data->cu_s_mean,incx,data->cu_currentLocalShape,incy));
+		cu_getCurrentShape_combination(data->cu_currentLocalShape,data->cu_s_weight,data->cu_s_vec,data->s_dim,data->t_dim,data->ptsNum,data->cu_parameters,data->cu_currentShape);
+
+
+		CUBLAS_CALL(cublasScopy_v2(data->blas_handle_,data->pix_num,data->cu_t_mean,incx,data->cu_currentTemplate,incy));	
+		cu_getCurrentTexture_combination(data->cu_currentTemplate,data->cu_t_weight,data->cu_t_vec,data->t_dim,data->pix_num);
+	*/		
+		
+	/*	GTB("START");
+		for(int i=0;i<60;i++)
+		{*/
+
+		CUBLAS_CALL(cublasScopy_v2(data->blas_handle_,data->pix_num+data->ptsNum*2,data->cu_sMean_T_mean,incx,data->cu_curLocalShape_curTemplate,incy));
+		//continue;
+	
+		cu_getCurrentShape_combination(data->cu_currentLocalShape,data->cu_parameters,data->cu_s_vec,data->s_dim,data->t_dim,data->ptsNum,data->cu_parameters,data->cu_currentShape,data->cu_lastShape);
+		
+		if (showNN)
+		{
+			CUDA_CALL(cudaMemcpy(finalShape, data->cu_currentShape, data->ptsNum*2*sizeof(float), cudaMemcpyDeviceToHost ));
+			break;
+		}
+		//check shape difference and see whether to return
+		
+		
+
+		/*vectorAdd<<<(data->ptsNum*2)/16,16>>>(data->cu_lastShape,data->cu_currentShape,1,
+			-1,data->ptsNum*2);*/
+		if (times>4)
+		{
+			float sumSquare=thrust::inner_product(data->Vec_lastShape.begin(),data->Vec_lastShape.end(),data->Vec_currentShape.begin(),0,thrust::plus<float>(),binary_op2);
+			if((sumSquare/156.0f<0.005)||times>MaxIterNum)
+			{
+
+				CUDA_CALL(cudaMemcpy(finalShape, data->cu_currentShape, data->ptsNum*2*sizeof(float), cudaMemcpyDeviceToHost ));
+
+				if (data->isAdptive)
+				{
+					CUBLAS_CALL(cublasSdot_v2(data->blas_handle_,data->pix_num,data->cu_errorImage,incx,data->cu_errorImage,incy,&errorSum)); //thrust
+					//cout<<errorSum<<endl;
+					if (errorSum<0.6)
+					{
+						CUBLAS_CALL(cublasScopy_v2(data->blas_handle_,data->pix_num,data->cu_currentTexture,1,data->cu_blockTextureData+data->currentFrameID*data->pix_num,1));
+					}
+					else
+					{
+						//cout<<"bad data\n";
+						CUBLAS_CALL(cublasScopy_v2(data->blas_handle_,data->pix_num,data->cu_t_mean,1,data->cu_blockTextureData+data->currentFrameID*data->pix_num,1));
+						status=2;
+					}
+					data->currentFrameID++;
+					if (data->currentFrameID==data->blockNum)
+					{
+						CUDA_CALL(cudaMemcpy(data->host_blockTextureData, data->cu_blockTextureData, data->pix_num*data->blockNum*sizeof(float), cudaMemcpyDeviceToHost ));
+						data->currentFrameID=0;
+						status=1;
+					}
+				}
+
+				float *parameters=new float[4];
+				CUDA_CALL(cudaMemcpy(parameters, data->cu_parameters+data->s_dim+data->t_dim, 4*sizeof(float), cudaMemcpyDeviceToHost ));
+				resultTheta=parameters[0];
+
+				trackingError=errorSum;
 				//cout<<"used times: "<<times<<endl;
 				break;
 			}

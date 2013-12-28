@@ -9,6 +9,12 @@
 class AAMWrapper
 {
 public:
+
+	//new add: reset 
+
+	void resetTracking();
+
+
 	AAMWrapper(void);
 	~AAMWrapper(void);
 
