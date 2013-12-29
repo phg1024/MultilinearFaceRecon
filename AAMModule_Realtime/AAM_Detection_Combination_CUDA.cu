@@ -6230,7 +6230,9 @@ extern "C" int iterate_combination_new(int width,int height,int currentFrame,int
 
 	if (updateOnly)
 	{
+		cout<<"begin transferring data back to GPU\n";
 		updateTextureModel_cuda(data->newMeanAndTVec);
+		cout<<"transfer finished\n";
 	}
 
 	//float *cu_inputImg=data->cu_inputImg;
