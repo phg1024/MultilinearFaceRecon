@@ -12,6 +12,11 @@ public:
 	PoseTracker(void);
 	~PoseTracker(void);
 
+	void reset();
+
+	float facialFeatureTrackingError() const;
+	float poseEstimationError() const;
+
 	bool reconstructionWithSingleFrame(
 		const unsigned char* colordata,
 		const unsigned char* depthdata,
@@ -19,7 +24,7 @@ public:
 		vector<float>& fpts
 	);
 
-	void printStats() {
+	void printStats() const {
 		//PhGUtils::message("Average tracking prep time = " + PhGUtils::toString(aam.getPrepTime() / trackedFrames * 1000) + "ms");
 		PhGUtils::message("Average tracking time = " + PhGUtils::toString(tAAM.elapsed() / trackedFrames * 1000) + "ms");
 		PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() / frameIdx * 1000) + "ms");

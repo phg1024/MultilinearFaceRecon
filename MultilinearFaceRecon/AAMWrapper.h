@@ -9,16 +9,14 @@
 class AAMWrapper
 {
 public:
-
-	//new add: reset 
-
-	void resetTracking();
-
-
 	AAMWrapper(void);
 	~AAMWrapper(void);
 
 	void reset();
+	float getTrackingError() const {
+		return engine->getTrackingError();
+	}
+
 	// tracking interface
 	const vector<float>& track(const unsigned char* cimg, const unsigned char* dimg, int w, int h);
 

@@ -51,7 +51,7 @@ void AAMWrapper::setup() {
 }
 
 
-void AAMWrapper::resetTracking()
+void AAMWrapper::reset()
 {
 	initial=true;
 	startNum=0;
@@ -369,9 +369,4 @@ const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigne
 			//cout << "Failed." << endl;
 			return eptf;
 		}
-}
-
-void AAMWrapper::reset()
-{
-	initial = true;
 }

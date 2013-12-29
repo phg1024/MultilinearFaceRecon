@@ -18,7 +18,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	// for 47 expression dimensions
 	w_prior_exp = 5e-4;
 	w_boundary = 1e-8;
-	w_chin = 1e-3;
+	w_chin = 1e-2;
 
 	w_prior_exp_2D = 1e3;
 	w_prior_id_2D = 1e3;
@@ -39,7 +39,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	w_landmarks.resize(512);
 
 	cc = 1e-4;
-	errorThreshold = 5e-5;
+	errorThreshold = 2.5e-3;
 	errorDiffThreshold = errorThreshold * 0.005;
 	usePrior = true;
 
@@ -62,6 +62,11 @@ MultilinearReconstructor::~MultilinearReconstructor(void)
 {
 }
 
+
+void MultilinearReconstructor::reset()
+{
+	// @TODO	reset the reconstructor
+}
 
 void MultilinearReconstructor::togglePrior()
 {
@@ -367,7 +372,7 @@ void MultilinearReconstructor::fit2d_withPrior() {
 
 		timerOther.tic();
 
-		float E = computeError_2D();
+		E = computeError_2D();
 		//PhGUtils::debug("iters", iters, "Error", E);
 
 		converged |= E < errorThreshold;
@@ -609,7 +614,7 @@ void MultilinearReconstructor::fit_withPrior() {
 		//transformMesh();
 		//Rmat.print("R");
 		//Tvec.print("T");
-		float E = computeError();
+		E = computeError();
 		//PhGUtils::debug("iters", iters, "Error", E);
 
 		converged |= E < errorThreshold;
@@ -849,7 +854,7 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 
 		// exclude the mouth region
 		if( i>41 && i < 64 ) {
-			wpt = 0;
+			wpt *= w_chin;
 		}
 
 		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
@@ -893,6 +898,11 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 	// apply the new global transformation
 	for(int i=0, vidx=0, jidx=0;i<npts;i++) {
 		float wpt = w_landmarks[vidx];
+
+		// exclude the mouth region
+		if( i>41 && i < 64 ) {
+			wpt *= w_chin;
+		}
 
 		// point p
 		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
@@ -1607,6 +1617,7 @@ float MultilinearReconstructor::computeError()
 {
 	int npts = targets.size();
 	float E = 0;
+	float wsum = 0;
 	for(int i=0;i<npts;i++) {
 		int vidx = i * 3;
 		// should change this to a fast version
@@ -1615,10 +1626,11 @@ float MultilinearReconstructor::computeError()
 		/*p = Rmat * p + Tvec;*/		
 		PhGUtils::transformPoint(p.x, p.y, p.z, Rmat, Tvec);
 
-		E += p.squaredDistanceTo(targets[i].first) * w_landmarks[vidx];
+		E += p.distanceTo(targets[i].first) * w_landmarks[vidx];
+		wsum += w_landmarks[vidx];
 	}
 
-	E /= npts;
+	E /= wsum;
 	return E;
 }
 

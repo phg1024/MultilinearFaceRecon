@@ -45,6 +45,13 @@ public:
 	MultilinearReconstructor(void);
 	~MultilinearReconstructor(void);
 
+	// reset the reconstructor
+	void reset();
+
+	float reconstructionError() const {
+		return E;
+	}
+
 	const Tensor1<float>& templateMesh() const {
 		return tplt;
 	}
@@ -241,5 +248,8 @@ private:
 	static const int INITFRAMES = 5;
 	int frameCounter;
 	bool fitPose, fitIdentity, fitExpression;
+
+	// fitting error
+	float E;
 };
 

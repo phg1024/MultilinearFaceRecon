@@ -102,7 +102,7 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
-			PhGUtils::colorToWorld((w-1) - u, v, d, lms[i].x, lms[i].y, lms[i].z);
+			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
 			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 
 			// minus one is a hack to bring the model nearer
@@ -187,7 +187,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
-			PhGUtils::colorToWorld((w-1) - u, v, d, lms[i].x, lms[i].y, lms[i].z);
+			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
 			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 
 			// minus one is a hack to bring the model nearer
@@ -262,7 +262,7 @@ void MultilinearFaceRecon::updateKinectStreams_2D()
 		float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
 		// flip x coordinate
-		lms[i].x = (w-1) - u;
+		lms[i].x = u;
 		lms[i].y = v;
 		lms[i].z = d;
 		//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
@@ -330,7 +330,7 @@ void MultilinearFaceRecon::updateKinectStreams()
 		std::sort(depths.begin(), depths.end());
 
 		// flip x coordinate
-		PhGUtils::colorToWorld((w-1) - u, v, depths[mfilterSize*mfilterSize/2], lms[i].x, lms[i].y, lms[i].z);
+		PhGUtils::colorToWorld(u, v, depths[mfilterSize*mfilterSize/2], lms[i].x, lms[i].y, lms[i].z);
 
 		/*
 		cout << u << " " << v << " " << d << "\t"

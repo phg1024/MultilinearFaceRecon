@@ -113,3 +113,18 @@ bool PoseTracker::reconstructionWithSingleFrame(
 		return true;
 	}
 }
+
+void PoseTracker::reset()
+{
+	aam.reset();
+	recon.reset();
+}
+
+float PoseTracker::facialFeatureTrackingError() const {
+	return aam.getTrackingError();
+}
+
+float PoseTracker::poseEstimationError() const
+{
+	return recon.reconstructionError();
+}
