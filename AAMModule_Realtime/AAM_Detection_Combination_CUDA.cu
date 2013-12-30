@@ -6367,10 +6367,11 @@ extern "C" int iterate_combination_new(int width,int height,int currentFrame,int
 			{
 
 				CUDA_CALL(cudaMemcpy(finalShape, data->cu_currentShape, data->ptsNum*2*sizeof(float), cudaMemcpyDeviceToHost ));
+				CUBLAS_CALL(cublasSdot_v2(data->blas_handle_,data->pix_num,data->cu_errorImage,incx,data->cu_errorImage,incy,&errorSum)); //thrust
 
 				if (data->isAdptive)
 				{
-					CUBLAS_CALL(cublasSdot_v2(data->blas_handle_,data->pix_num,data->cu_errorImage,incx,data->cu_errorImage,incy,&errorSum)); //thrust
+					
 					//cout<<errorSum<<endl;
 					if (errorSum<0.6)
 					{
@@ -6380,7 +6381,7 @@ extern "C" int iterate_combination_new(int width,int height,int currentFrame,int
 					{
 						//cout<<"bad data\n";
 						CUBLAS_CALL(cublasScopy_v2(data->blas_handle_,data->pix_num,data->cu_t_mean,1,data->cu_blockTextureData+data->currentFrameID*data->pix_num,1));
-						status=2;
+						
 					}
 					data->currentFrameID++;
 					if (data->currentFrameID==data->blockNum)
@@ -6396,6 +6397,10 @@ extern "C" int iterate_combination_new(int width,int height,int currentFrame,int
 				resultTheta=parameters[0];
 
 				trackingError=errorSum;
+
+				if(errorSum>0.8)
+					status=2;
+
 				//cout<<"used times: "<<times<<endl;
 				break;
 			}
