@@ -5101,6 +5101,7 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 
 		if (!enoughVisibleNum)
 		{
+			cout<<"not enough visible points\n";
 			return false;
 		}
 
@@ -5250,7 +5251,8 @@ bool AAM_Detection_Combination::track_combine(Mat &colorImg,Mat &depthImg,int &s
 
 		if (!isS)
 		{
-			//cout<<"no nn found!\n";
+			cout<<"no nearest neighbors found!\n";
+
 			return false;
 		}
 
