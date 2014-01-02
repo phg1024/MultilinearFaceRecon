@@ -159,6 +159,7 @@ private:
 	float w_boundary, w_chin;
 
 	float w_prior_id_2D, w_prior_exp_2D;
+	float w_boundary_2D;
 
 	// the input core tensor
 	Tensor3<float> core;
@@ -240,8 +241,9 @@ private:
 	arma::fmat sigma_wid, sigma_wexp;
 	arma::fmat sigma_wid_weighted, sigma_wexp_weighted;
 
-	// target vertices	
-	vector<pair<PhGUtils::Point3f, int>> targets;
+	// target vertices
+	vector<pair<PhGUtils::Point3f, int>> targets;		// xyz, vertex index
+	vector<pair<PhGUtils::Point3f, int>> targets_2d;	// uvd, vertex index
 	vector<float> w_landmarks;
 
 	// fitting control

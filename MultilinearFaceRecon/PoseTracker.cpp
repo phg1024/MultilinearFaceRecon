@@ -81,16 +81,12 @@ bool PoseTracker::reconstructionWithSingleFrame(
 		int npts = fpts.size()/2;
 		for(int i=0, j=npts;i<npts;i++,j++) {
 			int u = fpts[i];
-			// flip y coordinates
 			int v = fpts[j];
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
 			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
 			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
-
-			// minus one is a hack to bring the model nearer
-			//lms[i].z += 1.0;
 		}
 		bindTargetLandmarks(lms);
 		tOther.toc();

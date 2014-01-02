@@ -6836,6 +6836,7 @@ void AAM_RealGlobal_GPU::getAllNeededData(string name)
 	//	parametersLast[shape_dim+texture_dim+3]=0;
 	////	parametersLast[shape_dim+texture_dim]=
 	//}
+	cout << "done." << endl;
 }
 
 void AAM_RealGlobal_GPU::setSmoothnessWeight(double _smoothWeight)

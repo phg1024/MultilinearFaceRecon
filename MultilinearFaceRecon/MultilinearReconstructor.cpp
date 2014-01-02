@@ -4,6 +4,7 @@
 #include "Utils/Timer.h"
 #include "Kinect/KinectUtils.h"
 #include "Math/denseblas.h"
+#include "Math/Optimization.hpp"
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
 #define USELEVMAR4WEIGHTS 0
@@ -18,10 +19,11 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	// for 47 expression dimensions
 	w_prior_exp = 5e-4;
 	w_boundary = 1e-8;
-	w_chin = 1e-2;
+	w_chin = 0;
 
 	w_prior_exp_2D = 1e3;
 	w_prior_id_2D = 1e3;
+	w_boundary_2D = 1e-8;
 
 	w_history = 0.0075;
 
@@ -705,6 +707,7 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 	for(int i=0, vidx=0;i<npts;i++) {
 		//PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
 		float wpt = w_landmarks[vidx];
+
 		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
 		const PhGUtils::Point3f& q = targets[i].first;
 
@@ -714,6 +717,8 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 		// Projection to image plane
 		float u, v, d;
 		PhGUtils::worldToColor( px, py, pz, u, v, d );
+
+		//cout << i << "\t" << u << ", " << v << ", " << d << endl;
 
 		/*
 		// Back-Projection to world space
@@ -731,7 +736,8 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 			hx[i] = (dx * dx + dy * dy + dz * dz);// * wpt;
 		}
 		*/
-		float dx = q.x - u, dy = q.y - v, dz = q.z==0?0:(q.z - d);
+		float dx = q.x - u, dy = q.y - v, dz = (q.z==0?0:(q.z - d));
+		//cout << i << "\t" << dx << ", " << dy << ", " << dz << endl;
 		hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
 	}
 }
@@ -756,7 +762,7 @@ void evalJacobian_2D(float *p, float *J, int m, int n, void *adata) {
 
 	// for Jacobian of projection/viewport transformation
 	const float f_x = 525, f_y = 525;
-	float Jf[6] = {0};
+	float Jf[9] = {0};
 
 	// apply the new global transformation
 	for(int i=0, vidx=0, jidx=0;i<npts;i++) {
@@ -778,55 +784,115 @@ void evalJacobian_2D(float *p, float *J, int m, int n, void *adata) {
 		// Jf
 		float inv_z = 1.0 / pkz;
 		float inv_z2 = inv_z * inv_z;
+		/*
 		Jf[0] = f_x * inv_z; Jf[2] = -f_x * pkx * inv_z2;
 		Jf[4] = f_y * inv_z; Jf[5] = -f_y * pky * inv_z2;
+		*/
+		Jf[0] = -f_x * inv_z; Jf[2] = f_x * pkx * inv_z2;
+		Jf[4] = f_y * inv_z; Jf[5] = -f_y * pky * inv_z2;
+		Jf[8] = -1000;
 
 		// project p to color image plane
 		float pu, pv, pd;
 		PhGUtils::worldToColor(pkx, pky, pkz, pu, pv, pd);
 
 		// residue
-		float rkx = pu - q.x, rky = pv - q.y;
+		float rkx = pu - q.x, rky = pv - q.y, rkz = (q.z==0?0:(pd - q.z));		
 
 		// J_? * p_k
 		float jpx, jpy, jpz;
 		// J_f * J_? * p_k
-		float jjpx, jjpy;
+		float jjpx, jjpy, jjpz;
 		jpx = px, jpy = py, jpz = pz;
 		PhGUtils::rotatePoint( jpx, jpy, jpz, Jx );
 		jjpx = Jf[0] * jpx + J[2] * jpz;
 		jjpy = Jf[4] * jpy + J[5] * jpz;
+		jjpz = Jf[8] * jpz;
 		// \frac{\partial r_i}{\partial \theta_x}
-		J[jidx++] = wpt * 2.0 * s * (jjpx * rkx + jjpy * rky);
+		J[jidx++] = 2.0 * s * (jjpx * rkx + jjpy * rky + wpt * jjpz * rkz);
 
 		jpx = px, jpy = py, jpz = pz;
 		PhGUtils::rotatePoint( jpx, jpy, jpz, Jy );
 		jjpx = Jf[0] * jpx + J[2] * jpz;
 		jjpy = Jf[4] * jpy + J[5] * jpz;
+		jjpz = Jf[8] * jpz;
 		// \frac{\partial r_i}{\partial \theta_y}
-		J[jidx++] = wpt * 2.0 * s * (jjpx * rkx + jjpy * rky);
+		J[jidx++] = 2.0 * s * (jjpx * rkx + jjpy * rky + wpt * jjpz * rkz);
 
 		jpx = px, jpy = py, jpz = pz;
 		PhGUtils::rotatePoint( jpx, jpy, jpz, Jz );
 		jjpx = Jf[0] * jpx + J[2] * jpz;
 		jjpy = Jf[4] * jpy + J[5] * jpz;
+		jjpz = Jf[8] * jpz;
 		// \frac{\partial r_i}{\partial \theta_z}
-		J[jidx++] = wpt * 2.0 * s * (jjpx * rkx + jjpy * rky);
+		J[jidx++] = 2.0 * s * (jjpx * rkx + jjpy * rky + wpt * jjpz * rkz);
 
 		// \frac{\partial r_i}{\partial \t_x}
-		J[jidx++] = wpt * 2.0 * (Jf[0] * rkx);
+		J[jidx++] = 2.0 * (Jf[0] * rkx);
 
 		// \frac{\partial r_i}{\partial \t_y}
-		J[jidx++] = wpt * 2.0 * (Jf[4] * rky);
+		J[jidx++] = 2.0 * (Jf[4] * rky);
 
 		// \frac{\partial r_i}{\partial \t_z}
-		J[jidx++] = wpt * 2.0 * (Jf[2] * rkx + Jf[5] * rky);
+		J[jidx++] = 2.0 * (Jf[2] * rkx + Jf[5] * rky + wpt * Jf[8] * rkz);
 
 		// \frac{\partial r_i}{\partial s}
 		jjpx = Jf[0] * rpx + J[2] * rpz;
 		jjpy = Jf[4] * rpy + J[5] * rpz;
-		J[jidx++] = wpt * 2.0 * (jjpx * rkx + jjpy * rky);
+		jjpz = Jf[8] * rpz;
+		J[jidx++] = 2.0 * (jjpx * rkx + jjpy * rky + wpt * jjpz * rkz);
 	}
+	
+	/*
+	ofstream fout("jacobian.txt");
+
+	for(int i=0, jidx=0;i<npts;i++) {
+		for(int j=0;j<7;j++) {
+			fout << J[jidx++] << '\t';
+		}
+		fout << endl;
+	}
+	fout.close();
+	*/
+	/*
+	::system("pause");
+	*/	
+}
+
+bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
+	int npts = targets.size();
+	float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
+	// use levmar
+
+	/*
+	vector<float> errs(npts);
+	slevmar_chkjac(evalCost_2D, evalJacobian_2D, RTparams, 7, npts, this, &(errs[0]));
+	PhGUtils::printVector(errs);
+	::system("pause");
+	*/
+
+	vector<float> meas(npts);
+	//int iters = slevmar_dif(evalCost_2D, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	int iters = slevmar_der(evalCost_2D, evalJacobian_2D, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
+	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
+
+	// set up the matrix and translation vector
+	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
+	float diff = 0;
+	for(int i=0;i<3;i++) {
+		for(int j=0;j<3;j++) {
+			diff += fabs(R(i, j) - Rmat(i, j));
+			R(i, j) = Rmat(i, j);			
+		}
+	}
+
+	Tvec.x = RTparams[3], Tvec.y = RTparams[4], Tvec.z = RTparams[5];
+	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
+	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
+
+	cout << R << endl;
+	cout << T << endl;
+	return diff / 7 < cc;
 }
 
 void evalCost(float *p, float *hx, int m, int n, void* adata) {
@@ -951,7 +1017,7 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 		if( diff == 0 ) diff = numeric_limits<float>::min();
 		for(int j=0;j<7;j++) {
 			if( j == i ) {
-				J[jidx] = 2.0 * p[i] * diff * w_history;
+				J[jidx] = 2.0 * diff * w_history;
 			}
 			else J[jidx] = 0;
 			jidx++;
@@ -994,38 +1060,22 @@ int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cm
 }
 #endif
 
-bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
-	int npts = targets.size();
-	float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
-	// use levmar
-	int iters = slevmar_dif(evalCost_2D, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
-	//int iters = slevmar_der(evalCost_2D, evalJacobian_2D, RTparams, &(pws.meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
-	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
-
-	// set up the matrix and translation vector
-	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
-	float diff = 0;
-	for(int i=0;i<3;i++) {
-		for(int j=0;j<3;j++) {
-			diff += fabs(R(i, j) - Rmat(i, j));
-			R(i, j) = Rmat(i, j);			
-		}
-	}
-
-	Tvec.x = RTparams[3], Tvec.y = RTparams[4], Tvec.z = RTparams[5];
-	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
-	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
-
-	return diff / 7 < cc;
-}
-
 bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	int npts = targets.size();
-	float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
+	//float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
 	// use levmar
+	/*
+	vector<float> errs(npts + 7);
+	slevmar_chkjac(evalCost, evalJacobian, RTparams, 7, npts + 7, this, &(errs[0]));
+	PhGUtils::printVector(errs);
+	::system("pause");
+	*/
 	//int iters = slevmar_dif(evalCost, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
-	int iters = slevmar_der(evalCost, evalJacobian, RTparams, 
-		&(pws.meas[0]), 7, npts + 7, 128, opts, NULL, NULL, NULL, this);
+	//int iters = slevmar_der(evalCost, evalJacobian, RTparams, &(pws.meas[0]), 7, npts + 7, 128, opts, NULL, NULL, NULL, this);
+	
+	// use Gauss-Newton
+	float opts[3] = {0.1, 1e-3, 1e-4};
+	int iters = PhGUtils::GaussNewton<float>(evalCost, evalJacobian, RTparams, NULL, NULL, 7, npts+7, 128, opts, this);
 	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// use minpack
@@ -1046,8 +1096,11 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
 
-	//cout << R << endl;
-	//cout << T << endl;
+	/*
+	cout << R << endl;
+	cout << T << endl;
+	*/
+
 	return diff / 7 < cc;
 }
 
@@ -1439,7 +1492,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		meanZ += p.z * isValid;
 
 		if( ttp == TargetType_2D ) {
-			w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (i<64 || i>74)?1:w_boundary;
+			w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (i<64 || i>74)?1:w_boundary_2D;
 		}
 		else {
 			// set the landmark weights

@@ -97,16 +97,12 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 		int npts = fpts.size()/2;
 		for(int i=0;i<npts;i++) {
 			int u = fpts[i];
-			// flip y coordinates
 			int v = fpts[i+npts];
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
 			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
 			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
-
-			// minus one is a hack to bring the model nearer
-			//lms[i].z += 1.0;
 		}
 
 		viewer->bindTargetLandmarks(lms);
@@ -182,16 +178,12 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 		int npts = f.size()/2;
 		for(int i=0;i<npts;i++) {
 			int u = f[i];
-			// flip y coordinates
 			int v = f[i+npts];
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
 			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
 			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
-
-			// minus one is a hack to bring the model nearer
-			//lms[i].z += 1.0;
 		}
 
 		viewer->bindTargetLandmarks(lms);
@@ -261,7 +253,6 @@ void MultilinearFaceRecon::updateKinectStreams_2D()
 		int idx = (v*w+u)*4;
 		float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
-		// flip x coordinate
 		lms[i].x = u;
 		lms[i].y = v;
 		lms[i].z = d;
@@ -269,10 +260,12 @@ void MultilinearFaceRecon::updateKinectStreams_2D()
 	}
 	viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
 	if( frameIdx++ == 0 ) {
-		viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+		//viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+		viewer->fit2d(MultilinearReconstructor::FIT_POSE);
 	}
 	else
-		viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+		//viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+		viewer->fit2d(MultilinearReconstructor::FIT_POSE);
 	tRecon.toc();
 }
 
@@ -329,7 +322,6 @@ void MultilinearFaceRecon::updateKinectStreams()
 		}
 		std::sort(depths.begin(), depths.end());
 
-		// flip x coordinate
 		PhGUtils::colorToWorld(u, v, depths[mfilterSize*mfilterSize/2], lms[i].x, lms[i].y, lms[i].z);
 
 		/*

@@ -4,7 +4,7 @@
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
 #include "MultilinearReconstructor.h"
-#include "MultilinearReconstructorGPU.cuh"
+//#include "MultilinearReconstructorGPU.cuh"
 
 class BlendShapeViewer : public GL3DCanvas
 {
