@@ -34,6 +34,7 @@ BlendShapeViewer::~BlendShapeViewer(void)
 
 void BlendShapeViewer::initializeGL() {
 	GL3DCanvas::initializeGL();
+	initFBO();
 }
 
 void BlendShapeViewer::resizeGL(int w, int h) {
@@ -48,15 +49,7 @@ void BlendShapeViewer::paintGL() {
 	glPushMatrix();
 	
 	// setup the viewing matrices
-	glViewport(0, 0, 640, 480);
-
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glMultMatrixf(mProj.data());
-
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	glMultMatrixf(mMv.data());
+	setupViewingParameters();
 	
 	enableLighting();
 
@@ -71,8 +64,22 @@ void BlendShapeViewer::paintGL() {
 
 	disableLighting();
 
+	drawMeshToFBO();
+
 	glPopMatrix();
 	glDisable(GL_CULL_FACE);
+}
+
+void BlendShapeViewer::setupViewingParameters() {
+	glViewport(0, 0, 640, 480);
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glMultMatrixf(mProj.data());
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	glMultMatrixf(mMv.data());
 }
 
 bool BlendShapeViewer::loadLandmarks()
@@ -303,7 +310,6 @@ void BlendShapeViewer::generatePrior() {
 	PhGUtils::write2file(Wexps, "wexp.txt");
 }
 
-
 void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 	GL3DCanvas::keyPressEvent(e);
 
@@ -363,4 +369,49 @@ void BlendShapeViewer::disableLighting()
 {
 	glDisable(GL_LIGHT0);
 	glDisable(GL_LIGHTING);
+}
+
+void BlendShapeViewer::initFBO()
+{
+	// attach a depth buffer
+	fbo = shared_ptr<QOpenGLFramebufferObject>(new QOpenGLFramebufferObject(640, 480, QOpenGLFramebufferObject::Depth));
+	depthBuffer.resize(640*480);
+}
+
+void BlendShapeViewer::drawMeshToFBO()
+{
+	cout << fbo->attachment() << endl;
+	fbo->bind();
+
+	glPushMatrix();
+
+	setupViewingParameters();
+
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_BACK);
+
+	glDepthMask(GL_TRUE);
+
+	glClearColor(0, 0.25, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+		
+	glShadeModel(GL_SMOOTH);
+
+	mesh.drawFaceIndices();
+
+	glPopMatrix();
+
+	fbo->release();
+	QImage fboimg = fbo->toImage();
+	fboimg.save("fbo.png");
+
+	// how to read the depth buffer???
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture( fbo->texture(), GL_TEXTURE_2D );
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &(depthBuffer[0]));
+	glDisable(GL_TEXTURE_2D);
+
+	ofstream fout("fbodepth.txt");
+	PhGUtils::print2DArray(&(depthBuffer[0]), 640, 480, fout);
+	fout.close();
 }

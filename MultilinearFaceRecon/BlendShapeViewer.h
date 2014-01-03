@@ -6,6 +6,8 @@
 #include "MultilinearReconstructor.h"
 //#include "MultilinearReconstructorGPU.cuh"
 
+#include <QtGui/QOpenGLFramebufferObject>
+
 class BlendShapeViewer : public GL3DCanvas
 {
 	Q_OBJECT
@@ -28,6 +30,11 @@ protected:
 	virtual void paintGL();
 	virtual void resizeGL(int w, int h);
 
+	void setupViewingParameters();
+
+	void initFBO();
+
+	// keyboard events handler
 	virtual void keyPressEvent(QKeyEvent *e);
 
 	void enableLighting();
@@ -35,6 +42,8 @@ protected:
 
 	void drawLandmarks();
 	void drawGenreatedMesh();
+
+	void drawMeshToFBO();
 
 private:
 	bool loadLandmarks();
@@ -52,4 +61,9 @@ private:
 	//MultilinearReconstructorGPU GPURecon;
 
 	PhGUtils::Matrix4x4f mProj, mMv;
+
+private:
+	// used for synthesis step
+	shared_ptr<QOpenGLFramebufferObject> fbo;
+	vector<float> depthBuffer;
 };
