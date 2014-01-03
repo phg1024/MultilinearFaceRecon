@@ -77,7 +77,7 @@ class Shape
 		//SL_Basis *sl_engine;
 		void save(string name);
 		void save(ofstream &);
-		void load(ifstream &in);
+		void load(istream &in);
 
 		void init();
 

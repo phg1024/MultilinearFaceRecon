@@ -1,6 +1,6 @@
 #include "saveandread.h"
 
-void SL_Basis::saveMatrix(ofstream &out,CvMat *mat)
+void SL_Basis::saveMatrix(ostream &out,CvMat *mat)
 {
 	out<<mat->rows<<" "<<mat->cols<<endl;
 	for (int i=0;i<mat->rows;i++)
@@ -13,10 +13,11 @@ void SL_Basis::saveMatrix(ofstream &out,CvMat *mat)
 	}
 }
 
-CvMat* SL_Basis::loadMatrix(ifstream &in,CvMat *mat)
+CvMat* SL_Basis::loadMatrix(istream &in,CvMat *mat)
 {
 	int rows,cols;
 	in>>rows>>cols;
+	cout << "loading " << rows << "x" << cols << " matrix ..." << endl;
 	if (mat!=NULL)
 	{
 		cvReleaseMat(&mat);
@@ -33,7 +34,35 @@ CvMat* SL_Basis::loadMatrix(ifstream &in,CvMat *mat)
 	return mat;
 }
 
-void SL_Basis::saveMatrix(ofstream &out,IplImage *img)
+
+CvMat* SL_Basis::loadMatrix( const string& filename, CvMat* mat )
+{
+	ifstream fin(filename, ios::in | ios::binary);
+	if( !fin ) {
+		cerr << "failed to open file " << filename << endl;
+		return NULL;
+	}
+
+	int rows,cols;
+	// read the size of the matrix
+	fin.read(reinterpret_cast<char*>(&rows), sizeof(int));
+	fin.read(reinterpret_cast<char*>(&cols), sizeof(int));
+
+	cout << "loading " << rows << "x" << cols << " matrix ..." << endl;
+	if (mat!=NULL)
+	{
+		cvReleaseMat(&mat);
+
+	}
+	mat=cvCreateMat(rows,cols,CV_64FC1);
+
+	// read in the entire matrix, and this is a double matrix
+	fin.read(reinterpret_cast<char*>(mat->data.db), sizeof(double)*rows*cols);
+	return mat;
+}
+
+
+void SL_Basis::saveMatrix(ostream &out,IplImage *img)
 {
 	out<<img->width<<" "<<img->height<<endl;
 	out<<img->depth<<" "<<img->nChannels<<endl;
@@ -50,7 +79,7 @@ void SL_Basis::saveMatrix(ofstream &out,IplImage *img)
 	}
 }
 
-IplImage* SL_Basis::loadMatrix(ifstream &in,IplImage *img)
+IplImage* SL_Basis::loadMatrix(istream &in,IplImage *img)
 {
 	int width,height,depth,nchannels;
 	in>>width>>height>>depth>>nchannels;
@@ -76,7 +105,7 @@ IplImage* SL_Basis::loadMatrix(ifstream &in,IplImage *img)
 	return img;
 }
 
-void SL_Basis::saveMatrix(ofstream& out,double *data,int length)
+void SL_Basis::saveMatrix(ostream& out,double *data,int length)
 {
 	out<<length<<endl;
 	for(int i=0;i<length;i++)
@@ -84,7 +113,7 @@ void SL_Basis::saveMatrix(ofstream& out,double *data,int length)
 	out<<endl;
 }
 
-double* SL_Basis::loadMatrix(ifstream &in,double *data)
+double* SL_Basis::loadMatrix(istream &in,double *data)
 {
 	int length;
 	in>>length;
@@ -101,7 +130,7 @@ double* SL_Basis::loadMatrix(ifstream &in,double *data)
 	return data;
 }
 
-void SL_Basis::saveMatrix(ofstream& out,int *data,int length)
+void SL_Basis::saveMatrix(ostream& out,int *data,int length)
 {
 	out<<length<<endl;
 	for(int i=0;i<length;i++)
@@ -109,7 +138,7 @@ void SL_Basis::saveMatrix(ofstream& out,int *data,int length)
 	out<<endl;
 }
 
-int* SL_Basis::loadMatrix(ifstream &in,int *data)
+int* SL_Basis::loadMatrix(istream &in,int *data)
 {
 	int length;
 	in>>length;
@@ -126,7 +155,7 @@ int* SL_Basis::loadMatrix(ifstream &in,int *data)
 	return data;
 }
 
-void SL_Basis::saveMatrix(ofstream& out,int **data,int s1,int s2)
+void SL_Basis::saveMatrix(ostream& out,int **data,int s1,int s2)
 {
 	out<<s1<<" "<<s2<<endl;
 	for (int i=0;i<s1;i++)
@@ -139,7 +168,7 @@ void SL_Basis::saveMatrix(ofstream& out,int **data,int s1,int s2)
 	}
 }
 
-int ** SL_Basis::loadMatrix(ifstream &in,int **data)
+int ** SL_Basis::loadMatrix(istream &in,int **data)
 {
 	int s1,s2;
 	in>>s1>>s2;
@@ -155,7 +184,7 @@ int ** SL_Basis::loadMatrix(ifstream &in,int **data)
 	return data;
 }
 
-void SL_Basis::saveMatrix(ofstream& out,double **data,int s1,int s2)
+void SL_Basis::saveMatrix(ostream& out,double **data,int s1,int s2)
 {
 	out<<s1<<" "<<s2<<endl;
 	for (int i=0;i<s1;i++)
@@ -168,7 +197,7 @@ void SL_Basis::saveMatrix(ofstream& out,double **data,int s1,int s2)
 	}
 }
 
-double ** SL_Basis::loadMatrix(ifstream &in,double **data)
+double ** SL_Basis::loadMatrix(istream &in,double **data)
 {
 	int s1,s2;
 	in>>s1>>s2;

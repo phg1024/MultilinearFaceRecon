@@ -10,6 +10,9 @@ using namespace Eigen;
 #include "mkl_lapacke.h"
 
 #include "CodeTimer.h"
+
+#include "IO/FileMapper.h"
+
 //int main()
 //{
 //	MatrixXd m(2,2);
@@ -6683,27 +6686,52 @@ int i,j,k;
 
 void AAM_RealGlobal_GPU::loadResult(string name)
 {
+	cout << "load result begin ..." << endl;
 	SL_Basis SL_engine;
-	ifstream in(name.c_str(),ios::in);
+
+	// use file mapper
+	cout << "mapping file " << name << endl;
+	PhGUtils::FileMapper fm(name);
+	fm.map();
+	stringstream in(string(fm.buffer()));
+	cout << "file mapped. parsing file ..." << endl;
+
+	//ifstream in(name.c_str(),ios::in);
+	
 	in>>shape_dim>>texture_dim;
 	s_vec=SL_engine.loadMatrix(in,s_vec);
-	t_vec=SL_engine.loadMatrix(in,t_vec);
+
+	// t_vec is too large, load it from a different file
+	//t_vec=SL_engine.loadMatrix(in,t_vec);
+	t_vec = SL_engine.loadMatrix("../Data/model/tVec.bin", t_vec);
+	
+
+
+	cout << "loading mean shape ..." << endl;
 	meanShape=new Shape();
 	meanShape->load(in);
+	cout << "done." << endl;
+
+	cout << "loading mean texture ..." << endl;
 	meanTexture=new Texture();
 	meanTexture->load(in);
+	cout << "done." << endl;
+
 	s_mean=SL_engine.loadMatrix(in,s_mean);
 	t_mean=SL_engine.loadMatrix(in,t_mean);
 	s_value=SL_engine.loadMatrix(in,s_value);
 	t_value=SL_engine.loadMatrix(in,t_value);
+
 	in>>texture_scale>>shape_scale;
 	triangleList=SL_engine.loadMatrix(in,triangleList);
 	triangleIndList=SL_engine.loadMatrix(in,triangleIndList);
 	listNum=SL_engine.loadMatrix(in,listNum);
 	in>>isGlobaltransform;
 
+	fm.unmap();
 	//	meanShape->getMask(triangleList);
 
+	cout << "load result done ..." << endl;
 }
 
 void AAM_RealGlobal_GPU::getAllNeededData(string name)

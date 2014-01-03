@@ -57,7 +57,7 @@ public:
 
 	//save
 	void save(ofstream &);
-	void load(ifstream &);
+	void load(istream &);
 
 
 	//for cv

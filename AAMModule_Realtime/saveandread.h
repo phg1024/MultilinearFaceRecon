@@ -25,23 +25,26 @@ public:
 	// if I delete the data, it is possible to lose the data.
 	// since I read it only for the first time, so will have no problem
 	//but remember this, potential errors!
-	void saveMatrix(ofstream &out,CvMat *mat);
-	CvMat* loadMatrix(ifstream &in,CvMat *mat);
+	void saveMatrix(ostream &out,CvMat *mat);
+	CvMat* loadMatrix(istream &in,CvMat *mat);
 
-	void saveMatrix(ofstream &out,IplImage *img);
-	IplImage* loadMatrix(ifstream &in,IplImage *img);
+	// Peihong added this
+	CvMat* loadMatrix(const string& filename, CvMat* mat);
 
-	void saveMatrix(ofstream& out,double *data,int length);
-	double* loadMatrix(ifstream &in,double *data);
+	void saveMatrix(ostream &out,IplImage *img);
+	IplImage* loadMatrix(istream &in,IplImage *img);
 
-	void saveMatrix(ofstream& out,int *data,int length);
-	int * loadMatrix(ifstream &in,int *data);
+	void saveMatrix(ostream& out,double *data,int length);
+	double* loadMatrix(istream &in,double *data);
 
-	void saveMatrix(ofstream& out,int **data,int s1,int s2);
-	int ** loadMatrix(ifstream &in,int **data);
+	void saveMatrix(ostream& out,int *data,int length);
+	int * loadMatrix(istream &in,int *data);
 
-	void saveMatrix(ofstream& out,double **data,int s1,int s2);
-	double ** loadMatrix(ifstream &in,double **data);
+	void saveMatrix(ostream& out,int **data,int s1,int s2);
+	int ** loadMatrix(istream &in,int **data);
+
+	void saveMatrix(ostream& out,double **data,int s1,int s2);
+	double ** loadMatrix(istream &in,double **data);
 };
 
 #endif

@@ -1247,7 +1247,7 @@ void Shape::save(ofstream &out)
 	slEngine.saveMatrix(out,mask_withindex);
 }
 
-void Shape::load(ifstream &in)
+void Shape::load(istream &in)
 {
 	init();
 	SL_Basis slEngine;

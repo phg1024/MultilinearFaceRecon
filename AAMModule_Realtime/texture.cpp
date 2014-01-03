@@ -373,7 +373,7 @@ void Texture::save(ofstream &out)
 
 }
 
-void Texture::load(ifstream &in)
+void Texture::load(istream &in)
 {
 	SL_Basis slEngine;
 	imgData=slEngine.loadMatrix(in,imgData);
