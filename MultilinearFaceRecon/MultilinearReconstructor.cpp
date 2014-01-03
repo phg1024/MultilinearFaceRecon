@@ -8,7 +8,7 @@
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
 #define USELEVMAR4WEIGHTS 0
-#define USE_MKL_LS 1		// use mkl least square solver
+#define USE_MKL_LS 0		// use mkl least square solver
 #define OUTPUT_STATS 0
 
 MultilinearReconstructor::MultilinearReconstructor(void)

@@ -44,6 +44,9 @@ void BlendShapeViewer::resizeGL(int w, int h) {
 void BlendShapeViewer::paintGL() {
 	GL3DCanvas::paintGL();
 
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
+
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
 	glPushMatrix();
@@ -392,26 +395,31 @@ void BlendShapeViewer::drawMeshToFBO()
 
 	glDepthMask(GL_TRUE);
 
-	glClearColor(0, 0.25, 0, 1);
+	glClearColor(0, 0, 0, 0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		
 	glShadeModel(GL_SMOOTH);
 
 	mesh.drawFaceIndices();
-
+	
+	
+	glReadPixels(0, 0, 640, 480, GL_DEPTH_COMPONENT, GL_FLOAT, &(depthBuffer[0]));
+	GLenum errcode = glGetError();
+	if (errcode != GL_NO_ERROR) {
+		const GLubyte *errString = gluErrorString(errcode);
+		fprintf (stderr, "OpenGL Error: %s\n", errString);
+	}
+	
 	glPopMatrix();
 
 	fbo->release();
+
+	/*
 	QImage fboimg = fbo->toImage();
 	fboimg.save("fbo.png");
 
-	// how to read the depth buffer???
-	glEnable(GL_TEXTURE_2D);
-	glBindTexture( fbo->texture(), GL_TEXTURE_2D );
-	glGetTexImage(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &(depthBuffer[0]));
-	glDisable(GL_TEXTURE_2D);
-
 	ofstream fout("fbodepth.txt");
-	PhGUtils::print2DArray(&(depthBuffer[0]), 640, 480, fout);
+	PhGUtils::print2DArray(&(depthBuffer[0]), 480, 640, fout);
 	fout.close();
+	*/
 }
