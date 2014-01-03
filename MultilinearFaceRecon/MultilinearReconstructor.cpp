@@ -21,7 +21,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	w_boundary = 1e-8;
 	w_chin = 0;
 
-	w_prior_exp_2D = 1e3;
+	w_prior_exp_2D = 2.5e3;
 	w_prior_id_2D = 1e3;
 	w_boundary_2D = 1e-8;
 
@@ -698,6 +698,7 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 	auto tmc = recon->tmc;
 
 	auto w_landmarks = recon->w_landmarks;
+	auto w_chin = recon->w_chin;
 
 	// set up rotation matrix and translation vector
 	PhGUtils::Point3f T(tx, ty, tz);
@@ -707,6 +708,11 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 	for(int i=0, vidx=0;i<npts;i++) {
 		//PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
 		float wpt = w_landmarks[vidx];
+
+		// exclude the mouth region
+		if( i>41 && i < 64 ) {
+			wpt *= w_chin;
+		}
 
 		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
 		const PhGUtils::Point3f& q = targets[i].first;
@@ -754,11 +760,16 @@ void evalJacobian_2D(float *p, float *J, int m, int n, void *adata) {
 	auto tmc = recon->tmc;
 
 	auto w_landmarks = recon->w_landmarks;
+	auto w_chin = recon->w_chin;
 
 	// set up rotation matrix and translation vector
 	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz);
 	PhGUtils::Matrix3x3f Jx, Jy, Jz;
 	PhGUtils::jacobian_rotationMatrix(rx, ry, rz, Jx, Jy, Jz);
+
+	//cout << Jx << endl;
+	//cout << Jy << endl;
+	//cout << Jz << endl;
 
 	// for Jacobian of projection/viewport transformation
 	const float f_x = 525, f_y = 525;
@@ -768,8 +779,14 @@ void evalJacobian_2D(float *p, float *J, int m, int n, void *adata) {
 	for(int i=0, vidx=0, jidx=0;i<npts;i++) {
 		float wpt = w_landmarks[vidx];
 
+		// exclude the mouth region
+		if( i>41 && i < 64 ) {
+			wpt *= w_chin;
+		}
+
 		// point p
 		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
+		//cout << px << ", " << py << ", " << pz << endl;
 
 		// point q
 		const PhGUtils::Point3f& q = targets[i].first;
@@ -802,30 +819,38 @@ void evalJacobian_2D(float *p, float *J, int m, int n, void *adata) {
 		// J_? * p_k
 		float jpx, jpy, jpz;
 		// J_f * J_? * p_k
-		float jjpx, jjpy, jjpz;
+		float jfjpx, jfjpy, jfjpz;
+
 		jpx = px, jpy = py, jpz = pz;
 		PhGUtils::rotatePoint( jpx, jpy, jpz, Jx );
-		jjpx = Jf[0] * jpx + J[2] * jpz;
-		jjpy = Jf[4] * jpy + J[5] * jpz;
-		jjpz = Jf[8] * jpz;
+		jfjpx = Jf[0] * jpx + Jf[2] * jpz;
+		jfjpy = Jf[4] * jpy + Jf[5] * jpz;
+		jfjpz = Jf[8] * jpz;
+		/*
+		cout << "jf\t";
+		PhGUtils::printArray(Jf, 9);
+		cout << "j\t" << jpx << ", " << jpy << ", "  << jpz << endl;
+		cout << "jj\t" << jfjpx << ", " << jfjpy << ", "  << jfjpz << endl;
+		*/
+
 		// \frac{\partial r_i}{\partial \theta_x}
-		J[jidx++] = 2.0 * s * (jjpx * rkx + jjpy * rky + wpt * jjpz * rkz);
+		J[jidx++] = 2.0 * s * (jfjpx * rkx + jfjpy * rky + wpt * jfjpz * rkz);
 
 		jpx = px, jpy = py, jpz = pz;
 		PhGUtils::rotatePoint( jpx, jpy, jpz, Jy );
-		jjpx = Jf[0] * jpx + J[2] * jpz;
-		jjpy = Jf[4] * jpy + J[5] * jpz;
-		jjpz = Jf[8] * jpz;
+		jfjpx = Jf[0] * jpx + Jf[2] * jpz;
+		jfjpy = Jf[4] * jpy + Jf[5] * jpz;
+		jfjpz = Jf[8] * jpz;
 		// \frac{\partial r_i}{\partial \theta_y}
-		J[jidx++] = 2.0 * s * (jjpx * rkx + jjpy * rky + wpt * jjpz * rkz);
+		J[jidx++] = 2.0 * s * (jfjpx * rkx + jfjpy * rky + wpt * jfjpz * rkz);
 
 		jpx = px, jpy = py, jpz = pz;
 		PhGUtils::rotatePoint( jpx, jpy, jpz, Jz );
-		jjpx = Jf[0] * jpx + J[2] * jpz;
-		jjpy = Jf[4] * jpy + J[5] * jpz;
-		jjpz = Jf[8] * jpz;
+		jfjpx = Jf[0] * jpx + Jf[2] * jpz;
+		jfjpy = Jf[4] * jpy + Jf[5] * jpz;
+		jfjpz = Jf[8] * jpz;
 		// \frac{\partial r_i}{\partial \theta_z}
-		J[jidx++] = 2.0 * s * (jjpx * rkx + jjpy * rky + wpt * jjpz * rkz);
+		J[jidx++] = 2.0 * s * (jfjpx * rkx + jfjpy * rky + wpt * jfjpz * rkz);
 
 		// \frac{\partial r_i}{\partial \t_x}
 		J[jidx++] = 2.0 * (Jf[0] * rkx);
@@ -837,10 +862,10 @@ void evalJacobian_2D(float *p, float *J, int m, int n, void *adata) {
 		J[jidx++] = 2.0 * (Jf[2] * rkx + Jf[5] * rky + wpt * Jf[8] * rkz);
 
 		// \frac{\partial r_i}{\partial s}
-		jjpx = Jf[0] * rpx + J[2] * rpz;
-		jjpy = Jf[4] * rpy + J[5] * rpz;
-		jjpz = Jf[8] * rpz;
-		J[jidx++] = 2.0 * (jjpx * rkx + jjpy * rky + wpt * jjpz * rkz);
+		jfjpx = Jf[0] * rpx + Jf[2] * rpz;
+		jfjpy = Jf[4] * rpy + Jf[5] * rpz;
+		jfjpz = Jf[8] * rpz;
+		J[jidx++] = 2.0 * (jfjpx * rkx + jfjpy * rky + wpt * jfjpz * rkz);
 	}
 	
 	/*
@@ -853,15 +878,15 @@ void evalJacobian_2D(float *p, float *J, int m, int n, void *adata) {
 		fout << endl;
 	}
 	fout.close();
-	*/
-	/*
+	
+	
 	::system("pause");
-	*/	
+	*/
+		
 }
 
 bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 	int npts = targets.size();
-	float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
 	// use levmar
 
 	/*
@@ -872,9 +897,14 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 	*/
 
 	vector<float> meas(npts);
+
 	//int iters = slevmar_dif(evalCost_2D, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
-	int iters = slevmar_der(evalCost_2D, evalJacobian_2D, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
-	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
+	//float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
+	//int iters = slevmar_der(evalCost_2D, evalJacobian_2D, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
+	
+	float opts[3] = {0.1, 1e-3, 1e-4};
+	int iters = PhGUtils::GaussNewton<float>(evalCost_2D, evalJacobian_2D, RTparams, NULL, NULL, 7, npts, 128, opts, this);
+	PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// set up the matrix and translation vector
 	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
@@ -890,8 +920,8 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
 
-	cout << R << endl;
-	cout << T << endl;
+	//cout << R << endl;
+	//cout << T << endl;
 	return diff / 7 < cc;
 }
 
