@@ -284,11 +284,14 @@ void MultilinearFaceRecon::updateKinectStreams()
 	colorView->bindStreamData(&(colordata[0]), w, h);
 	depthView->bindStreamData(&(depthdata[0]), w, h);
 	tView.toc();
-	//QImage rgbimg = PhGUtils::toQImage(&(kman.getRGBData()[0]), kman.getWidth(), kman.getHeight());
-	//QImage depthimg = PhGUtils::toQImage(&(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
+	
+	/*
+	QImage rgbimg = PhGUtils::toQImage(&(kman.getRGBData()[0]), kman.getWidth(), kman.getHeight());
+	QImage depthimg = PhGUtils::toQImage(&(kman.getDepthData()[0]), kman.getWidth(), kman.getHeight());
+	rgbimg.save("rgb.png");
+	depthimg.save("depth.png");
+	*/
 
-	//rgbimg.save("rgb.png");
-	//depthimg.save("depth.png");
 	tAAM.tic();
 	const vector<float>& f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
 	tAAM.toc();

@@ -12,14 +12,6 @@
 // levmar header
 #include "levmar.h"
 
-#define USE_CMINPACK 0
-#if USE_CMINPACK
-// cminpack header
-#define __cminpack_float__
-#define CMINPACK_NO_DLL
-#include "../cminpack-1.3.2/cminpack.h"
-#endif
-
 #include <cula.h>
 
 #include "Math/DenseVector.hpp"
@@ -98,6 +90,9 @@ public:
 	void fit2d(FittingOption ops = FIT_ALL);
 	void fit2d_withPrior();
 
+	void fitICP(FittingOption ops = FIT_ALL);
+	void fitICP_withPrior();
+
 	// force update computation tensors
 	void updateTM0() {
 		tm0 = core.modeProduct(Wid, 0);
@@ -136,34 +131,44 @@ private:
 	void transformTM0C();
 	void transformTM1C();
 
+	void transformTM0();
+	void transformTM1();
+
 private:
-#if USE_CMINPACK
-	friend int evalCost_minpack(void *adata, int m, int n, const __cminpack_real__ *p, __cminpack_real__ *hx,
-		int iflag);
-#endif
+	// reconstruction with 3D feature points
 	friend void evalCost(float *p, float *hx, int m, int n, void* adata);
 	friend void evalJacobian(float *p, float *J, int m, int n, void* adata);
 	friend void evalCost2(float *p, float *hx, int m, int n, void* adata);
 	friend void evalCost3(float *p, float *hx, int m, int n, void* adata);
 
-	void transformMesh();
 	float computeError();
 
 	bool fitRigidTransformationAndScale();
 	bool fitIdentityWeights_withPrior();
 	bool fitExpressionWeights_withPrior();
 
+	// reconstruction with 2D feature points
 	friend void evalCost_2D(float *p, float *hx, int m, int n, void* adata);
 	friend void evalJacobian_2D(float *p, float *J, int m, int n, void* adata);
 	friend void evalCost2_2D(float *p, float *hx, int m, int n, void* adata);
 	friend void evalCost3_2D(float *p, float *hx, int m, int n, void* adata);
 
+	float computeError_2D();
+
 	bool fitRigidTransformationAndScale_2D();
 	bool fitIdentityWeights_withPrior_2D();
 	bool fitExpressionWeights_withPrior_2D();
 
-	float computeError_2D();
+	// reconstruction with ICP
+	friend void evalCost_ICP(float *p, float *hx, int m, int n, void* adata);
+	friend void evalJacobian_ICP(float *p, float *hx, int m, int n, void* adata);
+	
+	bool fitRigidTransformationAndScale_ICP();
+	bool fitIdentityWeights_withPrior_ICP();
+	bool fitExpressionWeights_withPrior_ICP();
 
+	// reconstruction utilities
+	void transformMesh();
 	vector<float> computeWeightedMeanPose();
 
 private:
@@ -177,8 +182,20 @@ private:
 	vector<unsigned char> indexMap;				// synthesized face index map
 
 	vector<unsigned char> targetColor, targetDepth;	// target color and depth image
+	vector<PhGUtils::Point3f> targetLocations;		// target locations obtain by back projecting color and depth image
+
+	// for ICP
+	struct ICPConstraint {
+		int v[3];				// incident vertices
+		float bcoords[3];		// barycentric coordinates
+		float weight;			// constraint weight
+		PhGUtils::Point3f q;	// target point
+	};
+	vector<ICPConstraint> icpc;
 
 private:
+	void collectICPConstraints();
+
 	void updateMesh();
 	void renderMesh();
 
@@ -220,6 +237,10 @@ private:
 	// tm0cRT: corec mode product with wid, with rotation
 	// tm1cRT: corec mode product with wexp, with rotation
 	Tensor2<float> tm0cRT, tm1cRT;
+
+	// the tensor after 2 mode products 
+	// tm is the tensor before applying global transformation
+	Tensor1<float> tm;
 
 	// the tensor after 2 mode products, with truncation; 
 	// tmc is the tensor before applying global transformation
