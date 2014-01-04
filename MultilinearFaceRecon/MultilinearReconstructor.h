@@ -6,6 +6,8 @@
 #include "Geometry/point.hpp"
 #include "Geometry/matrix.hpp"
 #include "Geometry/geometryutils.hpp"
+#include "Geometry/Mesh.h"
+#include "Geometry/MeshLoader.h"
 
 // levmar header
 #include "levmar.h"
@@ -23,6 +25,9 @@
 #include "Math/DenseVector.hpp"
 #include "Math/DenseMatrix.hpp"
 #include <armadillo>
+
+#include <QGLWidget>
+#include <QGLFramebufferObject>
 
 class MultilinearReconstructor : public QObject
 {
@@ -44,6 +49,16 @@ public:
 
 	MultilinearReconstructor(void);
 	~MultilinearReconstructor(void);
+
+	// set the base mesh for synthesis
+	void setBaseMesh(const PhGUtils::QuadMesh& m) {
+		baseMesh = m;
+	}
+
+	// bind a fbo for synthesis
+	void bindFBO(const shared_ptr<QGLFramebufferObject>& f) {
+		fbo = f;
+	}
 
 	// reset the reconstructor
 	void reset();
@@ -71,6 +86,12 @@ public:
 	// for reconstruction with 3D locations of feature points
 	void bindTarget(const vector<pair<PhGUtils::Point3f, int>>& pts,
 		TargetType ttp = TargetType_3D);
+
+	void bindRGBDTarget(
+		const vector<unsigned char>& colordata,
+		const vector<unsigned char>& depthdata
+		);
+
 	void init();
 	void fit(FittingOption ops = FIT_ALL);
 	void fit_withPrior();
@@ -144,6 +165,22 @@ private:
 	float computeError_2D();
 
 	vector<float> computeWeightedMeanPose();
+
+private:
+	PhGUtils::QuadMesh baseMesh;
+	PhGUtils::Matrix4x4f mProj, mMv;
+
+	shared_ptr<QGLWidget> dummyWgt;
+	shared_ptr<QGLFramebufferObject> fbo;
+	
+	vector<float> depthMap;						// synthesized depth map
+	vector<unsigned char> indexMap;				// synthesized face index map
+
+	vector<unsigned char> targetColor, targetDepth;	// target color and depth image
+
+private:
+	void updateMesh();
+	void renderMesh();
 
 private:
 	// convergence criteria

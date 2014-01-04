@@ -10,6 +10,7 @@
 #define USELEVMAR4WEIGHTS 0
 #define USE_MKL_LS 0		// use mkl least square solver
 #define OUTPUT_STATS 0
+#define FBO_DEBUG 0
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {	
@@ -40,6 +41,22 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 
 	w_landmarks.resize(512);
 
+	// off-screen rendering related
+	depthMap.resize(640*480);
+	indexMap.resize(640*480*4);
+	mProj = PhGUtils::KinectColorProjection.transposed();
+	mMv = PhGUtils::Matrix4x4f::identity();
+
+	
+	dummyWgt = shared_ptr<QGLWidget>(new QGLWidget());
+	dummyWgt->hide();
+	dummyWgt->makeCurrent();
+	fbo = shared_ptr<QGLFramebufferObject>(new QGLFramebufferObject(640, 480, QGLFramebufferObject::Depth));
+	dummyWgt->doneCurrent();
+	
+
+
+	// convergence
 	cc = 1e-4;
 	errorThreshold = 2.5e-3;
 	errorDiffThreshold = errorThreshold * 0.005;
@@ -657,6 +674,8 @@ void MultilinearReconstructor::fit_withPrior() {
 	timerTransform.toc();
 	//emit oneiter();
 	timerTotal.toc();
+
+	renderMesh();
 
 #if OUTPUT_STATS
 	cout << "Total iterations = " << iters << endl;
@@ -1741,4 +1760,92 @@ float MultilinearReconstructor::computeError_2D()
 
 	E /= npts;
 	return E;
+}
+
+// render the mesh to the FBO
+// need to call update mesh before rendering it, if the latest mesh is needed
+void MultilinearReconstructor::renderMesh()
+{
+	dummyWgt->makeCurrent();
+	fbo->bind();
+
+#if FBO_DEBUG
+	cout << (fbo->isBound()?"bounded.":"not bounded.") << endl;
+	cout << (fbo->isValid()?"valid.":"invalid.") << endl;
+#endif
+
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
+
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_BACK);
+
+	glPushMatrix();
+
+	// setup viewing parameters
+	glViewport(0, 0, 640, 480);
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glMultMatrixf(mProj.data());
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	glMultMatrixf(mMv.data());
+
+	glClearColor(0, 0, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+
+	glShadeModel(GL_SMOOTH);
+
+	baseMesh.drawFaceIndices();	
+
+	glReadPixels(0, 0, 640, 480, GL_DEPTH_COMPONENT, GL_FLOAT, &(depthMap[0]));
+#if FBO_DEBUG
+	GLenum errcode = glGetError();
+	if (errcode != GL_NO_ERROR) {
+		const GLubyte *errString = gluErrorString(errcode);
+		fprintf (stderr, "OpenGL Error: %s\n", errString);
+	}
+#endif
+
+	glReadPixels(0, 0, 640, 480, GL_RGBA, GL_UNSIGNED_BYTE, &(indexMap[0]));
+#if FBO_DEBUG
+	errcode = glGetError();
+	if (errcode != GL_NO_ERROR) {
+		const GLubyte *errString = gluErrorString(errcode);
+		fprintf (stderr, "OpenGL Error: %s\n", errString);
+	}
+#endif
+
+	glPopMatrix();
+
+	glDisable(GL_CULL_FACE);
+
+	fbo->release();
+	dummyWgt->doneCurrent();
+
+#if FBO_DEBUG
+	ofstream fout("fbodepth.txt");
+	PhGUtils::print2DArray(&(depthMap[0]), 480, 640, fout);
+	fout.close();
+
+	QImage img = PhGUtils::toQImage(&(indexMap[0]), 640, 480);	
+	img.save("fbo.png");
+#endif
+}
+
+void MultilinearReconstructor::updateMesh()
+{
+	for(int i=0,idx=0;i<tplt.length()/3;i++) {
+		baseMesh.vertex(i).x = tmesh(idx++);
+		baseMesh.vertex(i).y = tmesh(idx++);
+		baseMesh.vertex(i).z = tmesh(idx++);
+	}
+}
+
+void MultilinearReconstructor::bindRGBDTarget(const vector<unsigned char>& colordata, const vector<unsigned char>& depthdata)
+{
+	targetColor = colordata;
+	targetDepth = depthdata;
 }

@@ -15,6 +15,8 @@ BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	loader.load("../Data/shape_0.obj");
 	mesh.initWithLoader( loader );
 
+	recon.setBaseMesh(mesh);
+
 	targetSet = false;
 
 	loadLandmarks();
@@ -35,6 +37,7 @@ BlendShapeViewer::~BlendShapeViewer(void)
 void BlendShapeViewer::initializeGL() {
 	GL3DCanvas::initializeGL();
 	initFBO();
+	//recon.bindFBO(fbo);
 }
 
 void BlendShapeViewer::resizeGL(int w, int h) {
@@ -42,7 +45,10 @@ void BlendShapeViewer::resizeGL(int w, int h) {
 }
 
 void BlendShapeViewer::paintGL() {
-	GL3DCanvas::paintGL();
+	makeCurrent();
+
+	glClearColor(1, 1, 1, 0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
@@ -67,7 +73,7 @@ void BlendShapeViewer::paintGL() {
 
 	disableLighting();
 
-	drawMeshToFBO();
+	//drawMeshToFBO();
 
 	glPopMatrix();
 	glDisable(GL_CULL_FACE);
@@ -225,6 +231,12 @@ void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms
 	targetSet = true;
 }
 
+void BlendShapeViewer::bindRGBDTarget(const vector<unsigned char>& colordata, const vector<unsigned char>& depthdata)
+{
+	recon.bindRGBDTarget(colordata, depthdata);
+}
+
+
 void BlendShapeViewer::bindTargetMesh( const string& filename ) {
 	PhGUtils::OBJLoader loader;
 	loader.load(filename);
@@ -377,14 +389,16 @@ void BlendShapeViewer::disableLighting()
 void BlendShapeViewer::initFBO()
 {
 	// attach a depth buffer
-	fbo = shared_ptr<QOpenGLFramebufferObject>(new QOpenGLFramebufferObject(640, 480, QOpenGLFramebufferObject::Depth));
+	fbo = shared_ptr<QGLFramebufferObject>(new QGLFramebufferObject(640, 480, QGLFramebufferObject::Depth));
 	depthBuffer.resize(640*480);
 }
 
 void BlendShapeViewer::drawMeshToFBO()
 {
-	cout << fbo->attachment() << endl;
 	fbo->bind();
+
+	cout << (fbo->isBound()?"bounded.":"not bounded.") << endl;
+	cout << (fbo->isValid()?"valid.":"invalid.") << endl;
 
 	glPushMatrix();
 
@@ -395,13 +409,12 @@ void BlendShapeViewer::drawMeshToFBO()
 
 	glDepthMask(GL_TRUE);
 
-	glClearColor(0, 0, 0, 0);
+	glClearColor(0, 0, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		
 	glShadeModel(GL_SMOOTH);
 
-	mesh.drawFaceIndices();
-	
+	mesh.drawFaceIndices();	
 	
 	glReadPixels(0, 0, 640, 480, GL_DEPTH_COMPONENT, GL_FLOAT, &(depthBuffer[0]));
 	GLenum errcode = glGetError();
@@ -414,12 +427,12 @@ void BlendShapeViewer::drawMeshToFBO()
 
 	fbo->release();
 
-	/*
+	
 	QImage fboimg = fbo->toImage();
 	fboimg.save("fbo.png");
 
 	ofstream fout("fbodepth.txt");
 	PhGUtils::print2DArray(&(depthBuffer[0]), 480, 640, fout);
 	fout.close();
-	*/
+	
 }

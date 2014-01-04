@@ -6,7 +6,7 @@
 #include "MultilinearReconstructor.h"
 //#include "MultilinearReconstructorGPU.cuh"
 
-#include <QtGui/QOpenGLFramebufferObject>
+#include <QGLFrameBufferObject>
 
 class BlendShapeViewer : public GL3DCanvas
 {
@@ -17,6 +17,10 @@ public:
 
 	void bindTargetMesh(const string& filename);
 	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts, MultilinearReconstructor::TargetType ttp = MultilinearReconstructor::TargetType_3D);
+	void bindRGBDTarget(
+		const vector<unsigned char>& colordata,
+		const vector<unsigned char>& depthdata
+		);
 	void fit(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void fit2d(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void generatePrior();
@@ -64,6 +68,6 @@ private:
 
 private:
 	// used for synthesis step
-	shared_ptr<QOpenGLFramebufferObject> fbo;
+	shared_ptr<QGLFramebufferObject> fbo;
 	vector<float> depthBuffer;
 };
