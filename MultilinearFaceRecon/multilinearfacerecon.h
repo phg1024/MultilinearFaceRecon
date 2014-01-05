@@ -33,6 +33,8 @@ public slots:
 		vector<float>& fpts
 	);
 
+	void reconstructionWithBatchInput_ICP();
+
 private:
 	void setupStreamViews();
 	void setupKinectManager();

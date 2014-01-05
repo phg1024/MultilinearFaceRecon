@@ -16,7 +16,7 @@
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {	
-	w_prior_id = 5e-4;
+	w_prior_id = 1e-3;
 	// for 25 expression dimensions
 	//w_prior_exp = 1e-4;
 	// for 47 expression dimensions
@@ -198,7 +198,9 @@ void MultilinearReconstructor::initializeWeights()
 	}
 
 	tm0 = core.modeProduct(Wid, 0);
+	tm0RT = tm0;
 	tm1 = core.modeProduct(Wexp, 1);
+	tm1RT = tm1;
 	PhGUtils::message("done.");
 }
 
@@ -321,8 +323,12 @@ void MultilinearReconstructor::collectICPConstraints()
 			// check if the synthesized depth is valid
 			if( depthMap[didx] < 1.0 ) {
 				const PhGUtils::Point3f& q = targetLocations[idx];
+
+				// check if the input location is valid
+				if( q.z == 0 ) continue;
+
 				// take a small window
-				const int wSize = 5;
+				const int wSize = 3;
 				set<int> checkedFaces;
 
 				float closestDist = numeric_limits<float>::max();
@@ -337,7 +343,7 @@ void MultilinearReconstructor::collectICPConstraints()
 
 						// get face index and depth value
 						int fidx;
-						PhGUtils::decodeIndex(indexMap[poffset], indexMap[poffset+1], indexMap[poffset+2], fidx);
+						PhGUtils::decodeIndex<float>(indexMap[poffset]/255.0f, indexMap[poffset+1]/255.0f, indexMap[poffset+2]/255.0f, fidx);
 						float depthVal = depthMap[pidx];
 
 						if( depthVal < 1.0 ) {
@@ -378,7 +384,7 @@ void MultilinearReconstructor::collectICPConstraints()
 					}
 				}
 
-				const float DIST_THRES = 0.1;
+				const float DIST_THRES = 20.0;				
 				// close enough to be a constraint
 				if( closestDist < DIST_THRES ) {
 					ICPConstraint cc;
@@ -394,11 +400,44 @@ void MultilinearReconstructor::collectICPConstraints()
 			}
 		}
 	}
+
+	cout << "ICP constraints: " << icpc.size() << endl;
+
+	/*
+	// output ICP constraints to file
+	ofstream fout("icpc.txt");
+	for(int i=0;i<icpc.size();i++) {
+		PhGUtils::Point3f p(0, 0, 0);
+		p = p + icpc[i].bcoords[0] * baseMesh.vertex(icpc[i].v[0]);
+		p = p + icpc[i].bcoords[1] * baseMesh.vertex(icpc[i].v[1]);
+		p = p + icpc[i].bcoords[2] * baseMesh.vertex(icpc[i].v[2]);
+		fout << icpc[i].q << " " << p << endl;
+	}
+	fout.close();
+
+	::system("pause");
+	*/
 }
 
 void MultilinearReconstructor::fitICP_withPrior() {
 	PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
 
+	cout << "initial guess ..." << endl;
+	PhGUtils::printArray(RTparams, 7);
+	// assemble initial guess and transform mesh
+	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
+	float diff = 0;
+	for(int i=0;i<3;i++) {
+		for(int j=0;j<3;j++) {
+			diff += fabs(R(i, j) - Rmat(i, j));
+			R(i, j) = Rmat(i, j);			
+		}
+	}
+
+	Tvec.x = RTparams[3], Tvec.y = RTparams[4], Tvec.z = RTparams[5];
+	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
+	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
+	
 	timerTotal.tic();
 	int iters = 0;
 	float E0 = 0;
@@ -407,6 +446,7 @@ void MultilinearReconstructor::fitICP_withPrior() {
 		converged = true;
 
 		// update mesh and render the mesh
+		transformMesh();
 		updateMesh();
 		renderMesh();
 
@@ -433,10 +473,9 @@ void MultilinearReconstructor::fitICP_withPrior() {
 
 		if( fitIdentity && (fitExpression || fitPose) ) {
 			timerOther.tic();
-			// update tm0c with the new identity weights
+			// update tm0 with the new identity weights
 			// now the tensor is not updated with global rigid transformation
-			tm0c = corec.modeProduct(Wid, 0);
-			//corec.modeProduct(Wid, 0, tm0c);
+			tm0 = core.modeProduct(Wid, 0);
 			timerOther.toc();
 		}
 
@@ -456,10 +495,9 @@ void MultilinearReconstructor::fitICP_withPrior() {
 		// but this works for the case of fitting both pose and expression
 		if( fitExpression && fitIdentity ) {//(fitIdentity || fitPose) ) {
 			timerOther.tic();
-			// update tm1c with the new expression weights
+			// update tm1 with the new expression weights
 			// now the tensor is not updated with global rigid transformation
-			tm1c = corec.modeProduct(Wexp, 1);
-			//corec.modeProduct(Wexp, 1, tm1c);
+			tm1 = core.modeProduct(Wexp, 1);
 			timerOther.toc();
 		}
 
@@ -469,13 +507,12 @@ void MultilinearReconstructor::fitICP_withPrior() {
 		// compute tmc from the new tm1c or new tm0c
 		if( fitIdentity ) {
 			timerOther.tic();
-			//updateTMCwithTM0C();
-			updateTMC();
+			updateTM();
 			timerOther.toc();
 		}
 		else if( fitExpression ) {
 			timerOther.tic();
-			updateTMCwithTM0C();
+			updateTMwithTM0();
 			//updateTMC();
 			timerOther.toc();
 		}		
@@ -1035,7 +1072,7 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 
 	auto icpc = recon->icpc;
 	int npts = icpc.size();
-	auto tm = recon->tm;
+	auto tplt = recon->tplt;
 
 	// set up rotation matrix and translation vector
 	auto w_history = recon->w_history;
@@ -1054,9 +1091,9 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 		vidx[0] = v[0]*3; vidx[1] = v[1]*3; vidx[2] = v[2]*3;
 
 		PhGUtils::Point3f p;
-		p.x += tm(vidx[0]); p.y += tm(vidx[0]+1); p.z += tm(vidx[0]+2);
-		p.x += tm(vidx[1]); p.y += tm(vidx[1]+1); p.z += tm(vidx[1]+2);
-		p.x += tm(vidx[2]); p.y += tm(vidx[2]+1); p.z += tm(vidx[2]+2);
+		p.x += bcoords[0] * tplt(vidx[0]); p.y += bcoords[0] * tplt(vidx[0]+1); p.z += bcoords[0] * tplt(vidx[0]+2);
+		p.x += bcoords[1] * tplt(vidx[1]); p.y += bcoords[1] * tplt(vidx[1]+1); p.z += bcoords[1] * tplt(vidx[1]+2);
+		p.x += bcoords[2] * tplt(vidx[2]); p.y += bcoords[2] * tplt(vidx[2]+1); p.z += bcoords[2] * tplt(vidx[2]+2);
 
 		const PhGUtils::Point3f& q = icpc[i].q;
 
@@ -1067,32 +1104,122 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 		hx[i] = dx * dx + dy * dy + dz * dz;
 	}
 
+	/*
 	// regularization terms
 	for(int i=0, tidx=npts;i<7;i++, tidx++) {
 		float diff = p[i] - meanRT[i];
 		hx[tidx] = diff * diff * w_history;
 	}
+	*/
 }
 
 void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
+	// J is a n-by-m matrix
+	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
 
+	float s, rx, ry, rz, tx, ty, tz;
+	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
+
+	auto icpc = recon->icpc;
+	int npts = icpc.size();
+	auto tplt = recon->tplt;
+
+	auto w_history = recon->w_history;
+	auto meanRT = recon->meanRT;
+
+	// set up rotation matrix and translation vector
+	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz);
+	PhGUtils::Matrix3x3f Jx, Jy, Jz;
+	PhGUtils::jacobian_rotationMatrix(rx, ry, rz, Jx, Jy, Jz);
+
+	// apply the new global transformation
+	for(int i=0, jidx=0;i<npts;i++) {
+		auto v = icpc[i].v;
+		auto bcoords = icpc[i].bcoords;
+
+		int vidx[3];
+		vidx[0] = v[0]*3; vidx[1] = v[1]*3; vidx[2] = v[2]*3;
+
+		// point p
+		PhGUtils::Point3f p;
+		p.x += bcoords[0] * tplt(vidx[0]); p.y += bcoords[0] * tplt(vidx[0]+1); p.z += bcoords[0] * tplt(vidx[0]+2);
+		p.x += bcoords[1] * tplt(vidx[1]); p.y += bcoords[1] * tplt(vidx[1]+1); p.z += bcoords[1] * tplt(vidx[1]+2);
+		p.x += bcoords[2] * tplt(vidx[2]); p.y += bcoords[2] * tplt(vidx[2]+1); p.z += bcoords[2] * tplt(vidx[2]+2);
+
+		// point q
+		const PhGUtils::Point3f& q = icpc[i].q;
+
+		// R * p
+		float rpx = p.x, rpy = p.y, rpz = p.z;
+		PhGUtils::rotatePoint( rpx, rpy, rpz, R );
+
+		// s * R * p + t - q
+		float rkx = s * rpx + tx - q.x, rky = s * rpy + ty - q.y, rkz = s * rpz + tz - q.z;
+
+		float jpx, jpy, jpz;
+		jpx = p.x, jpy = p.y, jpz = p.z;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jx );
+		// \frac{\partial r_i}{\partial \theta_x}
+		J[jidx++] = 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+
+		jpx = p.x, jpy = p.y, jpz = p.z;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jy );
+		// \frac{\partial r_i}{\partial \theta_y}
+		J[jidx++] =  2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+
+		jpx = p.x, jpy = p.y, jpz = p.z;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jz );
+		// \frac{\partial r_i}{\partial \theta_z}
+		J[jidx++] = 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+
+		// \frac{\partial r_i}{\partial \t_x}
+		J[jidx++] = 2.0 * rkx;
+
+		// \frac{\partial r_i}{\partial \t_y}
+		J[jidx++] = 2.0 * rky;
+
+		// \frac{\partial r_i}{\partial \t_z}
+		J[jidx++] = 2.0 * rkz;
+
+		// \frac{\partial r_i}{\partial s}
+		J[jidx++] = 2.0 * (rpx * rkx + rpy * rky + rpz * rkz);
+	}
+
+	/*
+	// regularization terms
+	for(int i=0, jidx=npts*7;i<7;i++) {
+		float diff = p[i] - meanRT[i];
+		if( diff == 0 ) diff = numeric_limits<float>::min();
+		for(int j=0;j<7;j++) {
+			if( j == i ) {
+				J[jidx] = 2.0 * diff * w_history;
+			}
+			else J[jidx] = 0;
+			jidx++;
+		}
+	}
+	*/
 }
 
 bool MultilinearReconstructor::fitRigidTransformationAndScale_ICP() {
 	int npts = icpc.size();
 
+	/*
+	vector<float> meas(npts);
 	// use levmar
 	float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
-	int iters = slevmar_dif(evalCost_ICP, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
-	//int iters = slevmar_der(evalCost, evalJacobian, RTparams, &(pws.meas[0]), 7, npts + 7, 128, opts, NULL, NULL, NULL, this);
-
-	/*
-	// use Gauss-Newton
-	float opts[3] = {0.1, 1e-3, 1e-4};
-	int iters = PhGUtils::GaussNewton<float>(evalCost, evalJacobian, RTparams, NULL, NULL, 7, npts+7, 128, opts, this);
-	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
+	//int iters = slevmar_dif(evalCost_ICP, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	int iters = slevmar_der(evalCost_ICP, evalJacobian_ICP, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
 	*/
 
+	
+	// use Gauss-Newton
+	float opts[3] = {0.1, 1e-3, 1e-4};
+	int iters = PhGUtils::GaussNewton<float>(evalCost_ICP, evalJacobian_ICP, RTparams, NULL, NULL, 7, npts, 128, opts, this);
+	
+	
+	PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
+	
 	// set up the matrix and translation vector
 	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
 	float diff = 0;
@@ -1107,10 +1234,10 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_ICP() {
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
 
-	/*
+	
 	cout << R << endl;
 	cout << T << endl;
-	*/
+	
 
 	return diff / 7 < cc;
 }
@@ -1523,7 +1650,72 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 }
 
 bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
-	return false;
+	cout << "fitting identity weights ..." << endl;
+	// to use this method, the tensor tm1 must first be updated using the rotation matrix
+	int nparams = core.dim(0);	
+	int npts = icpc.size();
+
+	Aid_ICP = PhGUtils::DenseMatrix<float>(npts*3 + nparams, nparams);
+	brhs_ICP = PhGUtils::DenseVector<float>(npts*3 + nparams);
+
+	// assemble the matrix, fill in the upper part
+	// the lower part is already filled in
+	for(int i=0, ridx=0;i<npts;i++, ridx+=3) {
+		auto bcoords = icpc[i].bcoords;
+		auto v = icpc[i].v;
+		int v0 = v[0] * 3, v1 = v[1] * 3, v2 = v[2] * 3;
+
+		for(int j=0;j<nparams;j++) {
+			float x = bcoords[0] * tm1RT(j, v0  ) + bcoords[1] * tm1RT(j, v1  ) + bcoords[2] * tm1RT(j, v2  );
+			float y = bcoords[0] * tm1RT(j, v0+1) + bcoords[1] * tm1RT(j, v1+1) + bcoords[2] * tm1RT(j, v2+1);
+			float z = bcoords[0] * tm1RT(j, v0+2) + bcoords[1] * tm1RT(j, v1+2) + bcoords[2] * tm1RT(j, v2+2);
+
+			Aid_ICP(ridx, j) = x;
+			Aid_ICP(ridx+1, j) = y;
+			Aid_ICP(ridx+2, j) = z;
+		}
+	}
+
+	for(int j=0;j<Aid.cols();j++) {
+		for(int i=0, ridx=npts*3;i<nparams;i++, ridx++) {
+			Aid_ICP(ridx, j) = sigma_wid_weighted(i, j);
+		}
+	}
+
+	//PhGUtils::Matrix3x3f invRmat = Rmat.inv();
+	
+
+	// assemble the right hand side, fill in the upper part as usual
+	for(int i=0, vidx=0;i<npts;vidx+=3, i++) {
+		const PhGUtils::Point3f& q = icpc[i].q;
+
+		brhs_ICP(vidx) = q.x - Tvec.x;
+		brhs_ICP(vidx+1) = q.y - Tvec.y;
+		brhs_ICP(vidx+2) = q.z - Tvec.z;
+	}
+	// fill in the lower part with the mean vector of identity weights
+	int ndim_id = mu_wid.size();
+	for(int i=0, idx=npts*3;i<ndim_id;i++,idx++) {
+		brhs_ICP(idx) = mu_wid_weighted(i);
+	}
+
+	cout << "least square" << endl;
+	int rtn = leastsquare<float>(Aid_ICP, brhs_ICP);
+	cout << "done." << endl;
+	//debug("rtn", rtn);
+	float diff = 0;
+	//b.print("b");
+	for(int i=0;i<nparams;i++) {
+		diff += fabs(Wid(i) - brhs_ICP(i));
+		Wid(i) = brhs_ICP(i);		
+		//cout << params[i] << ' ';
+	}
+
+	//cout << endl;
+
+	cout << "identity weights fitted." << endl;
+
+	return diff / nparams < cc;
 }
 
 void evalCost2_2D(float *p, float *hx, int m, int n, void* adata) {
@@ -2060,13 +2252,40 @@ void MultilinearReconstructor::updateCoreC() {
 // transform TM0C with global rigid transformation
 void MultilinearReconstructor::transformTM0()
 {
+	int npts = tm0.dim(1) / 3;
+	// don't use the assignment operator, it actually moves the data
+	//tm0cRT = tm0c;
+	for(int i=0;i<tm0.dim(0);i++) {
+		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
 
+			tm0RT(i, vidx) = tm0(i, vidx);
+			tm0RT(i, vidx+1) = tm0(i, vidx+1);
+			tm0RT(i, vidx+2) = tm0(i, vidx+2);
+			// store the rotated tensor in tm0cRT
+			PhGUtils::rotatePoint( tm0RT(i, vidx), tm0RT(i, vidx+1), tm0RT(i, vidx+2), Rmat );
+		}
+	}
 }
 
 // transform TM0C with global rigid transformation
 void MultilinearReconstructor::transformTM1()
 {
+	cout << "Transform TM1 ..." << endl;
+	int npts = tm1.dim(1) / 3;
+	// don't use the assignment operator, it actually moves the data
+	//tm1cRT = tm1c;
+	for(int i=0;i<tm1.dim(0);i++) {
+		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
 
+			tm1RT(i, vidx) = tm1(i, vidx);
+			tm1RT(i, vidx+1) = tm1(i, vidx+1);
+			tm1RT(i, vidx+2) = tm1(i, vidx+2);
+
+			// rotation only!!!
+			PhGUtils::rotatePoint( tm1RT(i, vidx), tm1RT(i, vidx+1), tm1RT(i, vidx+2), Rmat );
+		}
+	}
+	cout << "done." << endl;
 }
 
 // transform TM0C with global rigid transformation
@@ -2120,6 +2339,16 @@ void MultilinearReconstructor::updateTMC() {
 void MultilinearReconstructor::updateTMCwithTM0C() {
 	//PhGUtils::message("updating tmc");
 	tm0c.modeProduct(Wexp, 0, tmc);
+}
+
+void MultilinearReconstructor::updateTM()
+{
+	tm1.modeProduct(Wid, 0, tplt);
+}
+
+void MultilinearReconstructor::updateTMwithTM0()
+{
+	tm0.modeProduct(Wexp, 0, tplt);
 }
 
 float MultilinearReconstructor::computeError()

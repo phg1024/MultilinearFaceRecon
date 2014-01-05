@@ -28,6 +28,7 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	connect(ui.actionStart_Kinect_2D, SIGNAL(triggered()), this, SLOT(toggleKinectInput_2D()));
 	connect(ui.actionReset_Tracking, SIGNAL(triggered()), this, SLOT(resetAAM()));
 	connect(ui.actionBatch_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithBatchInput()));
+	connect(ui.actionBatch_Recon_ICP, SIGNAL(triggered()), this,  SLOT(reconstructionWithBatchInput_ICP()));
 
 	// timer for kinect input
 	connect(&timer, SIGNAL(timeout()), this, SLOT(updateKinectStreams()));
@@ -212,6 +213,101 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() / validFrames));
 	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() / validFrames));
 }
+
+
+void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
+{
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
+	const string imageName = "DougTalkingComplete_KSeq_";
+	const int startIdx = 10000;
+	const int imageCount = 250;
+	const int endIdx = startIdx + imageCount;
+	const string colorPostfix = ".jpg";
+	const string depthPostfix = "_depth.png";
+
+	const int w = 640;
+	const int h = 480;
+
+	PhGUtils::Timer tRecon, tCombined;
+	int validFrames = 0;
+	frameIdx = 0;
+
+	tCombined.tic();
+	for(int imgidx=1;imgidx<=imageCount;imgidx++) {
+		// process each image and perform reconstruction
+		string colorImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + colorPostfix;
+		string depthImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + depthPostfix;
+		vector<unsigned char> colordata = PhGUtils::fromQImage(colorImageName);
+		vector<unsigned char> depthdata = PhGUtils::fromQImage(depthImageName);
+
+		colorView->bindStreamData(&(colordata[0]), w, h);
+		depthView->bindStreamData(&(depthdata[0]), w, h);
+
+		//rgbimg.save("rgb.png");
+		//depthimg.save("depth.png");
+#if 0
+		vector<float> f, pose;
+		tRecon.tic();
+		reconstructionWithSingleFrame(&(colordata[0]), &(depthdata[0]), pose, f);
+		tRecon.toc();
+
+		if( f.empty() ) continue;
+		validFrames++;
+
+		colorView->bindLandmarks(f);
+
+		QApplication::processEvents();		
+		::system("pause");
+#else
+		vector<float> f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+		colorView->bindLandmarks(f);
+
+		// do not update the mesh if the landmarks are unknown
+		if( f.empty() ) continue;
+
+		// transfer the RGBD data to recon
+		viewer->bindRGBDTarget(colordata, depthdata);
+
+		// also bind the 3D feature points
+		// get the 3D landmarks and feed to recon manager
+		int npts = f.size()/2;
+		for(int i=0;i<npts;i++) {
+			int u = f[i];
+			int v = f[i+npts];
+			int idx = (v*w+u)*4;
+			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+
+			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
+			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
+		}
+		viewer->bindTargetLandmarks(lms);
+
+		if( imgidx == 1 ) {
+			// fit the pose first, then fit the identity and pose together
+			//viewer->fitICP(MultilinearReconstructor::FIT_POSE);
+			//viewer->fitICP(MultilinearReconstructor::FIT_IDENTITY);
+			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+			viewer->fitICP(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+		}
+		else{
+			validFrames++;
+			tRecon.tic();
+			//viewer->fitICP(MultilinearReconstructor::FIT_POSE);
+			//viewer->fitICP(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+			//viewer->fitICP(MultilinearReconstructor::FIT_POSE);
+			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+			tRecon.toc();
+		}
+
+		QApplication::processEvents();
+		::system("pause");
+#endif	
+	}
+	tCombined.toc();
+	PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() / validFrames));
+	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() / validFrames));
+}
+
 
 
 void MultilinearFaceRecon::updateKinectStreams_2D()

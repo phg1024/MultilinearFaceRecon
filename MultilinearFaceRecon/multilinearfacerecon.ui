@@ -52,6 +52,7 @@
     <addaction name="actionStart_Kinect"/>
     <addaction name="actionReset_Tracking"/>
     <addaction name="actionBatch_Recon"/>
+    <addaction name="actionBatch_Recon_ICP"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuRun"/>
@@ -98,6 +99,11 @@
   <action name="actionStart_Kinect_2D">
    <property name="text">
     <string>Start Kinect(2D)</string>
+   </property>
+  </action>
+  <action name="actionBatch_Recon_ICP">
+   <property name="text">
+    <string>Batch Recon ICP</string>
    </property>
   </action>
  </widget>
