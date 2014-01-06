@@ -50,6 +50,7 @@
     <addaction name="actionGenerate_Prior"/>
     <addaction name="actionStart_Kinect_2D"/>
     <addaction name="actionStart_Kinect"/>
+    <addaction name="actionStart_Kinect_ICP"/>
     <addaction name="actionReset_Tracking"/>
     <addaction name="actionBatch_Recon"/>
     <addaction name="actionBatch_Recon_ICP"/>
@@ -104,6 +105,11 @@
   <action name="actionBatch_Recon_ICP">
    <property name="text">
     <string>Batch Recon ICP</string>
+   </property>
+  </action>
+  <action name="actionStart_Kinect_ICP">
+   <property name="text">
+    <string>Start Kinect (ICP)</string>
    </property>
   </action>
  </widget>

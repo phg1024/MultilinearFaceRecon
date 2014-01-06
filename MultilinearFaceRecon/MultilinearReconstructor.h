@@ -189,6 +189,8 @@ private:
 	PhGUtils::DenseMatrix<float> Aid_ICP, Aexp_ICP;
 	PhGUtils::DenseVector<float> brhs_ICP;
 
+	float w_ICP;
+
 	// for ICP
 	struct ICPConstraint {
 		ICPConstraint() {
@@ -223,10 +225,10 @@ private:
 
 private:
 	void collectICPConstraints();
+	void collectICPConstraints_bruteforce();
 
 	void updateMesh();
 	void renderMesh();
-
 private:
 	// convergence criteria
 	float cc;
@@ -284,9 +286,6 @@ private:
 	// workspace for rigid fitting
 	struct PoseWorkspace{
 		vector<float> meas;
-		// for cminpack
-		//int workspace[npts];
-		//float w2[12*npts+32];
 	} pws;
 
 	float RTparams[7]; /* sx, ry, rz, tx, ty, tz, scale */

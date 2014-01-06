@@ -16,19 +16,21 @@
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {	
-	w_prior_id = 1e-3;
+	w_prior_id = 2.5e-3;
 	// for 25 expression dimensions
 	//w_prior_exp = 1e-4;
 	// for 47 expression dimensions
 	w_prior_exp = 5e-4;
 	w_boundary = 1e-8;
-	w_chin = 0;
+	w_chin = 1e-1;
 
 	w_prior_exp_2D = 2.5e3;
 	w_prior_id_2D = 1e3;
 	w_boundary_2D = 1e-8;
 
-	w_history = 0.0001;
+	w_history = 0.0075;
+
+	w_ICP = 1.0;
 
 	meanX = meanY = meanZ = 0;
 
@@ -312,7 +314,6 @@ void MultilinearReconstructor::fitICP(FittingOption ops /*= FIT_ALL*/)
 	}
 }
 
-
 void MultilinearReconstructor::collectICPConstraints()
 {
 	icpc.clear();
@@ -328,7 +329,7 @@ void MultilinearReconstructor::collectICPConstraints()
 				if( q.z == 0 ) continue;
 
 				// take a small window
-				const int wSize = 3;
+				const int wSize = 5;
 				set<int> checkedFaces;
 
 				float closestDist = numeric_limits<float>::max();
@@ -419,6 +420,93 @@ void MultilinearReconstructor::collectICPConstraints()
 	*/
 }
 
+void MultilinearReconstructor::collectICPConstraints_bruteforce()
+{
+	icpc.clear();
+	// the depth map and the face index map are flipped vertically
+	for(int v=0, vv=479, idx=0;v<480;v++, vv--) {
+		for(int u=0;u<640;u++, idx++) {
+			int didx = vv * 640 + u;					// pixel index for synthesized image
+			// check if the synthesized depth is valid
+			if( depthMap[didx] < 1.0 ) {
+				const PhGUtils::Point3f& q = targetLocations[idx];
+
+				// check if the input location is valid
+				if( q.z == 0 ) continue;
+
+				float closestDist = numeric_limits<float>::max();
+				int closestVerts[3];
+				PhGUtils::Point3f closestHit;
+
+				// get face index and depth value
+				float depthVal = depthMap[didx];
+
+				if( depthVal < 1.0 ) {
+					// check every face
+					for(int fidx=0;fidx<baseMesh.faceCount();fidx++) {
+						const PhGUtils::QuadMesh::face_t& f = baseMesh.face(fidx);
+						PhGUtils::Point3f hit1, hit2;
+						// find the closest point
+						float dist1 = PhGUtils::pointToTriangleDistance(
+							q,
+							baseMesh.vertex(f.x), baseMesh.vertex(f.y), baseMesh.vertex(f.z),
+							hit1
+							);
+						float dist2 = PhGUtils::pointToTriangleDistance(
+							q,
+							baseMesh.vertex(f.y), baseMesh.vertex(f.z), baseMesh.vertex(f.w),
+							hit2
+							);
+
+						// take the smaller one
+						if( dist1 < dist2 && dist1 < closestDist) {
+							closestDist = dist1;
+							closestVerts[0] = f.x, closestVerts[1] = f.y, closestVerts[2] = f.z;
+							closestHit = hit1;
+						}
+						else if( dist2 < closestDist ) {
+							closestDist = dist2;
+							closestVerts[0] = f.y, closestVerts[1] = f.z, closestVerts[2] = f.w;
+							closestHit = hit2;
+						}
+					}
+				}						
+
+				const float DIST_THRES = 20.0;				
+				// close enough to be a constraint
+				if( closestDist < DIST_THRES ) {
+					ICPConstraint cc;
+					cc.q = q;
+					cc.v[0] = closestVerts[0], cc.v[1] = closestVerts[1], cc.v[2] = closestVerts[2];
+					PhGUtils::computeBarycentricCoordinates(
+						closestHit,
+						baseMesh.vertex(closestVerts[0]), baseMesh.vertex(closestVerts[1]), baseMesh.vertex(closestVerts[2]), 
+						cc.bcoords);
+
+					icpc.push_back(cc);
+				}
+			}
+		}
+	}
+
+	cout << "ICP constraints: " << icpc.size() << endl;
+
+	
+	// output ICP constraints to file
+	ofstream fout("icpc.txt");
+	for(int i=0;i<icpc.size();i++) {
+		PhGUtils::Point3f p(0, 0, 0);
+		p = p + icpc[i].bcoords[0] * baseMesh.vertex(icpc[i].v[0]);
+		p = p + icpc[i].bcoords[1] * baseMesh.vertex(icpc[i].v[1]);
+		p = p + icpc[i].bcoords[2] * baseMesh.vertex(icpc[i].v[2]);
+		fout << icpc[i].q << " " << p << endl;
+	}
+	fout.close();
+
+	::system("pause");
+	
+}
+
 void MultilinearReconstructor::fitICP_withPrior() {
 	PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
 
@@ -451,7 +539,9 @@ void MultilinearReconstructor::fitICP_withPrior() {
 		renderMesh();
 
 		// collect ICP constraints
-		collectICPConstraints();
+		//collectICPConstraints();
+		collectICPConstraints_bruteforce();
+
 
 		if( fitPose ) {
 			timerRT.tic();
@@ -1071,19 +1161,25 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
 
 	auto icpc = recon->icpc;
-	int npts = icpc.size();
+	int npts_ICP = icpc.size();
+	auto fp = recon->targets;
+	int npts_feature = fp.size();
 	auto tplt = recon->tplt;
 
 	// set up rotation matrix and translation vector
 	auto w_history = recon->w_history;
 	auto meanRT = recon->meanRT;
+	
+	auto w_ICP = recon->w_ICP;
+	auto w_landmarks = recon->w_landmarks;
+	auto w_chin = recon->w_chin;
 
 	// set up rotation matrix and translation vector
 	PhGUtils::Point3f T(tx, ty, tz);
 	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz) * s;
 
-	// apply the new global transformation
-	for(int i=0;i<npts;i++) {
+	// ICP terms
+	for(int i=0;i<npts_ICP;i++) {
 		auto v = icpc[i].v;
 		auto bcoords = icpc[i].bcoords;
 
@@ -1101,16 +1197,35 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 		PhGUtils::transformPoint( p.x, p.y, p.z, R, T );
 
 		float dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z;
-		hx[i] = dx * dx + dy * dy + dz * dz;
+		hx[i] = (dx * dx + dy * dy + dz * dz) * w_ICP;
 	}
 
-	/*
-	// regularization terms
-	for(int i=0, tidx=npts;i<7;i++, tidx++) {
-		float diff = p[i] - meanRT[i];
-		hx[tidx] = diff * diff * w_history;
+	// facial feature term
+	for(int i=0, hxidx = npts_ICP;i<npts_feature;i++, hxidx++) {
+		int vidx = fp[i].second * 3;
+		float wpt = w_landmarks[i*3];
+		
+		// exclude the mouth region
+		if( i>41 && i < 64 ) {
+			wpt *= w_chin;
+		}
+
+		PhGUtils::Point3f p(tplt(vidx), tplt(vidx+1), tplt(vidx+2));
+		const PhGUtils::Point3f& q = fp[i].first;
+
+		// p = R * p + T
+		PhGUtils::transformPoint( p.x, p.y, p.z, R, T );
+
+		float dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z;
+		hx[hxidx] = (dx * dx + dy * dy + dz * dz) * wpt;
 	}
-	*/
+
+	
+	// regularization terms
+	for(int i=0, hxidx=npts_ICP+npts_feature;i<7;i++, hxidx++) {
+		float diff = p[i] - meanRT[i];
+		hx[hxidx] = diff * diff * w_history;
+	}
 }
 
 void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
@@ -1121,19 +1236,28 @@ void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
 
 	auto icpc = recon->icpc;
-	int npts = icpc.size();
+	int npts_ICP = icpc.size();
+
+	auto fp = recon->targets;
+	int npts_feature = fp.size();
+
 	auto tplt = recon->tplt;
 
 	auto w_history = recon->w_history;
 	auto meanRT = recon->meanRT;
+
+	auto w_ICP = recon->w_ICP;
+	auto w_landmarks = recon->w_landmarks;
+	auto w_chin = recon->w_chin;
 
 	// set up rotation matrix and translation vector
 	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz);
 	PhGUtils::Matrix3x3f Jx, Jy, Jz;
 	PhGUtils::jacobian_rotationMatrix(rx, ry, rz, Jx, Jy, Jz);
 
-	// apply the new global transformation
-	for(int i=0, jidx=0;i<npts;i++) {
+	// ICP terms
+	int jidx = 0;
+	for(int i=0;i<npts_ICP;i++) {
 		auto v = icpc[i].v;
 		auto bcoords = icpc[i].bcoords;
 
@@ -1160,34 +1284,85 @@ void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 		jpx = p.x, jpy = p.y, jpz = p.z;
 		PhGUtils::rotatePoint( jpx, jpy, jpz, Jx );
 		// \frac{\partial r_i}{\partial \theta_x}
-		J[jidx++] = 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+		J[jidx++] = 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz) * w_ICP;
 
 		jpx = p.x, jpy = p.y, jpz = p.z;
 		PhGUtils::rotatePoint( jpx, jpy, jpz, Jy );
 		// \frac{\partial r_i}{\partial \theta_y}
-		J[jidx++] =  2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+		J[jidx++] =  2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz) * w_ICP;
 
 		jpx = p.x, jpy = p.y, jpz = p.z;
 		PhGUtils::rotatePoint( jpx, jpy, jpz, Jz );
 		// \frac{\partial r_i}{\partial \theta_z}
-		J[jidx++] = 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+		J[jidx++] = 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz) * w_ICP;
 
 		// \frac{\partial r_i}{\partial \t_x}
-		J[jidx++] = 2.0 * rkx;
+		J[jidx++] = 2.0 * rkx * w_ICP;
 
 		// \frac{\partial r_i}{\partial \t_y}
-		J[jidx++] = 2.0 * rky;
+		J[jidx++] = 2.0 * rky * w_ICP;
 
 		// \frac{\partial r_i}{\partial \t_z}
-		J[jidx++] = 2.0 * rkz;
+		J[jidx++] = 2.0 * rkz * w_ICP;
 
 		// \frac{\partial r_i}{\partial s}
-		J[jidx++] = 2.0 * (rpx * rkx + rpy * rky + rpz * rkz);
+		J[jidx++] = 2.0 * (rpx * rkx + rpy * rky + rpz * rkz) * w_ICP;
 	}
 
-	/*
+	// facial feature terms
+	for(int i=0;i<npts_feature;i++) {
+		auto vidx = fp[i].second * 3;
+		float wpt = w_landmarks[i*3];
+
+		// exclude the mouth region
+		if( i>41 && i < 64 ) {
+			wpt *= w_chin;
+		}
+
+		// point p
+		PhGUtils::Point3f p(tplt(vidx), tplt(vidx+1), tplt(vidx+2));
+
+		// point q
+		const PhGUtils::Point3f& q = fp[i].first;
+
+		// R * p
+		float rpx = p.x, rpy = p.y, rpz = p.z;
+		PhGUtils::rotatePoint( rpx, rpy, rpz, R );
+
+		// s * R * p + t - q
+		float rkx = s * rpx + tx - q.x, rky = s * rpy + ty - q.y, rkz = s * rpz + tz - q.z;
+
+		float jpx, jpy, jpz;
+		jpx = p.x, jpy = p.y, jpz = p.z;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jx );
+		// \frac{\partial r_i}{\partial \theta_x}
+		J[jidx++] = 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz) * wpt;
+
+		jpx = p.x, jpy = p.y, jpz = p.z;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jy );
+		// \frac{\partial r_i}{\partial \theta_y}
+		J[jidx++] =  2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz) * wpt;
+
+		jpx = p.x, jpy = p.y, jpz = p.z;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jz );
+		// \frac{\partial r_i}{\partial \theta_z}
+		J[jidx++] = 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz) * wpt;
+
+		// \frac{\partial r_i}{\partial \t_x}
+		J[jidx++] = 2.0 * rkx * wpt;
+
+		// \frac{\partial r_i}{\partial \t_y}
+		J[jidx++] = 2.0 * rky * wpt;
+
+		// \frac{\partial r_i}{\partial \t_z}
+		J[jidx++] = 2.0 * rkz * wpt;
+
+		// \frac{\partial r_i}{\partial s}
+		J[jidx++] = 2.0 * (rpx * rkx + rpy * rky + rpz * rkz) * wpt;
+	}
+		
 	// regularization terms
-	for(int i=0, jidx=npts*7;i<7;i++) {
+	for(int i=0;i<7;i++) {
 		float diff = p[i] - meanRT[i];
 		if( diff == 0 ) diff = numeric_limits<float>::min();
 		for(int j=0;j<7;j++) {
@@ -1198,26 +1373,23 @@ void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 			jidx++;
 		}
 	}
-	*/
 }
 
 bool MultilinearReconstructor::fitRigidTransformationAndScale_ICP() {
-	int npts = icpc.size();
-
-	/*
-	vector<float> meas(npts);
-	// use levmar
-	float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
-	//int iters = slevmar_dif(evalCost_ICP, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
-	int iters = slevmar_der(evalCost_ICP, evalJacobian_ICP, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
-	*/
+	int npts = icpc.size() + targets.size() + 7;
 
 	
+	vector<float> meas(npts);
+	// use levmar
+	//float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
+	//int iters = slevmar_dif(evalCost_ICP, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	//int iters = slevmar_der(evalCost_ICP, evalJacobian_ICP, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
+	
+		
 	// use Gauss-Newton
 	float opts[3] = {0.1, 1e-3, 1e-4};
 	int iters = PhGUtils::GaussNewton<float>(evalCost_ICP, evalJacobian_ICP, RTparams, NULL, NULL, 7, npts, 128, opts, this);
-	
-	
+		
 	PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 	
 	// set up the matrix and translation vector
@@ -1653,14 +1825,18 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
 	cout << "fitting identity weights ..." << endl;
 	// to use this method, the tensor tm1 must first be updated using the rotation matrix
 	int nparams = core.dim(0);	
-	int npts = icpc.size();
+	int npts_ICP = icpc.size();
+	int npts_feature = targets.size();
+	int npts = npts_ICP + npts_feature;
 
 	Aid_ICP = PhGUtils::DenseMatrix<float>(npts*3 + nparams, nparams);
 	brhs_ICP = PhGUtils::DenseVector<float>(npts*3 + nparams);
 
 	// assemble the matrix, fill in the upper part
 	// the lower part is already filled in
-	for(int i=0, ridx=0;i<npts;i++, ridx+=3) {
+	// ICP terms
+	int ridx = 0;
+	for(int i=0;i<npts_ICP;i++, ridx+=3) {
 		auto bcoords = icpc[i].bcoords;
 		auto v = icpc[i].v;
 		int v0 = v[0] * 3, v1 = v[1] * 3, v2 = v[2] * 3;
@@ -1670,12 +1846,24 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
 			float y = bcoords[0] * tm1RT(j, v0+1) + bcoords[1] * tm1RT(j, v1+1) + bcoords[2] * tm1RT(j, v2+1);
 			float z = bcoords[0] * tm1RT(j, v0+2) + bcoords[1] * tm1RT(j, v1+2) + bcoords[2] * tm1RT(j, v2+2);
 
-			Aid_ICP(ridx, j) = x;
-			Aid_ICP(ridx+1, j) = y;
-			Aid_ICP(ridx+2, j) = z;
+			Aid_ICP(ridx, j) = x * w_ICP;
+			Aid_ICP(ridx+1, j) = y * w_ICP;
+			Aid_ICP(ridx+2, j) = z * w_ICP;
 		}
 	}
 
+	// facial feature terms
+	for(int i=0, ridx=npts_ICP*3;i<npts_feature;i++, ridx+=3) {
+		auto v = targets[i].second * 3;
+		float wpt = w_landmarks[i*3];
+		for(int j=0;j<nparams;j++) {
+			Aid_ICP(ridx, j) = tm1RT(j, v) * wpt;
+			Aid_ICP(ridx+1, j) = tm1RT(j, v+1) * wpt;
+			Aid_ICP(ridx+2, j) = tm1RT(j, v+2) * wpt;
+		}
+	}
+
+	// prior terms
 	for(int j=0;j<Aid.cols();j++) {
 		for(int i=0, ridx=npts*3;i<nparams;i++, ridx++) {
 			Aid_ICP(ridx, j) = sigma_wid_weighted(i, j);
@@ -1686,18 +1874,33 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
 	
 
 	// assemble the right hand side, fill in the upper part as usual
-	for(int i=0, vidx=0;i<npts;vidx+=3, i++) {
+	// ICP terms
+	for(int i=0, ridx=0;i<npts_ICP;ridx+=3, i++) {
 		const PhGUtils::Point3f& q = icpc[i].q;
 
-		brhs_ICP(vidx) = q.x - Tvec.x;
-		brhs_ICP(vidx+1) = q.y - Tvec.y;
-		brhs_ICP(vidx+2) = q.z - Tvec.z;
+		brhs_ICP(ridx) = (q.x - Tvec.x) * w_ICP;
+		brhs_ICP(ridx+1) = (q.y - Tvec.y) * w_ICP;
+		brhs_ICP(ridx+2) = (q.z - Tvec.z) * w_ICP;
 	}
+
+	// facial feature terms
+	for(int i=0, ridx=npts_ICP*3;i<npts_feature;ridx+=3, i++) {
+		const PhGUtils::Point3f& q = targets[i].first;
+		float wpt = w_landmarks[i*3];
+
+		brhs_ICP(ridx) = (q.x - Tvec.x) * wpt;
+		brhs_ICP(ridx+1) = (q.y - Tvec.y) * wpt;
+		brhs_ICP(ridx+2) = (q.z - Tvec.z) * wpt;
+	}
+
+	// prior term
 	// fill in the lower part with the mean vector of identity weights
 	int ndim_id = mu_wid.size();
-	for(int i=0, idx=npts*3;i<ndim_id;i++,idx++) {
-		brhs_ICP(idx) = mu_wid_weighted(i);
+	for(int i=0, ridx=npts*3;i<ndim_id;i++,ridx++) {
+		brhs_ICP(ridx) = mu_wid_weighted(i);
 	}
+
+	cout << "matrix and rhs assembled." << endl;
 
 	cout << "least square" << endl;
 	int rtn = leastsquare<float>(Aid_ICP, brhs_ICP);
@@ -2187,7 +2390,6 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		default:
 			break;
 		}
-
 	}
 
 	//PhGUtils::debug("valid landmarks", validCount);

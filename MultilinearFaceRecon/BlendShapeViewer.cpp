@@ -10,7 +10,7 @@ BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	this->resize(640, 480);
 	this->setSceneScale(1.0);
 
-	showLandmarks = false;
+	showLandmarks = true;
 
 	// load a dummy mesh
 	PhGUtils::OBJLoader loader;
