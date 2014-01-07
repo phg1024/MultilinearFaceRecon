@@ -240,7 +240,7 @@ private:
 	float w_prior_id, w_prior_exp;
 	// outer contour: 64~74
 	// chin: 42~63
-	float w_boundary, w_chin;
+	float w_boundary, w_chin, w_outer;
 
 	float w_prior_id_2D, w_prior_exp_2D;
 	float w_boundary_2D;

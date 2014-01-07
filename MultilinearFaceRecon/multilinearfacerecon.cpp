@@ -185,18 +185,18 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
-			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
-			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
+			lms[i].x = u;
+			lms[i].y = v;
+			lms[i].z = d;
 		}
 
-		viewer->bindTargetLandmarks(lms);
+		viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
 		if( imgidx == 1 ) {
 			// fit the pose first, then fit the identity and pose together
 			//viewer->fit(MultilinearReconstructor::FIT_POSE);
 			//viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
 			//::system("pause");
-			//viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
-			viewer->fit(MultilinearReconstructor::FIT_ALL);
+			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 		}
 		else{
 			validFrames++;
@@ -279,16 +279,20 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
-			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
+			// pass 2D features plus depth to the recon			
+			lms[i].x = u;
+			lms[i].y = v;
+			lms[i].z = d;
 			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 		}
-		viewer->bindTargetLandmarks(lms);
+		viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
 
 		if( imgidx == 1 ) {
 			// fit the pose first, then fit the identity and pose together
 			//viewer->fitICP(MultilinearReconstructor::FIT_POSE);
 			//viewer->fitICP(MultilinearReconstructor::FIT_IDENTITY);
 			viewer->fit(MultilinearReconstructor::FIT_POSE);
+			::system("pause");
 			viewer->fitICP(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 		}
 		else{
@@ -423,23 +427,11 @@ void MultilinearFaceRecon::updateKinectStreams()
 		}
 		std::sort(depths.begin(), depths.end());
 
-		PhGUtils::colorToWorld(u, v, depths[mfilterSize*mfilterSize/2], lms[i].x, lms[i].y, lms[i].z);
-
-		/*
-		cout << u << " " << v << " " << d << "\t"
-		<< lms[i].x << " " << lms[i].y << " " << lms[i].z << endl;
-		*/
-
-		/*
-		int uu, vv;
-		PhGUtils::worldToColor(lms[i].x, lms[i].y, lms[i].z, uu, vv);
-		assert( d == 0 || (uu == u && vv == v) );
-		*/
-
-		// minus one is a hack to bring the model nearer
-		//lms[i].z += 1.0;
+		lms[i].x = u;
+		lms[i].y = v;
+		lms[i].z = depths[mfilterSize*mfilterSize/2];
 	}
-	viewer->bindTargetLandmarks(lms);
+	viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
 	if( frameIdx++ == 0 ) {
 		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 	}
@@ -503,7 +495,9 @@ void MultilinearFaceRecon::updateKinectStreams_ICP()
 		}
 		std::sort(depths.begin(), depths.end());
 
-		PhGUtils::colorToWorld(u, v, depths[mfilterSize*mfilterSize/2], lms[i].x, lms[i].y, lms[i].z);
+		lms[i].x = u;
+		lms[i].y = v;
+		lms[i].z = depths[mfilterSize*mfilterSize/2];
 	}
 	
 	// transfer the RGBD data to recon
@@ -511,7 +505,7 @@ void MultilinearFaceRecon::updateKinectStreams_ICP()
 
 	// also bind the 3D feature points
 	// get the 3D landmarks and feed to recon manager
-	viewer->bindTargetLandmarks(lms);
+	viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
 
 	if( frameIdx++ == 0 ) {
 		viewer->fit(MultilinearReconstructor::FIT_POSE);

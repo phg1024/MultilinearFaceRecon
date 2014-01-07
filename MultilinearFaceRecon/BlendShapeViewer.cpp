@@ -224,12 +224,14 @@ void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms
 		}
 	}
 	
+	// bind the target locations with vertex indices
 	vector<pair<PhGUtils::Point3f, int>> pts;
 	for(int i=0;i<landmarks.size();i++) {
 		int vidx = landmarks[i];
 		pts.push_back(make_pair(lms[i], vidx));
 	}
 
+	// pass the targets to recon
 	recon.bindTarget(pts, ttp);
 	targetSet = true;
 }
