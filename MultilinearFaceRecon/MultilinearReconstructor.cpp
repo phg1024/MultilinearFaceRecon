@@ -2,6 +2,7 @@
 #include "Utils/utility.hpp"
 #include "Utils/stringutils.h"
 #include "Utils/Timer.h"
+#include "Utils/fileutils.h"
 #include "Kinect/KinectUtils.h"
 #include "Math/denseblas.h"
 #include "Math/Optimization.hpp"
@@ -25,7 +26,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	// for outer contour and chin region, use only 2D feature point info
 	w_boundary = 1e-8;
 	w_chin = 1e-8;
-	w_outer = 1e-8;
+	w_outer = 1e-2;
 
 	w_prior_exp_2D = 5e3;
 	w_prior_id_2D = 5e3;
@@ -33,7 +34,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 
 	w_history = 0.0075;
 
-	w_ICP = 0.25;
+	w_ICP = 1.0;
 
 	meanX = meanY = meanZ = 0;
 
@@ -51,6 +52,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	// off-screen rendering related
 	depthMap.resize(640*480);
 	indexMap.resize(640*480*4);
+	faceMask.resize(640*480);
 	mProj = PhGUtils::KinectColorProjection.transposed();
 	mMv = PhGUtils::Matrix4x4f::identity();
 
@@ -317,6 +319,32 @@ void MultilinearReconstructor::fitICP(FittingOption ops /*= FIT_ALL*/)
 	}
 }
 
+// create a convex hull as the face mask
+void MultilinearReconstructor::createFaceMask()
+{
+	vector<PhGUtils::Point2f> pts;
+	for(int i=0;i<targets_2d.size();i++) pts.push_back(PhGUtils::Point2f(targets_2d[i].first.x, targets_2d[i].first.y));
+	vector<PhGUtils::Point2f> hull = PhGUtils::convexHull(pts);
+	
+	//PhGUtils::printVector(hull);
+
+	// for every pixel in the RGBD image, test if it is inside the convex hull
+	for(int i=0, idx=0;i<480;i++) {
+		for(int j=0;j<640;j++, idx++) {
+			faceMask[idx] = PhGUtils::isInside(PhGUtils::Point2f(j, i), hull)?1:0;
+		}
+	}
+
+	/*
+	PhGUtils::write2file("hull.txt", [&](ofstream& fout){
+		PhGUtils::printVector(hull, fout);
+	});
+	PhGUtils::write2file("mask.txt", [&](ofstream& fout){
+		PhGUtils::dump2DArray(&(faceMask[0]), 480, 640, fout);
+	});
+	*/
+}
+
 void MultilinearReconstructor::collectICPConstraints()
 {
 	icpc.clear();
@@ -327,9 +355,9 @@ void MultilinearReconstructor::collectICPConstraints()
 			// check if the synthesized depth is valid
 			if( depthMap[didx] < 1.0 ) {
 				const PhGUtils::Point3f& q = targetLocations[idx];
-
+				auto inside = faceMask[idx];
 				// check if the input location is valid
-				if( q.z == 0 ) continue;
+				if( q.z == 0 || inside == 0 ) continue;
 
 				// take a small window
 				const int wSize = 3;
@@ -388,7 +416,7 @@ void MultilinearReconstructor::collectICPConstraints()
 					}
 				}
 
-				const float DIST_THRES = 20.0;				
+				const float DIST_THRES = 0.05;				
 				// close enough to be a constraint
 				if( closestDist < DIST_THRES ) {
 					ICPConstraint cc;
@@ -423,7 +451,7 @@ void MultilinearReconstructor::collectICPConstraints()
 	*/
 }
 
-void MultilinearReconstructor::collectICPConstraints_bruteforce()
+void MultilinearReconstructor::collectICPConstraints_topo()
 {
 	icpc.clear();
 	// the depth map and the face index map are flipped vertically
@@ -433,15 +461,17 @@ void MultilinearReconstructor::collectICPConstraints_bruteforce()
 			// check if the synthesized depth is valid
 			if( depthMap[didx] < 1.0 ) {
 				const PhGUtils::Point3f& q = targetLocations[idx];
+				unsigned char inside = faceMask[idx];
 
 				// check if the input location is valid
-				if( q.z == 0 ) continue;
+				if( q.z == 0 || inside == 0 ) continue;
 
 				float closestDist = numeric_limits<float>::max();
 				int closestVerts[3];
 				PhGUtils::Point3f closestHit;
 
 				set<int> checkedFaces;
+				vector<int> facesToCheck;
 
 				const int wSize = 3;
 				for(int r=v-wSize;r<=v+wSize;r++) {
@@ -460,11 +490,14 @@ void MultilinearReconstructor::collectICPConstraints_bruteforce()
 							checkedFaces.insert(fidx);
 
 							int maxLev = 3;
-							// check faces within certain levels
+							// find faces within certain levels
 							while( !candidates.empty() ) {
 								int curFace = candidates.front().first;
 								int curLev = candidates.front().second;
 								candidates.pop();
+								
+								facesToCheck.push_back(curFace);
+
 								if( curLev < maxLev ) {
 									// push not checked faces
 									// for all vertices of current face, push non-checked incident faces
@@ -481,8 +514,12 @@ void MultilinearReconstructor::collectICPConstraints_bruteforce()
 										}
 									}
 								}
+							}
 
-								const PhGUtils::QuadMesh::face_t& f = baseMesh.face(curFace);
+							// check the faces found
+							for(auto fit=facesToCheck.begin();fit!=facesToCheck.end();fit++) {
+
+								const PhGUtils::QuadMesh::face_t& f = baseMesh.face(*fit);
 
 								PhGUtils::Point3f hit1, hit2;
 								// find the closest point
@@ -513,7 +550,7 @@ void MultilinearReconstructor::collectICPConstraints_bruteforce()
 					}
 				}
 
-				const float DIST_THRES = 20.0;				
+				const float DIST_THRES = 0.05;				
 				// close enough to be a constraint
 				if( closestDist < DIST_THRES ) {
 					ICPConstraint cc;
@@ -580,8 +617,9 @@ void MultilinearReconstructor::fitICP_withPrior() {
 		renderMesh();
 
 		// collect ICP constraints
+		createFaceMask();
 		//collectICPConstraints();
-		collectICPConstraints_bruteforce();
+		collectICPConstraints_topo();
 
 
 		if( fitPose ) {
@@ -1261,13 +1299,12 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 			hx[hxidx] = (dx * dx + dy * dy + dz * dz) * wpt;
 		}
 		else {
-			if( i > 63 )
-				wpt *= w_outer;
-			else
-				wpt *= w_chin;
-
-			const float scaler = 1e4;
-			wpt *= scaler;
+			if( i > 63 ) {
+				wpt *= (w_outer * 1e4);
+			}
+			else {
+				wpt *= (w_chin * 1e4);
+			}
 
 			float u, v, d;
 			PhGUtils::worldToColor(p.x, p.y, p.z, u, v, d);
@@ -1417,13 +1454,12 @@ void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 			J[jidx++] = wpt * 2.0 * (rpx * rkx + rpy * rky + rpz * rkz);
 		}
 		else {
-			if( i > 63 )
-				wpt *= w_outer;
-			else
-				wpt *= w_chin;
-
-			const float scaler = 1e4;
-			wpt *= scaler;
+			if( i > 63 ) {
+				wpt *= (w_outer * 1e4);
+			}
+			else {
+				wpt *= (w_chin * 1e4);
+			}
 
 			// point q
 			const PhGUtils::Point3f& q = fp2d[i].first;
@@ -1518,8 +1554,8 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_ICP() {
 	vector<float> meas(npts);
 	// use levmar
 	float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
-	int iters = slevmar_dif(evalCost_ICP, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
-	//int iters = slevmar_der(evalCost_ICP, evalJacobian_ICP, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
+	//int iters = slevmar_dif(evalCost_ICP, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+	int iters = slevmar_der(evalCost_ICP, evalJacobian_ICP, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
 	
 	
 	/*
@@ -1835,8 +1871,9 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 			hx[i] = (dx * dx + dy * dy + dz * dz) * wpt;
 		}
 		else {
-			if( i > 63 )
+			if( i > 63 ) {
 				wpt *= w_outer;
+			}
 			else
 				wpt *= w_chin;
 
@@ -1928,8 +1965,9 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 			J[jidx++] = wpt * 2.0 * (rpx * rkx + rpy * rky + rpz * rkz);
 		}
 		else {
-			if( i > 63 )
+			if( i > 63 ) {
 				wpt *= w_outer;
+			}
 			else
 				wpt *= w_chin;
 
@@ -2568,7 +2606,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 
 	// compute depth mean and variance
 	int validZcount = 0;
-	float mu_depth, sigma_depth;
+	float mu_depth = 0, sigma_depth = 0;
 	for(int i=0;i<targets.size();i++) {
 		float z = targets[i].first.z;
 		if( z != 0 ){

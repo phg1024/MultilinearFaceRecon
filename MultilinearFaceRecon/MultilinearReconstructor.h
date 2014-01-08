@@ -170,6 +170,7 @@ private:
 	bool fitExpressionWeights_withPrior_ICP();
 
 	// reconstruction utilities
+	void createFaceMask();
 	void transformMesh();
 	vector<float> computeWeightedMeanPose();
 
@@ -184,6 +185,7 @@ private:
 	vector<unsigned char> indexMap;				// synthesized face index map
 
 	vector<unsigned char> targetColor, targetDepth;	// target color and depth image
+	vector<unsigned char> faceMask;					// mask over the target RGBD image
 	vector<PhGUtils::Point3f> targetLocations;		// target locations obtain by back projecting color and depth image
 
 	PhGUtils::DenseMatrix<float> Aid_ICP, Aexp_ICP;
@@ -225,7 +227,7 @@ private:
 
 private:
 	void collectICPConstraints();
-	void collectICPConstraints_bruteforce();
+	void collectICPConstraints_topo();
 
 	void updateMesh();
 	void renderMesh();

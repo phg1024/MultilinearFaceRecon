@@ -25,6 +25,7 @@ public slots:
 	void toggleKinectInput();
 	void toggleKinectInput_2D();
 	void toggleKinectInput_ICP();
+	void toggleKinectInput_Record();
 	void resetAAM();
 	void reconstructionWithBatchInput();
 	int reconstructionWithSingleFrame(
@@ -47,13 +48,16 @@ private slots:
 	void updateKinectStreams();
 	void updateKinectStreams_2D();
 	void updateKinectStreams_ICP();
+	void updateKinectStreams_Record();
 	
 private:
 	Ui::MultilinearFaceReconClass ui;
 
 private:
-	QTimer timer, timer2d, timerICP;
+	QTimer timer, timer2d, timerICP, timerRecord;
 	BlendShapeViewer* viewer;
+
+	vector<pair<vector<unsigned char>, vector<unsigned char>>> recordData;
 
 	// kinect input related
 	bool useKinectInput;

@@ -31,10 +31,13 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	connect(ui.actionBatch_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithBatchInput()));
 	connect(ui.actionBatch_Recon_ICP, SIGNAL(triggered()), this,  SLOT(reconstructionWithBatchInput_ICP()));
 
+	connect(ui.actionRecord, SIGNAL(triggered()), this, SLOT(toggleKinectInput_Record()));
+
 	// timer for kinect input
 	connect(&timer, SIGNAL(timeout()), this, SLOT(updateKinectStreams()));
 	connect(&timer2d, SIGNAL(timeout()), this, SLOT(updateKinectStreams_2D()));
 	connect(&timerICP, SIGNAL(timeout()), this, SLOT(updateKinectStreams_ICP()));
+	connect(&timerRecord, SIGNAL(timeout()), this,  SLOT(updateKinectStreams_Record()));
 
 	useKinectInput = false;
 }
@@ -52,6 +55,10 @@ void MultilinearFaceRecon::setupKinectManager() {
 
 	// 30 frames per second
 	timer2d.setInterval(33);
+
+	timerICP.setInterval(33);
+
+	timerRecord.setInterval(33);
 }
 
 void MultilinearFaceRecon::setupStreamViews() {
@@ -129,12 +136,17 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 }
 
 void MultilinearFaceRecon::reconstructionWithBatchInput() {
-	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
-	const string imageName = "DougTalkingComplete_KSeq_";
+	//const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
+	//const string imageName = "DougTalkingComplete_KSeq_";
+
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
+	const string imageName = "Peihong_";
+
 	const int startIdx = 10000;
-	const int imageCount = 500;
+	const int imageCount = 250;
 	const int endIdx = startIdx + imageCount;
-	const string colorPostfix = ".jpg";
+	//const string colorPostfix = ".jpg";
+	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
 
 	const int w = 640;
@@ -219,12 +231,17 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 
 void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 {
-	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
-	const string imageName = "DougTalkingComplete_KSeq_";
+	//const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
+	//const string imageName = "DougTalkingComplete_KSeq_";
+
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
+	const string imageName = "Peihong_";
+
 	const int startIdx = 10000;
 	const int imageCount = 250;
 	const int endIdx = startIdx + imageCount;
-	const string colorPostfix = ".jpg";
+	//const string colorPostfix = ".jpg";
+	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
 
 	const int w = 640;
@@ -499,19 +516,23 @@ void MultilinearFaceRecon::updateKinectStreams_ICP()
 		lms[i].y = v;
 		lms[i].z = depths[mfilterSize*mfilterSize/2];
 	}
-	
-	// transfer the RGBD data to recon
-	viewer->bindRGBDTarget(colordata, depthdata);
-
-	// also bind the 3D feature points
-	// get the 3D landmarks and feed to recon manager
-	viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
 
 	if( frameIdx++ == 0 ) {
+		// transfer the RGBD data to recon
+		viewer->bindRGBDTarget(colordata, depthdata);
+
+		// also bind the 3D feature points
+		// get the 3D landmarks and feed to recon manager
+		viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
+
 		viewer->fit(MultilinearReconstructor::FIT_POSE);
 		viewer->fitICP(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 	}
 	else{
+		// also bind the 3D feature points
+		// get the 3D landmarks and feed to recon manager
+		viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
+
 		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
 	}
 	tRecon.toc();
@@ -575,5 +596,59 @@ void MultilinearFaceRecon::resetAAM()
 	timer.stop();
 	aam.reset();
 	timer.start();
+}
+
+void MultilinearFaceRecon::updateKinectStreams_Record()
+{
+	kman.updateStream();
+	int w = kman.getWidth(), h = kman.getHeight();
+	vector<unsigned char> colordata = kman.getRGBData();
+	vector<unsigned char> depthdata = kman.getDepthData();
+
+	colorView->bindStreamData(&(colordata[0]), w, h);
+	depthView->bindStreamData(&(depthdata[0]), w, h);
+
+	recordData.push_back(make_pair(colordata, depthdata));
+}
+
+void MultilinearFaceRecon::toggleKinectInput_Record()
+{
+	useKinectInput = !useKinectInput;
+	if( useKinectInput ){
+		frameIdx = 0;
+		timerRecord.start();
+
+		recordData.clear();
+		recordData.reserve(1200);
+	}
+	else{
+		timerRecord.stop();
+
+		PhGUtils::message("Wring out recorded images ...");
+		// write recorded data
+		const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
+		const string imageName = "Peihong_";
+		const int startIdx = 10000;
+		const int imageCount = recordData.size();
+		const int endIdx = startIdx + imageCount;
+		const string colorPostfix = "_color.png";
+		const string depthPostfix = "_depth.png";
+
+		const int w = 640;
+		const int h = 480;
+
+		for(int i=0;i<imageCount;i++) {
+			// process each image and perform reconstruction
+			PhGUtils::message("Processing frame #" + PhGUtils::toString(i) + " out of " + PhGUtils::toString(imageCount) + " frames ...");
+			string colorImageName = path + imageName + PhGUtils::toString(startIdx+i) + colorPostfix;
+			string depthImageName = path + imageName + PhGUtils::toString(startIdx+i) + depthPostfix;
+
+			QImage cimg = PhGUtils::toQImage(&(recordData[i].first[0]), w, h);
+			cimg.save(colorImageName.c_str());
+			QImage dimg = PhGUtils::toQImage(&(recordData[i].second[0]), w, h);
+			dimg.save(depthImageName.c_str());
+		}
+		PhGUtils::message("done.");
+	}
 }
 

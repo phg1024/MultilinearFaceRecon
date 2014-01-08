@@ -54,6 +54,7 @@
     <addaction name="actionReset_Tracking"/>
     <addaction name="actionBatch_Recon"/>
     <addaction name="actionBatch_Recon_ICP"/>
+    <addaction name="actionRecord"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuRun"/>
@@ -110,6 +111,11 @@
   <action name="actionStart_Kinect_ICP">
    <property name="text">
     <string>Start Kinect (ICP)</string>
+   </property>
+  </action>
+  <action name="actionRecord">
+   <property name="text">
+    <string>Record</string>
    </property>
   </action>
  </widget>
