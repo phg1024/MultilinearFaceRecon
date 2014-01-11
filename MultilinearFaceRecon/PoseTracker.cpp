@@ -8,6 +8,12 @@
 
 PoseTracker::PoseTracker(void)
 {
+	// set the template mesh
+	PhGUtils::OBJLoader loader;
+	loader.load("../Data/shape_0.obj");
+	mesh.initWithLoader( loader );
+	recon.setBaseMesh(mesh);
+
 	loadLandmarks();
 
 	lms.resize(128);
@@ -49,8 +55,14 @@ void PoseTracker::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms )
 		int vidx = landmarks[i];
 		labeledLandmarks[i] = (make_pair(lms[i], vidx));
 	}
-	recon.bindTarget(labeledLandmarks);
+	recon.bindTarget(labeledLandmarks, MultilinearReconstructor::TargetType_2D);
 }
+
+void PoseTracker::bindRGBDImage(const vector<unsigned char>& colordata, const vector<unsigned char>& depthdata)
+{
+	recon.bindRGBDTarget(colordata, depthdata);
+}
+
 
 bool PoseTracker::reconstructionWithSingleFrame(
 	const unsigned char* colordata,
@@ -78,23 +90,41 @@ bool PoseTracker::reconstructionWithSingleFrame(
 	else {
 		tOther.tic();
 		// get the 3D landmarks and feed to recon manager
+		int mfilterSize = 3;
+		int neighbors[] = {-1, 0, 1};
 		int npts = fpts.size()/2;
-		for(int i=0, j=npts;i<npts;i++,j++) {
+		for(int i=0;i<npts;i++) {
 			int u = fpts[i];
-			int v = fpts[j];
-			int idx = (v*w+u)*4;
-			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+			int v = fpts[i+npts];
 
-			PhGUtils::colorToWorld(u, v, d, lms[i].x, lms[i].y, lms[i].z);
-			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
+			// get median filtered depth
+			vector<float> depths;
+			depths.reserve(16);
+			for(int nu=0;nu<mfilterSize;nu++) {
+				for(int nv=0;nv<mfilterSize;nv++) {
+					int idx = ((v+neighbors[nv])*w+(u+neighbors[nu]))*4;		
+					float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+					depths.push_back(d);
+				}
+			}
+			std::sort(depths.begin(), depths.end());
+
+			lms[i].x = u;
+			lms[i].y = v;
+			lms[i].z = depths[mfilterSize*mfilterSize/2];
 		}
+
 		bindTargetLandmarks(lms);
 		tOther.toc();
 
 		tRecon.tic();
 		if( frameIdx++ == 0 ) {
+			vector<unsigned char> colorimg(colordata, colordata+640*480*4);
+			vector<unsigned char> depthimg(depthdata, depthdata+640*480*4);
+			bindRGBDImage(colorimg, depthimg);
 			// fit the pose first, then fit the identity and pose together
 			recon.fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+			recon.fitICP(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 		}
 		else{
 			recon.fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
@@ -124,3 +154,4 @@ float PoseTracker::poseEstimationError() const
 {
 	return recon.reconstructionError();
 }
+

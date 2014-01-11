@@ -32,9 +32,18 @@ public:
 		PhGUtils::message("Average total time = " + PhGUtils::toString(tTotal.elapsed() / frameIdx * 1000) + "ms");
 	}
 
+	const Tensor1<float>& getMesh() const {
+		return recon.currentMesh();
+	}
+
+	const PhGUtils::QuadMesh& getQuadMesh() const {
+		return mesh;
+	}
+
 private:
 	bool loadLandmarks();
 	void bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms );
+	void bindRGBDImage(const vector<unsigned char>& colordata, const vector<unsigned char>& depthdata);
 	void fit();
 
 private:
@@ -48,5 +57,6 @@ private:
 	AAMWrapper aam;
 
 	PhGUtils::Timer tAAM, tRecon, tBinding, tOther, tTotal;
+	PhGUtils::QuadMesh mesh;
 };
 

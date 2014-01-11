@@ -6274,7 +6274,7 @@ extern "C" int iterate_combination_new(int width,int height,int currentFrame,int
 	float alpha,beta;
 	float difference;
 
-	float errorSum,lastError;
+	float errorSum = 0,lastError = 0;
 
 	
 	dim3 grid((data->t_width*data->t_height)/blockDIM_combination+1,(data->s_dim+data->t_dim+4)/blockDIM_combination+1,1);

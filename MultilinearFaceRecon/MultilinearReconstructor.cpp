@@ -17,7 +17,7 @@
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {	
-	w_prior_id = 1e-3;
+	w_prior_id = 1e-3;//1e-3;
 	// for 25 expression dimensions
 	//w_prior_exp = 1e-4;
 	// for 47 expression dimensions
@@ -25,16 +25,17 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 
 	// for outer contour and chin region, use only 2D feature point info
 	w_boundary = 1e-8;
-	w_chin = 1e-8;
-	w_outer = 1e-2;
+	w_chin = 1e-6;
+	w_outer = 1e2;
+	w_fp = 2.5;
 
 	w_prior_exp_2D = 5e3;
 	w_prior_id_2D = 5e3;
 	w_boundary_2D = 1.0;
 
-	w_history = 0.0075;
+	w_history = 1e-3;
 
-	w_ICP = 1.0;
+	w_ICP = 1.5;
 
 	meanX = meanY = meanZ = 0;
 
@@ -258,6 +259,7 @@ void MultilinearReconstructor::fitICP(FittingOption ops /*= FIT_ALL*/)
 		}
 	case FIT_POSE_AND_IDENTITY:
 		{
+			fitScale = true;
 			fitPose = true;
 			fitIdentity = true;
 			fitExpression = false;
@@ -265,6 +267,7 @@ void MultilinearReconstructor::fitICP(FittingOption ops /*= FIT_ALL*/)
 		}
 	case FIT_POSE_AND_EXPRESSION:
 		{
+			fitScale = false;
 			fitPose = true;
 			fitIdentity = false;
 			fitExpression = true;
@@ -416,7 +419,7 @@ void MultilinearReconstructor::collectICPConstraints()
 					}
 				}
 
-				const float DIST_THRES = 0.05;				
+				const float DIST_THRES = 0.025;				
 				// close enough to be a constraint
 				if( closestDist < DIST_THRES ) {
 					ICPConstraint cc;
@@ -550,7 +553,7 @@ void MultilinearReconstructor::collectICPConstraints_topo()
 					}
 				}
 
-				const float DIST_THRES = 0.05;				
+				const float DIST_THRES = 0.025;				
 				// close enough to be a constraint
 				if( closestDist < DIST_THRES ) {
 					ICPConstraint cc;
@@ -608,7 +611,7 @@ void MultilinearReconstructor::fitICP_withPrior() {
 	int iters = 0;
 	float E0 = 0;
 	bool converged = false;
-	while( !converged && iters++ < MAXITERS ) {
+	while( !converged && iters++ < 8 ) {
 		converged = true;
 
 		// update mesh and render the mesh
@@ -618,8 +621,8 @@ void MultilinearReconstructor::fitICP_withPrior() {
 
 		// collect ICP constraints
 		createFaceMask();
-		//collectICPConstraints();
-		collectICPConstraints_topo();
+		collectICPConstraints();
+		//collectICPConstraints_topo();
 
 
 		if( fitPose ) {
@@ -1008,6 +1011,7 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 		}
 	case FIT_POSE_AND_IDENTITY:
 		{
+			fitScale = true;
 			fitPose = true;
 			fitIdentity = true;
 			fitExpression = false;
@@ -1015,6 +1019,7 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 		}
 	case FIT_POSE_AND_EXPRESSION:
 		{
+			fitScale = false;
 			fitPose = true;
 			fitIdentity = false;
 			fitExpression = true;
@@ -1254,6 +1259,9 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 	auto w_landmarks = recon->w_landmarks;
 	auto w_chin = recon->w_chin;
 	auto w_outer = recon->w_outer;
+	auto w_fp = recon->w_fp;
+
+	auto fitScale = recon->fitScale;
 
 	// set up rotation matrix and translation vector
 	PhGUtils::Point3f T(tx, ty, tz);
@@ -1287,28 +1295,32 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 		float wpt = w_landmarks[i*3];
 		
 		PhGUtils::Point3f p(tplt(vidx), tplt(vidx+1), tplt(vidx+2));
-		
+
+		// p = R * p + T
+		PhGUtils::transformPoint( p.x, p.y, p.z, R, T );
+
 		// for mouth region and outer contour, use only 2D info
 		if( i < 42 || i > 74 ) {
 			const PhGUtils::Point3f& q = fp[i].first;
-
-			// p = R * p + T
-			PhGUtils::transformPoint( p.x, p.y, p.z, R, T );
 
 			float dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z;
 			hx[hxidx] = (dx * dx + dy * dy + dz * dz) * wpt;
 		}
 		else {
 			if( i > 63 ) {
-				wpt *= (w_outer * 1e4);
+				wpt *= w_outer;
 			}
 			else {
-				wpt *= (w_chin * 1e4);
+				wpt *= w_chin;
 			}
+
+			wpt *= w_fp;
 
 			float u, v, d;
 			PhGUtils::worldToColor(p.x, p.y, p.z, u, v, d);
 			const PhGUtils::Point3f& q = fp2d[i].first;
+
+			//cout << "#" << i <<"\t" << u << ", " << v << "\t" << q.x << ", " << q.y << endl;
 
 			float du = u - q.x, dv = v - q.y;
 			hx[hxidx] = (du * du + dv * dv) * wpt;
@@ -1316,10 +1328,13 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 	}
 	
 	// regularization terms
-	for(int i=0, hxidx=npts_ICP+npts_feature;i<7;i++, hxidx++) {
+	int nterms = fitScale?7:6;
+	for(int i=0, hxidx=npts_ICP+npts_feature;i<nterms;i++, hxidx++) {
 		float diff = p[i] - meanRT[i];
 		hx[hxidx] = diff * diff * w_history;
 	}
+
+	//::system("pause");
 }
 
 void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
@@ -1345,6 +1360,9 @@ void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 	auto w_landmarks = recon->w_landmarks;
 	auto w_chin = recon->w_chin;
 	auto w_outer = recon->w_outer;
+	auto w_fp = recon->w_fp;
+
+	auto fitScale = recon->fitScale;
 
 	// set up rotation matrix and translation vector
 	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz);
@@ -1401,8 +1419,10 @@ void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 		// \frac{\partial r_i}{\partial \t_z}
 		J[jidx++] = 2.0 * rkz * w_ICP;
 
-		// \frac{\partial r_i}{\partial s}
-		J[jidx++] = 2.0 * (rpx * rkx + rpy * rky + rpz * rkz) * w_ICP;
+		if( fitScale ) {
+			// \frac{\partial r_i}{\partial s}
+			J[jidx++] = 2.0 * (rpx * rkx + rpy * rky + rpz * rkz) * w_ICP;
+		}
 	}
 
 	// facial feature terms
@@ -1450,16 +1470,20 @@ void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 			// \frac{\partial r_i}{\partial \t_z}
 			J[jidx++] = wpt * 2.0 * rkz;
 
-			// \frac{\partial r_i}{\partial s}
-			J[jidx++] = wpt * 2.0 * (rpx * rkx + rpy * rky + rpz * rkz);
+			if( fitScale ) {
+				// \frac{\partial r_i}{\partial s}
+				J[jidx++] = wpt * 2.0 * (rpx * rkx + rpy * rky + rpz * rkz);
+			}
 		}
 		else {
 			if( i > 63 ) {
-				wpt *= (w_outer * 1e4);
+				wpt *= w_outer;
 			}
 			else {
-				wpt *= (w_chin * 1e4);
+				wpt *= w_chin;
 			}
+
+			wpt *= w_fp;
 
 			// point q
 			const PhGUtils::Point3f& q = fp2d[i].first;
@@ -1526,18 +1550,21 @@ void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 			// \frac{\partial r_i}{\partial \t_z}
 			J[jidx++] = 2.0 * (Jf[2] * rkx + Jf[5] * rky) * wpt;
 
-			// \frac{\partial r_i}{\partial s}
-			jfjpx = Jf[0] * rpx + Jf[2] * rpz;
-			jfjpy = Jf[4] * rpy + Jf[5] * rpz;
-			J[jidx++] = 2.0 * (jfjpx * rkx + jfjpy * rky) * wpt;
+			if( fitScale ) {
+				// \frac{\partial r_i}{\partial s}
+				jfjpx = Jf[0] * rpx + Jf[2] * rpz;
+				jfjpy = Jf[4] * rpy + Jf[5] * rpz;
+				J[jidx++] = 2.0 * (jfjpx * rkx + jfjpy * rky) * wpt;
+			}
 		}
 	}
 		
 	// regularization terms
-	for(int i=0;i<7;i++) {
+	int nterms = fitScale?7:6;
+	for(int i=0;i<nterms;i++) {
 		float diff = p[i] - meanRT[i];
 		if( diff == 0 ) diff = numeric_limits<float>::min();
-		for(int j=0;j<7;j++) {
+		for(int j=0;j<nterms;j++) {
 			if( j == i ) {
 				J[jidx] = 2.0 * diff * w_history;
 			}
@@ -1548,21 +1575,22 @@ void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 }
 
 bool MultilinearReconstructor::fitRigidTransformationAndScale_ICP() {
-	int npts = icpc.size() + targets.size() + 7;
+	int nparams = fitScale?7:6;
+	int npts = icpc.size() + targets.size() + nparams;
 
-	
+	/*
 	vector<float> meas(npts);
 	// use levmar
 	float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
-	//int iters = slevmar_dif(evalCost_ICP, RTparams, &(meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
-	int iters = slevmar_der(evalCost_ICP, evalJacobian_ICP, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
-	
-	
-	/*
-	// use Gauss-Newton
-	float opts[3] = {0.1, 1e-3, 1e-4};
-	int iters = PhGUtils::GaussNewton<float>(evalCost_ICP, evalJacobian_ICP, RTparams, NULL, NULL, 7, npts, 128, opts, this);
+	//int iters = slevmar_dif(evalCost_ICP, RTparams, &(meas[0]), nparams, npts, 128, NULL, NULL, NULL, NULL, this);
+	int iters = slevmar_der(evalCost_ICP, evalJacobian_ICP, RTparams, &(meas[0]), nparams, npts, 128, opts, NULL, NULL, NULL, this);
 	*/
+	
+	
+	// use Gauss-Newton
+	float opts[3] = {0.1, 1e-3, 1e-4};		// why is the step size so small, must be something wrong with the Jacobian?
+	int iters = PhGUtils::GaussNewton<float>(evalCost_ICP, evalJacobian_ICP, RTparams, NULL, NULL, nparams, npts, 128, opts, this);
+	
 
 	PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 	
@@ -1835,6 +1863,8 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 // for outer contour and chin region, use ONLY 2D feature points
 // for other points, use 2D when depth data is not available
 void evalCost(float *p, float *hx, int m, int n, void* adata) {
+	//PhGUtils::message("cost func");
+
 	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
@@ -1851,6 +1881,8 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	auto w_history = recon->w_history;
 	auto meanRT = recon->meanRT;
 
+	auto fitScale = recon->fitScale;
+
 	// set up rotation matrix and translation vector
 	PhGUtils::Point3f T(tx, ty, tz);
 	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz) * s;
@@ -1858,14 +1890,13 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	// apply the new global transformation
 	for(int i=0, vidx=0;i<npts;i++) {
 		float wpt = w_landmarks[vidx];
+		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
+		// p = R * p + T
+		PhGUtils::transformPoint( px, py, pz, R, T );
 
 		// for mouth region and outer contour, use only 2D info
 		if( i < 42 || i > 74 ) {
-			float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
 			const PhGUtils::Point3f& q = targets[i].first;
-
-			// p = R * p + T
-			PhGUtils::transformPoint( px, py, pz, R, T );
 
 			float dx = px - q.x, dy = py - q.y, dz = pz - q.z;
 			hx[i] = (dx * dx + dy * dy + dz * dz) * wpt;
@@ -1877,24 +1908,27 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 			else
 				wpt *= w_chin;
 
-			float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
 			float u, v, d;
 			PhGUtils::worldToColor(px, py, pz, u, v, d);
 			const PhGUtils::Point3f& q = targets_2d[i].first;
+
+			//cout << "#" << i <<"\t" << u << ", " << v << "\t" << q.x << ", " << q.y << endl;
 
 			float du = u - q.x, dv = v - q.y;
 			hx[i] = (du * du + dv * dv) * wpt;
 		}
 	}
-
+		
 	// regularization terms
-	for(int i=0, tidx=npts;i<7;i++, tidx++) {
+	int nterms = fitScale?7:6;
+	for(int i=0, tidx=npts;i<nterms;i++, tidx++) {
 		float diff = p[i] - meanRT[i];
 		hx[tidx] = diff * diff * w_history;
 	}
 }
 
 void evalJacobian(float *p, float *J, int m, int n, void *adata) {
+	//PhGUtils::message("jac func");
 	// J is a n-by-m matrix
 	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
 
@@ -1911,6 +1945,8 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 	auto w_outer = recon->w_outer;
 	auto w_history = recon->w_history;
 	auto meanRT = recon->meanRT;
+
+	auto fitScale = recon->fitScale;
 
 	// set up rotation matrix and translation vector
 	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz);
@@ -1961,8 +1997,10 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 			// \frac{\partial r_i}{\partial \t_z}
 			J[jidx++] = wpt * 2.0 * rkz;
 
-			// \frac{\partial r_i}{\partial s}
-			J[jidx++] = wpt * 2.0 * (rpx * rkx + rpy * rky + rpz * rkz);
+			if( fitScale ) {
+				// \frac{\partial r_i}{\partial s}
+				J[jidx++] = wpt * 2.0 * (rpx * rkx + rpy * rky + rpz * rkz);
+			}
 		}
 		else {
 			if( i > 63 ) {
@@ -1997,6 +2035,7 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 			// project p to color image plane
 			float pu, pv, pd;
 			PhGUtils::worldToColor(pkx, pky, pkz, pu, pv, pd);
+			//cout << "#" << i <<"\t" << pu << ", " << pv << "\t" << q.x << ", " << q.y << endl;
 
 			// residue
 			float rkx = pu - q.x, rky = pv - q.y;
@@ -2036,18 +2075,21 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 			// \frac{\partial r_i}{\partial \t_z}
 			J[jidx++] = 2.0 * (Jf[2] * rkx + Jf[5] * rky) * wpt;
 
-			// \frac{\partial r_i}{\partial s}
-			jfjpx = Jf[0] * rpx + Jf[2] * rpz;
-			jfjpy = Jf[4] * rpy + Jf[5] * rpz;
-			J[jidx++] = 2.0 * (jfjpx * rkx + jfjpy * rky) * wpt;
+			if( fitScale ) {
+				// \frac{\partial r_i}{\partial s}
+				float jfrpx = Jf[0] * rpx + Jf[2] * rpz;
+				float jfrpy = Jf[4] * rpy + Jf[5] * rpz;
+				J[jidx++] = 2.0 * (jfrpx * rkx + jfrpy * rky) * wpt;
+			}
 		}
 	}
-
+	
 	// regularization terms
-	for(int i=0, jidx=npts*7;i<7;i++) {
+	int nterms = fitScale?7:6;
+	for(int i=0, jidx=npts*nterms;i<nterms;i++) {
 		float diff = p[i] - meanRT[i];
 		if( diff == 0 ) diff = numeric_limits<float>::min();
-		for(int j=0;j<7;j++) {
+		for(int j=0;j<nterms;j++) {
 			if( j == i ) {
 				J[jidx] = 2.0 * diff * w_history;
 			}
@@ -2055,12 +2097,24 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 			jidx++;
 		}
 	}
+	
+
+	/*
+	// write out the Jacobian
+	PhGUtils::write2file("J.txt", [&](ofstream& fout){
+		PhGUtils::print2DArray(J, npts+7, 7, fout);
+	});
+	::system("pause");
+	*/
 }
 
 bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	int npts = targets.size();
 	
+	int nparams = fitScale?7:6;
+
 	// use levmar
+	
 	/*
 	vector<float> errs(npts + 7);
 	slevmar_chkjac(evalCost, evalJacobian, RTparams, 7, npts + 7, this, &(errs[0]));
@@ -2073,11 +2127,13 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	//int iters = slevmar_dif(evalCost, RTparams, &(pws.meas[0]), 7, npts+7, 128, NULL, NULL, NULL, NULL, this);
 	int iters = slevmar_der(evalCost, evalJacobian, RTparams, &(pws.meas[0]), 7, npts + 7, 128, opts, NULL, NULL, NULL, this);
 	*/
+		
 	
 	// use Gauss-Newton
 	float opts[3] = {0.1, 1e-3, 1e-4};
-	int iters = PhGUtils::GaussNewton<float>(evalCost, evalJacobian, RTparams, NULL, NULL, 7, npts+7, 128, opts, this);
+	int iters = PhGUtils::GaussNewton<float>(evalCost, evalJacobian, RTparams, NULL, NULL, nparams, npts+nparams, 128, opts, this);
 	
+
 	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// set up the matrix and translation vector
@@ -2099,7 +2155,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	//cout << T << endl;
 	
 
-	return diff / 7 < cc;
+	return diff / nparams < cc;
 }
 
 bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
@@ -2643,10 +2699,10 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		meanZ += p.z * isValid;
 
 		float dz = p.z - mu_depth;
-		float w_depth = exp(-((dz)>0?dz:0) / sigma_depth);
+		float w_depth = exp(-fabs(dz) / (sigma_depth*1e2));
 
 		// set the landmark weights
-		w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (i<64 || i>74)?isValid:isValid*w_boundary*w_depth;
+		w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (i<64 || i>74)?isValid*w_depth:isValid*w_boundary*w_depth;
 		
 
 		validCount += isValid;

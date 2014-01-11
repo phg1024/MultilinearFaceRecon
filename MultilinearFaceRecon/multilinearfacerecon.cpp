@@ -136,17 +136,17 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 }
 
 void MultilinearFaceRecon::reconstructionWithBatchInput() {
-	//const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
-	//const string imageName = "DougTalkingComplete_KSeq_";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
+	const string imageName = "DougTalkingComplete_KSeq_";
 
-	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
-	const string imageName = "Peihong_";
+	//const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
+	//const string imageName = "Peihong_";
 
 	const int startIdx = 10000;
 	const int imageCount = 250;
 	const int endIdx = startIdx + imageCount;
-	//const string colorPostfix = ".jpg";
-	const string colorPostfix = "_color.png";
+	const string colorPostfix = ".jpg";
+	//const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
 
 	const int w = 640;
@@ -231,18 +231,22 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 
 void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 {
-	//const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
-	//const string imageName = "DougTalkingComplete_KSeq_";
-
+#define DOUG 0
+#if DOUG
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
+	const string imageName = "DougTalkingComplete_KSeq_";
+	const string colorPostfix = ".jpg";
+	const string depthPostfix = "_depth.png";
+#else
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
 	const string imageName = "Peihong_";
+	const string colorPostfix = "_color.png";
+	const string depthPostfix = "_depth.png";
+#endif
 
 	const int startIdx = 10000;
 	const int imageCount = 250;
 	const int endIdx = startIdx + imageCount;
-	//const string colorPostfix = ".jpg";
-	const string colorPostfix = "_color.png";
-	const string depthPostfix = "_depth.png";
 
 	const int w = 640;
 	const int h = 480;
@@ -308,8 +312,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 			// fit the pose first, then fit the identity and pose together
 			//viewer->fitICP(MultilinearReconstructor::FIT_POSE);
 			//viewer->fitICP(MultilinearReconstructor::FIT_IDENTITY);
-			viewer->fit(MultilinearReconstructor::FIT_POSE);
-			::system("pause");
+			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 			viewer->fitICP(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 		}
 		else{
@@ -525,7 +528,7 @@ void MultilinearFaceRecon::updateKinectStreams_ICP()
 		// get the 3D landmarks and feed to recon manager
 		viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
 
-		viewer->fit(MultilinearReconstructor::FIT_POSE);
+		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 		viewer->fitICP(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 	}
 	else{

@@ -235,7 +235,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold, errorDiffThreshold;
-	static const int MAXITERS = 8;	// this should be enough
+	static const int MAXITERS = 64;	// this should be enough
 	bool usePrior;
 
 	// weights for prior
@@ -243,6 +243,7 @@ private:
 	// outer contour: 64~74
 	// chin: 42~63
 	float w_boundary, w_chin, w_outer;
+	float w_fp;		// feature point weight when using ICP
 
 	float w_prior_id_2D, w_prior_exp_2D;
 	float w_boundary_2D;
@@ -335,7 +336,7 @@ private:
 	// fitting control
 	static const int INITFRAMES = 5;
 	int frameCounter;
-	bool fitPose, fitIdentity, fitExpression;
+	bool fitScale, fitPose, fitIdentity, fitExpression;
 
 	// fitting error
 	float E;
