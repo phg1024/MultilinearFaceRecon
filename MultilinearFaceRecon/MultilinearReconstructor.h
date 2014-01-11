@@ -131,6 +131,8 @@ private:
 	void transformTM0C();
 	void transformTM1C();
 
+	void updateTM();
+	void updateTMwithTM0();
 	void transformTM0();
 	void transformTM1();
 
@@ -168,6 +170,7 @@ private:
 	bool fitExpressionWeights_withPrior_ICP();
 
 	// reconstruction utilities
+	void createFaceMask();
 	void transformMesh();
 	vector<float> computeWeightedMeanPose();
 
@@ -182,10 +185,39 @@ private:
 	vector<unsigned char> indexMap;				// synthesized face index map
 
 	vector<unsigned char> targetColor, targetDepth;	// target color and depth image
+	vector<unsigned char> faceMask;					// mask over the target RGBD image
 	vector<PhGUtils::Point3f> targetLocations;		// target locations obtain by back projecting color and depth image
+
+	PhGUtils::DenseMatrix<float> Aid_ICP, Aexp_ICP;
+	PhGUtils::DenseVector<float> brhs_ICP;
+
+	float w_ICP;
 
 	// for ICP
 	struct ICPConstraint {
+		ICPConstraint() {
+			v[0] = -1, v[1] = -1, v[2] = -1;
+		}
+		ICPConstraint(const ICPConstraint& other) {
+			for(int i=0;i<3;i++) {
+				v[i] = other.v[i];
+				bcoords[i] = other.bcoords[i];
+			}
+			weight = other.weight;
+			q = other.q;
+		}
+		ICPConstraint& operator=(const ICPConstraint& other) {
+			if( this != &other ) {
+				for(int i=0;i<3;i++) {
+					v[i] = other.v[i];
+					bcoords[i] = other.bcoords[i];
+				}
+				weight = other.weight;
+				q = other.q;
+			}
+			return (*this);
+		}
+
 		int v[3];				// incident vertices
 		float bcoords[3];		// barycentric coordinates
 		float weight;			// constraint weight
@@ -195,10 +227,10 @@ private:
 
 private:
 	void collectICPConstraints();
+	void collectICPConstraints_topo();
 
 	void updateMesh();
 	void renderMesh();
-
 private:
 	// convergence criteria
 	float cc;
@@ -210,7 +242,7 @@ private:
 	float w_prior_id, w_prior_exp;
 	// outer contour: 64~74
 	// chin: 42~63
-	float w_boundary, w_chin;
+	float w_boundary, w_chin, w_outer;
 
 	float w_prior_id_2D, w_prior_exp_2D;
 	float w_boundary_2D;
@@ -225,6 +257,8 @@ private:
 
 	// the tensor after mode product
 	Tensor2<float> tm0, tm1;
+
+	Tensor2<float> tm0RT, tm1RT;
 		
 	// the tensor after mode product, with truncation
 	// they are changed ONLY if wid or wexp is changed
@@ -238,10 +272,6 @@ private:
 	// tm1cRT: corec mode product with wexp, with rotation
 	Tensor2<float> tm0cRT, tm1cRT;
 
-	// the tensor after 2 mode products 
-	// tm is the tensor before applying global transformation
-	Tensor1<float> tm;
-
 	// the tensor after 2 mode products, with truncation; 
 	// tmc is the tensor before applying global transformation
 	Tensor1<float> tmc;
@@ -249,6 +279,7 @@ private:
 	Tensor1<float> q;			// target point coordinates
 
 	// template face
+	// the tensor after 2 mode products and before applying global transformation
 	Tensor1<float> tplt;
 
 	// fitted face
@@ -257,9 +288,6 @@ private:
 	// workspace for rigid fitting
 	struct PoseWorkspace{
 		vector<float> meas;
-		// for cminpack
-		//int workspace[npts];
-		//float w2[12*npts+32];
 	} pws;
 
 	float RTparams[7]; /* sx, ry, rz, tx, ty, tz, scale */

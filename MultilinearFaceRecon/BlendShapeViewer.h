@@ -23,6 +23,8 @@ public:
 		);
 	void fit(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void fit2d(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
+	void fitICP(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
+
 	void generatePrior();
 
 	const MultilinearReconstructor& getReconstructor() const {
@@ -66,8 +68,11 @@ private:
 
 	PhGUtils::Matrix4x4f mProj, mMv;
 
+	bool showLandmarks;
+
 private:
 	// used for synthesis step
 	shared_ptr<QGLFramebufferObject> fbo;
 	vector<float> depthBuffer;
+	vector<unsigned char> colorBuffer;
 };

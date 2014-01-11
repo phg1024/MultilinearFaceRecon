@@ -10,6 +10,8 @@ BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	this->resize(640, 480);
 	this->setSceneScale(1.0);
 
+	showLandmarks = true;
+
 	// load a dummy mesh
 	PhGUtils::OBJLoader loader;
 	loader.load("../Data/shape_0.obj");
@@ -69,7 +71,8 @@ void BlendShapeViewer::paintGL() {
 	glColor4f(0, 0, 0, 0.25);
 	targetMesh.drawFrame();
 
-	drawLandmarks();
+	if( showLandmarks )
+		drawLandmarks();
 
 	disableLighting();
 
@@ -221,12 +224,14 @@ void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms
 		}
 	}
 	
+	// bind the target locations with vertex indices
 	vector<pair<PhGUtils::Point3f, int>> pts;
 	for(int i=0;i<landmarks.size();i++) {
 		int vidx = landmarks[i];
 		pts.push_back(make_pair(lms[i], vidx));
 	}
 
+	// pass the targets to recon
 	recon.bindTarget(pts, ttp);
 	targetSet = true;
 }
@@ -274,6 +279,18 @@ void BlendShapeViewer::fit2d(MultilinearReconstructor::FittingOption ops /*= Mul
 
 	updateMeshWithReconstructor();
 }
+
+
+void BlendShapeViewer::fitICP(MultilinearReconstructor::FittingOption ops /*= MultilinearReconstructor::FIT_ALL*/)
+{
+	//PhGUtils::Timer t;
+	//t.tic();
+	recon.fitICP(ops);
+	//t.toc("reconstruction");
+
+	updateMeshWithReconstructor();
+}
+
 
 void BlendShapeViewer::generatePrior() {
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\FaceWarehouse_Data_0\\";
@@ -355,14 +372,20 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 			recon.idPriorWeight(w);
 			break;
 		}
+	case Qt::Key_L:
+		{
+			showLandmarks = !showLandmarks;
+			update();
+			break;
+		}
 	}
 }
 
 void BlendShapeViewer::enableLighting()
 {
-	GLfloat light_position[] = {10.0,10.0,10.0,1.0};
-	GLfloat mat_specular[] = {1.0, 1.0, 1.0, 1.0};
-	GLfloat mat_diffuse[] = {0.75, 0.75, 0.75, 1.0};
+	GLfloat light_position[] = {10.0, 4.0, 10.0,1.0};
+	GLfloat mat_specular[] = {0.8, 0.8, 0.8, 1.0};
+	GLfloat mat_diffuse[] = {0.375, 0.375, 0.375, 1.0};
 	GLfloat mat_shininess[] = {25.0};
 	GLfloat light_ambient[] = {0.05, 0.05, 0.05, 1.0};
 	GLfloat white_light[] = {1.0, 1.0, 1.0, 1.0};
@@ -376,13 +399,21 @@ void BlendShapeViewer::enableLighting()
 	glLightfv(GL_LIGHT0, GL_SPECULAR, white_light);
 	glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
 
+	light_position[0] = -10.0;
+	glLightfv(GL_LIGHT1, GL_POSITION, light_position);
+	glLightfv(GL_LIGHT1, GL_DIFFUSE, white_light);
+	glLightfv(GL_LIGHT1, GL_SPECULAR, white_light);
+	glLightfv(GL_LIGHT1, GL_AMBIENT, light_ambient);
+
 	glEnable(GL_LIGHTING);
 	glEnable(GL_LIGHT0);
+	glEnable(GL_LIGHT1);
 }
 
 void BlendShapeViewer::disableLighting()
 {
 	glDisable(GL_LIGHT0);
+	glDisable(GL_LIGHT1);
 	glDisable(GL_LIGHTING);
 }
 
@@ -391,6 +422,7 @@ void BlendShapeViewer::initFBO()
 	// attach a depth buffer
 	fbo = shared_ptr<QGLFramebufferObject>(new QGLFramebufferObject(640, 480, QGLFramebufferObject::Depth));
 	depthBuffer.resize(640*480);
+	colorBuffer.resize(640*480*4);
 }
 
 void BlendShapeViewer::drawMeshToFBO()
@@ -415,6 +447,7 @@ void BlendShapeViewer::drawMeshToFBO()
 	glShadeModel(GL_SMOOTH);
 
 	mesh.drawFaceIndices();	
+
 	
 	glReadPixels(0, 0, 640, 480, GL_DEPTH_COMPONENT, GL_FLOAT, &(depthBuffer[0]));
 	GLenum errcode = glGetError();
@@ -423,16 +456,22 @@ void BlendShapeViewer::drawMeshToFBO()
 		fprintf (stderr, "OpenGL Error: %s\n", errString);
 	}
 	
+	glReadPixels(0, 0, 640, 480, GL_RGBA, GL_UNSIGNED_BYTE, &(colorBuffer[0]));
+	errcode = glGetError();
+	if (errcode != GL_NO_ERROR) {
+		const GLubyte *errString = gluErrorString(errcode);
+		fprintf (stderr, "OpenGL Error: %s\n", errString);
+	}
+
 	glPopMatrix();
 
 	fbo->release();
 
-	
-	QImage fboimg = fbo->toImage();
-	fboimg.save("fbo.png");
 
 	ofstream fout("fbodepth.txt");
 	PhGUtils::print2DArray(&(depthBuffer[0]), 480, 640, fout);
 	fout.close();
 	
+	QImage img = PhGUtils::toQImage(&(colorBuffer[0]), 640, 480);	
+	img.save("fbo.png");
 }
