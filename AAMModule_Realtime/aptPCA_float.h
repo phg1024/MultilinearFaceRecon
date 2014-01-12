@@ -39,6 +39,8 @@ public:
 	float *newMeanVec_GPU;
 	void updateModel();
 
+	bool isrunning;
+
 	Adp_PCA_float(int dim,int maximumDim,bool outputData=false,int blockNum=10);
 	void updateModel(MatrixXf &data,bool isNormalize=false);
 
