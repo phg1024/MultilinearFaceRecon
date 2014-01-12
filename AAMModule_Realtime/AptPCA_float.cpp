@@ -15,6 +15,7 @@ Adp_PCA_float::Adp_PCA_float(int _dim,int _maximumDim,bool _outputData,int _bloc
 	dataForUse=MatrixXf::Zero(dim,_blockNum);
 
 	readyToTransfer=false;
+	isrunning=false;
 }
 
 
@@ -22,11 +23,18 @@ void Adp_PCA_float::updateModel()
 {
 	//	cout<<"1"<<" ";
 	//cout<<dataForUse.cols()<<endl;
+	if (isrunning)
+	{
+		return;
+	}
+
+	isrunning=true;
 	updateModel(dataForUse,true);
 	//	cout<<"2"<<endl;
 	getMeanAndModel(newMeanVec_GPU);
 	//	cout<<"3"<<endl;
 	readyToTransfer=true;
+	isrunning=false;
 }
 
 void Adp_PCA_float::setNewMeanVec(float *_meanVec)
