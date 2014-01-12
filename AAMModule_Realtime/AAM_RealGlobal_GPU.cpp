@@ -269,7 +269,12 @@ void AAM_RealGlobal_GPU::setGlobalStartNum(int num)
 
 bool AAM_RealGlobal_GPU::getCurrentStatus()
 {
-	return adpPcaGlobal->readyToTransfer;
+	bool isReady=adpPcaGlobal->readyToTransfer;
+	if(isReady)
+	{
+		adpPcaGlobal->readyToTransfer=false;
+	}
+	return isReady;
 }
 
 void AAM_RealGlobal_GPU::setCurrentStatus(bool s)
