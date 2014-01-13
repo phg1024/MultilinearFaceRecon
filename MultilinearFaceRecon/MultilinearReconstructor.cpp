@@ -3139,8 +3139,18 @@ void MultilinearReconstructor::updateMesh()
 	}
 }
 
+// mesh fitting functions
+
 tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor::fitMesh(const string& filename, const vector<pair<int, int>>& hint)
 {
+	// load the target mesh
+	PhGUtils::TriMesh msh;
+	PhGUtils::OBJLoader loader;
+	loader.load(filename);
+	msh.initWithLoader(loader);
+
+	// process the correspondence
+
 	// use the hints to get an initial fit for rigid transformation
 
 	// perform ICP to fit the mesh
