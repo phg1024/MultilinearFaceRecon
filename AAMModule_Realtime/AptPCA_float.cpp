@@ -21,7 +21,7 @@ Adp_PCA_float::Adp_PCA_float(int _dim,int _maximumDim,bool _outputData,int _bloc
 
 void Adp_PCA_float::updateModel()
 {
-	//	cout<<"1"<<" ";
+	//cout<<"1"<<" ";
 	//cout<<dataForUse.cols()<<endl;
 	if (isrunning)
 	{
@@ -30,9 +30,9 @@ void Adp_PCA_float::updateModel()
 
 	isrunning=true;
 	updateModel(dataForUse,true);
-	//	cout<<"2"<<endl;
+	//cout<<"2"<<endl;
 	getMeanAndModel(newMeanVec_GPU);
-	//	cout<<"3"<<endl;
+	//cout<<"3"<<endl;
 	readyToTransfer=true;
 	isrunning=false;
 }
@@ -260,7 +260,7 @@ void Adp_PCA_float::updateModel(MatrixXf &B,bool isNormalize)
 //	cout<<"cur maximum value: "<<curResValue<<endl;
 	if(curResValue<0.03)
 	{
-		//cout<<"no change: "<<curResValue<<endl;
+		cout<<"no change: "<<curResValue<<endl;
 		return;
 	}
 	//return;
@@ -381,7 +381,10 @@ void Adp_PCA_float::updateModel(MatrixXf &B,bool isNormalize)
 	//R(Range(0,eigenValueMat.rows),Range(eigenValueMat.cols,R.cols))+=U_t*B_Hat;
 	//R(Range(eigenValueMat.rows,R.rows),Range(0,eigenValueMat.cols))+=B_bst*residual;
 
-	
+#define DEBUG_UPDATE 0
+#if DEBUG_UPDATE
+	outputData = true;
+#endif	
 	if(outputData)
 	{
 		ofstream out("meanCPU.txt",ios::out);
@@ -526,6 +529,11 @@ void Adp_PCA_float::updateModel(MatrixXf &B,bool isNormalize)
 		}
 		out.close();
 	}
+	
+#if DEBUG_UPDATE
+	outputData = false;
+	::system("pause");
+#endif
 }
 
 void Adp_PCA_float::checkReconError(MatrixXf &data)

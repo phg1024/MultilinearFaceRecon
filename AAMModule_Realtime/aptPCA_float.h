@@ -32,7 +32,7 @@ public:
 		//cout<<p->blockNum<<endl;
 		tUpdate.tic();
 		p->updateModel();
-		tUpdate.toc("Update time");
+		tUpdate.toc("update model");
 		//cout<<"finished updating model\n";
 		return 0;
 	}

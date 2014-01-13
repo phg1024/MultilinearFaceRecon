@@ -26,6 +26,7 @@ public:
 
 	void printStats() const {
 		//PhGUtils::message("Average tracking prep time = " + PhGUtils::toString(aam.getPrepTime() / trackedFrames * 1000) + "ms");
+		PhGUtils::message("Setup time = " + PhGUtils::toString(tSetup.elapsed() * 1000) + "ms");
 		PhGUtils::message("Average tracking time = " + PhGUtils::toString(tAAM.elapsed() / trackedFrames * 1000) + "ms");
 		PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() / frameIdx * 1000) + "ms");
 		PhGUtils::message("Average other time = " + PhGUtils::toString(tOther.elapsed() / frameIdx * 1000) + "ms");
@@ -56,7 +57,7 @@ private:
 	vector<PhGUtils::Point3f> lms;		// landmarks got from AAM tracking
 	AAMWrapper aam;
 
-	PhGUtils::Timer tAAM, tRecon, tBinding, tOther, tTotal;
+	PhGUtils::Timer tAAM, tRecon, tSetup, tOther, tTotal;
 	PhGUtils::QuadMesh mesh;
 };
 

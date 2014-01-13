@@ -88,6 +88,8 @@ bool PoseTracker::reconstructionWithSingleFrame(
 		return false;
 	}
 	else {
+		// tracking succeeded
+
 		tOther.tic();
 		// get the 3D landmarks and feed to recon manager
 		int mfilterSize = 3;
@@ -117,19 +119,22 @@ bool PoseTracker::reconstructionWithSingleFrame(
 		bindTargetLandmarks(lms);
 		tOther.toc();
 
-		tRecon.tic();
+		
 		if( frameIdx++ == 0 ) {
+			tSetup.tic();
 			vector<unsigned char> colorimg(colordata, colordata+640*480*4);
 			vector<unsigned char> depthimg(depthdata, depthdata+640*480*4);
 			bindRGBDImage(colorimg, depthimg);
 			// fit the pose first, then fit the identity and pose together
 			recon.fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 			recon.fitICP(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+			tSetup.toc();
 		}
 		else{
+			tRecon.tic();
 			recon.fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
-		}
-		tRecon.toc();
+			tRecon.toc();
+		}		
 
 		tOther.tic();
 		pose.assign(recon.getPose(), recon.getPose()+7);

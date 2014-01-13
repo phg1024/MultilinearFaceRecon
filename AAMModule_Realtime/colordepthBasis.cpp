@@ -234,8 +234,8 @@ CColorDepthBasics::CColorDepthBasics() :
 		colorRT_model=datapath + "trainedTree_15_12_56_22_1.txt";
 		depthRT_model=datapath + "trainedTree_15_12_64_22_0.txt";
 
-		AAMModelPath=datapath + "trainedResult_90_90.txt";
-		alignedShapeDir=datapath + "allignedshape_90_90.txt";
+		AAMModelPath=datapath + "trainedResult_91_91.txt";
+		alignedShapeDir=datapath + "allignedshape_91_91.txt";
 		
 
 		//AAMModelPath="D:\\Fuhao\\face dataset\\train AAM finalEnlarged\\NoDougTalkingComplete\\trainedResault_90_89.txt";

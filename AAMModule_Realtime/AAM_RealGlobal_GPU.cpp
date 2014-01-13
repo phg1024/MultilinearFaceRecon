@@ -73,8 +73,11 @@ extern "C" void updateModelCPU_thread()
 	//adpPcaGlobal->updateModel();
 	//cout<<"textureModel address: "<<adpPcaGlobal<<endl;
 	cout<<"updating model in CPU\n";
+#if 1
 	_beginthreadex(0,0,Adp_PCA_float::threadProc,(void*)adpPcaGlobal,0,0);
-	//adpPcaGlobal->updateModel();
+#else
+	adpPcaGlobal->updateModel();
+#endif
 }
 
 extern "C" void updateModelCPU(float *dataBlock,int sampleNum,float *newMeanVec)

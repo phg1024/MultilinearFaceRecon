@@ -2653,7 +2653,7 @@ extern "C" bool predict_GPU_separated_combination(int width,int height,float *ho
 	CUDA_CALL(cudaMemcpy(data_color->maxIndPerBlock,data_color->cu_maxIndPerBlock, blocksPerGrid*2*MAX_LABEL_NUMBER*sizeof(float),cudaMemcpyDeviceToHost));
 
 	
-	int finalMaxInd;
+	int finalMaxInd=-1;
 	float finalMaxV=0;
 	for (int l=0;l<data_color->labelNum-1;l++)
 	{
