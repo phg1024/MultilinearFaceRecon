@@ -93,6 +93,10 @@ public:
 	void fitICP(FittingOption ops = FIT_ALL);
 	void fitICP_withPrior();
 
+	// fit a mesh given a path to file and a hint for initial fit
+	// returns rotation, translation, scale, identity weights and expression weights
+	tuple<vector<float>, vector<float>, vector<float>> fitMesh(const string& filename, const vector<pair<int, int>>& hint);
+
 	// force update computation tensors
 	void updateTM0() {
 		tm0 = core.modeProduct(Wid, 0);
@@ -235,7 +239,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold, errorDiffThreshold;
-	static const int MAXITERS = 64;	// this should be enough
+	static const int MAXITERS = 32;	// this should be enough
 	bool usePrior;
 
 	// weights for prior

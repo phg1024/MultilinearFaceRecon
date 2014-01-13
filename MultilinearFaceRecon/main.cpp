@@ -12,13 +12,23 @@
 void testPoseTracker() {
 	PoseTracker ptracker;
 
+#if 0
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const int startIdx = 10000;
-	const int imageCount = 500;
+	const int imageCount = 890;
 	const int endIdx = startIdx + imageCount;
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
+#else
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test_images\\";
+	const string imageName = "00";
+	const int startIdx = 2670;
+	const int imageCount = 120;
+	const int endIdx = startIdx + imageCount;
+	const string colorPostfix = ".png";
+	const string depthPostfix = "_depth.png";
+#endif
 
 	const int w = 640;
 	const int h = 480;

@@ -5,6 +5,10 @@
 #include "Utils/Timer.h"
 #include "Kinect/KinectUtils.h"
 
+#define DOUG 0
+#define PEIHONG 1
+#define YILONG 0
+
 MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	: QMainWindow(parent)
 {
@@ -136,18 +140,30 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 }
 
 void MultilinearFaceRecon::reconstructionWithBatchInput() {
+#if DOUG
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
-
-	//const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
-	//const string imageName = "Peihong_";
-
+	const string colorPostfix = ".jpg";
+	const string depthPostfix = "_depth.png";
 	const int startIdx = 10000;
 	const int imageCount = 250;
-	const int endIdx = startIdx + imageCount;
-	const string colorPostfix = ".jpg";
-	//const string colorPostfix = "_color.png";
+#elif PEIHONG
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
+	const string imageName = "Peihong_";
+	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
+	const int startIdx = 10000;
+	const int imageCount = 250;
+#else
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test_images\\";
+	const string imageName = "00";
+	const string colorPostfix = ".png";
+	const string depthPostfix = "_depth.png";
+	const int startIdx = 2670;
+	const int imageCount = 120;
+#endif
+
+	const int endIdx = startIdx + imageCount;
 
 	const int w = 640;
 	const int h = 480;
@@ -231,21 +247,29 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 
 void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 {
-#define DOUG 0
 #if DOUG
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
-#else
+	const int startIdx = 10000;
+	const int imageCount = 250;
+#elif PEIHONG
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
-#endif
-
 	const int startIdx = 10000;
 	const int imageCount = 250;
+#else
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test_images\\";
+	const string imageName = "00";
+	const string colorPostfix = ".png";
+	const string depthPostfix = "_depth.png";
+	const int startIdx = 2670;
+	const int imageCount = 120;
+#endif
+
 	const int endIdx = startIdx + imageCount;
 
 	const int w = 640;
@@ -326,7 +350,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 		}
 
 		QApplication::processEvents();
-		::system("pause");
+		//::system("pause");
 #endif	
 	}
 	tCombined.toc();
