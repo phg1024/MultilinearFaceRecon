@@ -9,6 +9,8 @@
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
 #include "Geometry/geometryutils.hpp"
+#include "Geometry/AABB.hpp"
+#include "Geometry/MeshViewer.h"
 
 #define USELEVMAR4WEIGHTS 0
 #define USE_MKL_LS 0		// use mkl least square solver
@@ -72,6 +74,10 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	cc = 1e-4;
 	errorThreshold = 1e-3;
 	errorDiffThreshold = errorThreshold * 0.005;
+
+	errorThreshold_ICP = 1e-5;
+	errorDiffThreshold_ICP = errorThreshold * 1e-4;
+
 	usePrior = true;
 
 	frameCounter = 0;
@@ -357,8 +363,11 @@ void MultilinearReconstructor::createFaceMask()
 	*/
 }
 
-void MultilinearReconstructor::collectICPConstraints()
+void MultilinearReconstructor::collectICPConstraints(int iter, int maxIter)
 {
+	const float DIST_THRES_MAX = 0.010;
+	const float DIST_THRES_MIN = 0.001;
+	float DIST_THRES = DIST_THRES_MAX + (DIST_THRES_MIN - DIST_THRES_MAX) * iter / (float)maxIter;
 	PhGUtils::message("Collecting ICP constraints...");
 	icpc.clear();
 	icpc.reserve(16384);
@@ -378,7 +387,7 @@ void MultilinearReconstructor::collectICPConstraints()
 				set<int> checkedFaces;
 
 				float closestDist = numeric_limits<float>::max();
-				int closestVerts[3];
+				PhGUtils::Point3i closestVerts;
 				PhGUtils::Point3f closestHit;
 
 				for(int r=v-wSize;r<=v+wSize;r++) {
@@ -414,12 +423,12 @@ void MultilinearReconstructor::collectICPConstraints()
 								// take the smaller one
 								if( dist1 < dist2 && dist1 < closestDist) {
 									closestDist = dist1;
-									closestVerts[0] = f.x, closestVerts[1] = f.y, closestVerts[2] = f.z;
+									closestVerts.x = f.x, closestVerts.y = f.y, closestVerts.z = f.z;
 									closestHit = hit1;
 								}
 								else if( dist2 < closestDist ) {
 									closestDist = dist2;
-									closestVerts[0] = f.y, closestVerts[1] = f.z, closestVerts[2] = f.w;
+									closestVerts.x = f.y, closestVerts.y = f.z, closestVerts.z = f.w;
 									closestHit = hit2;
 								}
 							}
@@ -429,16 +438,15 @@ void MultilinearReconstructor::collectICPConstraints()
 						}						
 					}
 				}
-
-				const float DIST_THRES = 0.005;				
+				
 				// close enough to be a constraint
 				if( closestDist < DIST_THRES ) {
 					ICPConstraint cc;
 					cc.q = q;
-					cc.v[0] = closestVerts[0], cc.v[1] = closestVerts[1], cc.v[2] = closestVerts[2];
+					cc.v = closestVerts;
 					PhGUtils::computeBarycentricCoordinates(
 						closestHit,
-						baseMesh.vertex(closestVerts[0]), baseMesh.vertex(closestVerts[1]), baseMesh.vertex(closestVerts[2]), 
+						baseMesh.vertex(closestVerts.x), baseMesh.vertex(closestVerts.y), baseMesh.vertex(closestVerts.z), 
 						cc.bcoords);
 
 					icpc.push_back(cc);
@@ -448,24 +456,22 @@ void MultilinearReconstructor::collectICPConstraints()
 	}
 
 	cout << "done. ICP constraints: " << icpc.size() << endl;
-
-	/*
+	
 	// output ICP constraints to file
 	ofstream fout("icpc.txt");
 	for(int i=0;i<icpc.size();i++) {
 		PhGUtils::Point3f p(0, 0, 0);
-		p = p + icpc[i].bcoords[0] * baseMesh.vertex(icpc[i].v[0]);
-		p = p + icpc[i].bcoords[1] * baseMesh.vertex(icpc[i].v[1]);
-		p = p + icpc[i].bcoords[2] * baseMesh.vertex(icpc[i].v[2]);
+		p = p + icpc[i].bcoords.x * baseMesh.vertex(icpc[i].v.x);
+		p = p + icpc[i].bcoords.y * baseMesh.vertex(icpc[i].v.y);
+		p = p + icpc[i].bcoords.z * baseMesh.vertex(icpc[i].v.z);
 		fout << icpc[i].q << " " << p << endl;
 	}
 	fout.close();
 
 	::system("pause");
-	*/
 }
 
-void MultilinearReconstructor::collectICPConstraints_topo()
+void MultilinearReconstructor::collectICPConstraints_topo(int iter, int maxIter)
 {
 	icpc.clear();
 	// the depth map and the face index map are flipped vertically
@@ -481,7 +487,7 @@ void MultilinearReconstructor::collectICPConstraints_topo()
 				if( q.z == 0 || inside == 0 ) continue;
 
 				float closestDist = numeric_limits<float>::max();
-				int closestVerts[3];
+				PhGUtils::Point3i closestVerts;
 				PhGUtils::Point3f closestHit;
 
 				set<int> checkedFaces;
@@ -551,12 +557,12 @@ void MultilinearReconstructor::collectICPConstraints_topo()
 								// take the smaller one
 								if( dist1 < dist2 && dist1 < closestDist) {
 									closestDist = dist1;
-									closestVerts[0] = f.x, closestVerts[1] = f.y, closestVerts[2] = f.z;
+									closestVerts.x = f.x, closestVerts.y = f.y, closestVerts.z = f.z;
 									closestHit = hit1;
 								}
 								else if( dist2 < closestDist ) {
 									closestDist = dist2;
-									closestVerts[0] = f.y, closestVerts[1] = f.z, closestVerts[2] = f.w;
+									closestVerts.x = f.y, closestVerts.z = f.z, closestVerts.y = f.w;
 									closestHit = hit2;
 								}
 							}
@@ -569,10 +575,10 @@ void MultilinearReconstructor::collectICPConstraints_topo()
 				if( closestDist < DIST_THRES ) {
 					ICPConstraint cc;
 					cc.q = q;
-					cc.v[0] = closestVerts[0], cc.v[1] = closestVerts[1], cc.v[2] = closestVerts[2];
+					cc.v = closestVerts;
 					PhGUtils::computeBarycentricCoordinates(
 						closestHit,
-						baseMesh.vertex(closestVerts[0]), baseMesh.vertex(closestVerts[1]), baseMesh.vertex(closestVerts[2]), 
+						baseMesh.vertex(closestVerts.x), baseMesh.vertex(closestVerts.y), baseMesh.vertex(closestVerts.z), 
 						cc.bcoords);
 
 					icpc.push_back(cc);
@@ -597,6 +603,56 @@ void MultilinearReconstructor::collectICPConstraints_topo()
 
 	::system("pause");
 	*/	
+}
+
+void MultilinearReconstructor::collectICPConstraints_bruteforce(int iter, int maxIter) {
+	icpc.clear();
+	// the depth map and the face index map are flipped vertically
+	for(int v=0, vv=479, idx=0;v<480;v++, vv--) {
+		for(int u=0;u<640;u++, idx++) {
+			int didx = vv * 640 + u;					// pixel index for synthesized image
+			// check if the synthesized depth is valid
+			if( depthMap[didx] < 1.0 ) {
+				const PhGUtils::Point3f& q = targetLocations[idx];
+				unsigned char inside = faceMask[idx];
+
+				// check if the input location is valid
+				if( q.z == 0 || inside == 0 ) continue;
+
+				PhGUtils::Point3i closestVerts;
+				PhGUtils::Point3f bcoords;
+
+				float closestDist = baseMesh.findClosestPoint_bruteforce(q, closestVerts, bcoords);
+
+				const float DIST_THRES = 0.005;				
+				// close enough to be a constraint
+				if( closestDist < DIST_THRES ) {
+					ICPConstraint cc;
+					cc.q = q;
+					cc.v = closestVerts;
+					cc.bcoords = bcoords;
+
+					icpc.push_back(cc);
+				}
+			}
+		}
+	}
+	
+	cout << "ICP constraints: " << icpc.size() << endl;
+
+	
+	// output ICP constraints to file
+	ofstream fout("icpc.txt");
+	for(int i=0;i<icpc.size();i++) {
+		PhGUtils::Point3f p(0, 0, 0);
+		p = p + icpc[i].bcoords.x * baseMesh.vertex(icpc[i].v.x);
+		p = p + icpc[i].bcoords.y * baseMesh.vertex(icpc[i].v.y);
+		p = p + icpc[i].bcoords.z * baseMesh.vertex(icpc[i].v.z);
+		fout << icpc[i].q << " " << p << endl;
+	}
+	fout.close();
+
+	::system("pause");
 }
 
 void MultilinearReconstructor::fitICP_withPrior() {
@@ -633,8 +689,9 @@ void MultilinearReconstructor::fitICP_withPrior() {
 
 		// collect ICP constraints
 		createFaceMask();
-		collectICPConstraints();
-		//collectICPConstraints_topo();
+		collectICPConstraints(iters, MaxIterations);
+		//collectICPConstraints_topo(iters, MaxIterations);
+		//collectICPConstraints_bruteforce(iters, MaxIterations);
 
 
 		if( fitPose ) {
@@ -706,11 +763,12 @@ void MultilinearReconstructor::fitICP_withPrior() {
 		//transformMesh();
 		//Rmat.print("R");
 		//Tvec.print("T");
-		E = computeError();
-		//PhGUtils::debug("iters", iters, "Error", E);
+		E = computeError_ICP();
+		PhGUtils::debug("iters", iters, "Error", E);
 
-		converged |= E < errorThreshold;
-		converged |= fabs(E - E0) < errorDiffThreshold;
+		// adaptive threshold
+		converged |= E < (errorThreshold_ICP / (icpc.size()/5000.0));
+		converged |= fabs(E - E0) < errorDiffThreshold_ICP;
 		E0 = E;
 		timerOther.toc();
 		//emit oneiter();
@@ -1290,12 +1348,12 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 		auto bcoords = icpc[i].bcoords;
 
 		int vidx[3];
-		vidx[0] = v[0]*3; vidx[1] = v[1]*3; vidx[2] = v[2]*3;
+		vidx[0] = v.x*3; vidx[1] = v.y*3; vidx[2] = v.z*3;
 
 		PhGUtils::Point3f p;
-		p.x += bcoords[0] * tplt(vidx[0]); p.y += bcoords[0] * tplt(vidx[0]+1); p.z += bcoords[0] * tplt(vidx[0]+2);
-		p.x += bcoords[1] * tplt(vidx[1]); p.y += bcoords[1] * tplt(vidx[1]+1); p.z += bcoords[1] * tplt(vidx[1]+2);
-		p.x += bcoords[2] * tplt(vidx[2]); p.y += bcoords[2] * tplt(vidx[2]+1); p.z += bcoords[2] * tplt(vidx[2]+2);
+		p.x += bcoords.x * tplt(vidx[0]); p.y += bcoords.x * tplt(vidx[0]+1); p.z += bcoords.x * tplt(vidx[0]+2);
+		p.x += bcoords.y * tplt(vidx[1]); p.y += bcoords.y * tplt(vidx[1]+1); p.z += bcoords.y * tplt(vidx[1]+2);
+		p.x += bcoords.z * tplt(vidx[2]); p.y += bcoords.z * tplt(vidx[2]+1); p.z += bcoords.z * tplt(vidx[2]+2);
 
 		const PhGUtils::Point3f& q = icpc[i].q;
 
@@ -1394,13 +1452,13 @@ void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 		auto bcoords = icpc[i].bcoords;
 
 		int vidx[3];
-		vidx[0] = v[0]*3; vidx[1] = v[1]*3; vidx[2] = v[2]*3;
+		vidx[0] = v.x*3; vidx[1] = v.y*3; vidx[2] = v.z*3;
 
 		// point p
 		PhGUtils::Point3f p;
-		p.x += bcoords[0] * tplt(vidx[0]); p.y += bcoords[0] * tplt(vidx[0]+1); p.z += bcoords[0] * tplt(vidx[0]+2);
-		p.x += bcoords[1] * tplt(vidx[1]); p.y += bcoords[1] * tplt(vidx[1]+1); p.z += bcoords[1] * tplt(vidx[1]+2);
-		p.x += bcoords[2] * tplt(vidx[2]); p.y += bcoords[2] * tplt(vidx[2]+1); p.z += bcoords[2] * tplt(vidx[2]+2);
+		p.x += bcoords.x * tplt(vidx[0]); p.y += bcoords.x * tplt(vidx[0]+1); p.z += bcoords.x * tplt(vidx[0]+2);
+		p.x += bcoords.y * tplt(vidx[1]); p.y += bcoords.y * tplt(vidx[1]+1); p.z += bcoords.y * tplt(vidx[1]+2);
+		p.x += bcoords.z * tplt(vidx[2]); p.y += bcoords.z * tplt(vidx[2]+1); p.z += bcoords.z * tplt(vidx[2]+2);
 
 		// point q
 		const PhGUtils::Point3f& q = icpc[i].q;
@@ -2194,12 +2252,13 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
 	for(int i=0;i<npts_ICP;i++, ridx+=3) {
 		auto bcoords = icpc[i].bcoords;
 		auto v = icpc[i].v;
-		int v0 = v[0] * 3, v1 = v[1] * 3, v2 = v[2] * 3;
+		int v0 = v.x * 3, v1 = v.y * 3, v2 = v.z * 3;
 
 		for(int j=0;j<nparams;j++) {
-			float x = bcoords[0] * tm1RT(j, v0  ) + bcoords[1] * tm1RT(j, v1  ) + bcoords[2] * tm1RT(j, v2  );
-			float y = bcoords[0] * tm1RT(j, v0+1) + bcoords[1] * tm1RT(j, v1+1) + bcoords[2] * tm1RT(j, v2+1);
-			float z = bcoords[0] * tm1RT(j, v0+2) + bcoords[1] * tm1RT(j, v1+2) + bcoords[2] * tm1RT(j, v2+2);
+			float x = 0, y = 0, z = 0;
+			x += bcoords.x * tm1RT(j, v0  ); y += bcoords.x * tm1RT(j, v0+1); z += bcoords.x * tm1RT(j, v0+2); 
+			x += bcoords.y * tm1RT(j, v1  ); y += bcoords.y * tm1RT(j, v1+1); z += bcoords.y * tm1RT(j, v1+2); 
+			x += bcoords.z * tm1RT(j, v2  ); y += bcoords.z * tm1RT(j, v2+1); z += bcoords.z * tm1RT(j, v2+2);
 
 			Aid_ICP(ridx, j) = x * w_ICP;
 			Aid_ICP(ridx+1, j) = y * w_ICP;
@@ -2456,9 +2515,11 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_ICP() {
 		int v0 = v[0] * 3, v1 = v[1] * 3, v2 = v[2] * 3;
 
 		for(int j=0;j<nparams;j++) {
-			float x = bcoords[0] * tm0RT(j, v0  ) + bcoords[1] * tm0RT(j, v1  ) + bcoords[2] * tm0RT(j, v2  );
-			float y = bcoords[0] * tm0RT(j, v0+1) + bcoords[1] * tm0RT(j, v1+1) + bcoords[2] * tm0RT(j, v2+1);
-			float z = bcoords[0] * tm0RT(j, v0+2) + bcoords[1] * tm0RT(j, v1+2) + bcoords[2] * tm0RT(j, v2+2);
+			float x = 0, y = 0, z = 0;
+
+			x += bcoords.x * tm0RT(j, v0  ); y += bcoords.x * tm0RT(j, v0+1); z += bcoords.x * tm0RT(j, v0+2); 
+			x += bcoords.y * tm0RT(j, v1  ); y += bcoords.y * tm0RT(j, v1+1); z += bcoords.y * tm0RT(j, v1+2); 
+			x += bcoords.z * tm0RT(j, v2  ); y += bcoords.z * tm0RT(j, v2+1); z += bcoords.z * tm0RT(j, v2+2);
 
 			Aexp_ICP(ridx, j) = x * w_ICP;
 			Aexp_ICP(ridx+1, j) = y * w_ICP;
@@ -3010,6 +3071,77 @@ void MultilinearReconstructor::updateTMwithTM0()
 	tm0.modeProduct(Wexp, 0, tplt);
 }
 
+float MultilinearReconstructor::computeError_ICP() {
+
+	// set up rotation matrix and translation vector
+	float w_fp_scale = icpc.size() / 1000.0;
+	float E = 0, wsum = 0;
+	// ICP terms
+	for(int i=0;i<icpc.size();i++) {
+		auto v = icpc[i].v;
+		auto bcoords = icpc[i].bcoords;
+
+		int vidx[3];
+		vidx[0] = v.x*3; vidx[1] = v.y*3; vidx[2] = v.z*3;
+
+		PhGUtils::Point3f p;
+		p.x += bcoords.x * tplt(vidx[0]); p.y += bcoords.x * tplt(vidx[0]+1); p.z += bcoords.x * tplt(vidx[0]+2);
+		p.x += bcoords.y * tplt(vidx[1]); p.y += bcoords.y * tplt(vidx[1]+1); p.z += bcoords.y * tplt(vidx[1]+2);
+		p.x += bcoords.z * tplt(vidx[2]); p.y += bcoords.z * tplt(vidx[2]+1); p.z += bcoords.z * tplt(vidx[2]+2);
+
+		const PhGUtils::Point3f& q = icpc[i].q;
+
+		// p = R * p + T
+		PhGUtils::transformPoint( p.x, p.y, p.z, Rmat, Tvec );
+
+		float dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z;
+		E += (dx * dx + dy * dy + dz * dz) * w_ICP;
+		wsum += w_ICP;
+	}
+
+	// facial feature term
+	for(int i=0;i<targets.size();i++) {
+		int vidx = targets[i].second * 3;
+		float wpt = w_landmarks[i*3] * w_fp_scale;
+
+		PhGUtils::Point3f p(tplt(vidx), tplt(vidx+1), tplt(vidx+2));
+
+		// p = R * p + T
+		PhGUtils::transformPoint( p.x, p.y, p.z, Rmat, Tvec );
+
+		// for mouth region and outer contour, use only 2D info
+		if( i < 42 || i > 74 ) {
+			const PhGUtils::Point3f& q = targets[i].first;
+
+			float dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z;
+			E += (dx * dx + dy * dy + dz * dz) * wpt;
+			wsum += wpt;
+		}
+		else {
+			if( i > 63 ) {
+				wpt *= w_outer;
+			}
+			else {
+				wpt *= w_chin;
+			}
+
+			wpt *= w_fp;
+
+			float u, v, d;
+			PhGUtils::worldToColor(p.x, p.y, p.z, u, v, d);
+			const PhGUtils::Point3f& q = targets_2d[i].first;
+
+			//cout << "#" << i <<"\t" << u << ", " << v << "\t" << q.x << ", " << q.y << endl;
+
+			float du = u - q.x, dv = v - q.y;
+			E += (du * du + dv * dv) * wpt;
+			wsum += wpt;
+		}
+	}
+	E /= wsum;
+	return E;
+}
+
 float MultilinearReconstructor::computeError()
 {
 	int npts = targets.size();
@@ -3144,10 +3276,18 @@ void MultilinearReconstructor::updateMesh()
 tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor::fitMesh(const string& filename, const vector<pair<int, int>>& hint)
 {
 	// load the target mesh
-	PhGUtils::TriMesh msh;
+	shared_ptr<PhGUtils::TriMesh> msh = shared_ptr<PhGUtils::TriMesh>(new PhGUtils::TriMesh);
 	PhGUtils::OBJLoader loader;
 	loader.load(filename);
-	msh.initWithLoader(loader);
+	msh->initWithLoader(loader);
+
+	PhGUtils::MeshViewer* viewer = new PhGUtils::MeshViewer;
+	viewer->bindMesh(msh);
+	viewer->show();
+
+	//PhGUtils::AABBTree<float> aabbtree(msh);
+
+	vector<float> vRT, vWid, vWexp;
 
 	// process the correspondence
 
@@ -3156,4 +3296,6 @@ tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor::fit
 	// perform ICP to fit the mesh
 
 	// for debug, write out the fitted mesh
+
+	return make_tuple(vRT, vWid, vWexp);
 }

@@ -169,6 +169,8 @@ private:
 	friend void evalCost_ICP(float *p, float *hx, int m, int n, void* adata);
 	friend void evalJacobian_ICP(float *p, float *hx, int m, int n, void* adata);
 	
+	float computeError_ICP();
+
 	bool fitRigidTransformationAndScale_ICP();
 	bool fitIdentityWeights_withPrior_ICP();
 	bool fitExpressionWeights_withPrior_ICP();
@@ -199,39 +201,36 @@ private:
 
 	// for ICP
 	struct ICPConstraint {
-		ICPConstraint() {
-			v[0] = -1, v[1] = -1, v[2] = -1;
+		ICPConstraint():v(PhGUtils::Point3i(-1, -1, -1)) {
+			
 		}
 		ICPConstraint(const ICPConstraint& other) {
-			for(int i=0;i<3;i++) {
-				v[i] = other.v[i];
-				bcoords[i] = other.bcoords[i];
-			}
+			v = other.v;
+			bcoords = other.bcoords;
 			weight = other.weight;
 			q = other.q;
 		}
 		ICPConstraint& operator=(const ICPConstraint& other) {
 			if( this != &other ) {
-				for(int i=0;i<3;i++) {
-					v[i] = other.v[i];
-					bcoords[i] = other.bcoords[i];
-				}
+				v = other.v;
+				bcoords = other.bcoords;
 				weight = other.weight;
 				q = other.q;
 			}
 			return (*this);
 		}
 
-		int v[3];				// incident vertices
-		float bcoords[3];		// barycentric coordinates
+		PhGUtils::Point3i v;				// incident vertices
+		PhGUtils::Point3f bcoords;		// barycentric coordinates
 		float weight;			// constraint weight
 		PhGUtils::Point3f q;	// target point
 	};
 	vector<ICPConstraint> icpc;
 
 private:
-	void collectICPConstraints();
-	void collectICPConstraints_topo();
+	void collectICPConstraints(int iter, int maxIter);
+	void collectICPConstraints_topo(int iter, int maxIter);
+	void collectICPConstraints_bruteforce(int iter, int maxIter);
 
 	void updateMesh();
 	void renderMesh();
@@ -239,6 +238,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold, errorDiffThreshold;
+	float errorThreshold_ICP, errorDiffThreshold_ICP;
 	static const int MAXITERS = 32;	// this should be enough
 	bool usePrior;
 

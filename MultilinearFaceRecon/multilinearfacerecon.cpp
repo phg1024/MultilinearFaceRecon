@@ -259,7 +259,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
-	const int startIdx = 10000;
+	const int startIdx = 10001;
 	const int imageCount = 250;
 #else
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test_images\\";
