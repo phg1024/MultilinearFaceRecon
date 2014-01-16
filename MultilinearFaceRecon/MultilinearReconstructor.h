@@ -85,8 +85,10 @@ public:
 		);
 
 	void init();
+
 	void fit(FittingOption ops = FIT_ALL);
 	void fit_withPrior();
+
 	void fit2d(FittingOption ops = FIT_ALL);
 	void fit2d_withPrior();
 
@@ -234,6 +236,19 @@ private:
 
 	void updateMesh();
 	void renderMesh();
+
+private:
+	// vertex-to-point constraint, for mesh-mesh registration
+	struct Constraint{
+		int vidx;				// vertex on the template mesh
+		PhGUtils::Point3f q;	// target point
+	};
+	vector<Constraint> vcons;	// constraints for mesh fitting
+	vector<float> fit_withConstraints();
+	tuple<vector<float>, vector<float>, vector<float>> fitMesh_ICP(const shared_ptr<PhGUtils::TriMesh>& msh);
+
+	friend void evalCost_withConstraints(float *p, float *hx, int m, int n, void* adata);
+
 private:
 	// convergence criteria
 	float cc;

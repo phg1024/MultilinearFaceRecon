@@ -7,18 +7,22 @@
 #include "Math/denseblas.h"
 #include "Math/Optimization.hpp"
 #include "Geometry/MeshLoader.h"
+#include "Geometry/MeshWriter.h"
 #include "Geometry/Mesh.h"
 #include "Geometry/geometryutils.hpp"
 #include "Geometry/AABB.hpp"
 #include "Geometry/MeshViewer.h"
 
 #define USELEVMAR4WEIGHTS 0
-#define USE_MKL_LS 0		// use mkl least square solver
+#define USE_MKL_LS 1		// use mkl least square solver
 #define OUTPUT_STATS 0
 #define FBO_DEBUG 0
 
 MultilinearReconstructor::MultilinearReconstructor(void)
 {	
+	culaStatus stas = culaInitialize();
+	culaCheckStatus(stas);
+
 	w_prior_id = 1e-3;
 	// for 25 expression dimensions
 	//w_prior_exp = 1e-4;
@@ -455,6 +459,7 @@ void MultilinearReconstructor::collectICPConstraints(int iter, int maxIter)
 		}
 	}
 
+	/*
 	cout << "done. ICP constraints: " << icpc.size() << endl;
 	
 	// output ICP constraints to file
@@ -469,6 +474,7 @@ void MultilinearReconstructor::collectICPConstraints(int iter, int maxIter)
 	fout.close();
 
 	::system("pause");
+	*/
 }
 
 void MultilinearReconstructor::collectICPConstraints_topo(int iter, int maxIter)
@@ -2319,14 +2325,23 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
 	cout << "matrix and rhs assembled." << endl;
 
 	cout << "least square" << endl;
+#if USE_MKL_LS
 	int rtn = leastsquare<float>(Aid_ICP, brhs_ICP);
+#else
+	int rtn = leastsquare_normalmat(Aid_ICP, brhs_ICP, AidtAid, Aidtb);
+#endif
 	cout << "done." << endl;
 	//debug("rtn", rtn);
 	float diff = 0;
 	//b.print("b");
 	for(int i=0;i<nparams;i++) {
+#if USE_MKL_LS
 		diff += fabs(Wid(i) - brhs_ICP(i));
 		Wid(i) = brhs_ICP(i);		
+#else
+		diff += fabs(Wid(i) - Aidtb(i));
+		Wid(i) = Aidtb(i);	
+#endif
 		//cout << params[i] << ' ';
 	}
 
@@ -2539,7 +2554,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_ICP() {
 		}
 	}
 
-	float w_prior_scale = npts_ICP / 2000.0;
+	float w_prior_scale = npts_ICP / 1000.0;
 	// prior terms
 	for(int j=0;j<Aexp_ICP.cols();j++) {
 		for(int i=0, ridx=npts*3;i<nparams;i++, ridx++) {
@@ -3283,19 +3298,101 @@ tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor::fit
 
 	PhGUtils::MeshViewer* viewer = new PhGUtils::MeshViewer;
 	viewer->bindMesh(msh);
+	viewer->bindHints(hint);
 	viewer->show();
 
-	//PhGUtils::AABBTree<float> aabbtree(msh);
+	// convert hint to vertex-to-point constraint
+	vcons.resize(hint.size());
+	for(int i=0;i<vcons.size();i++) {
+		vcons[i].q = msh->vertex(hint[i].first);
+		vcons[i].vidx = hint[i].second;
+	}
 
-	vector<float> vRT, vWid, vWexp;
+	// pre-registration for rigid transformation ONLY with the given correspondence
+	vector<float> vRT = fit_withConstraints();
+	
+	Rmat = PhGUtils::rotationMatrix(vRT[0], vRT[1], vRT[2]) * vRT[6];
+	for(int i=0;i<3;i++) {
+		for(int j=0;j<3;j++) {
+			R(i, j) = Rmat(i, j);			
+		}
+	}
+	Tvec.x = vRT[3], Tvec.y = vRT[4], Tvec.z = vRT[5];
+	T(0) = vRT[3], T(1) = vRT[4], T(2) = vRT[5];
 
-	// process the correspondence
+	// transform the mesh
+	int nverts = tplt.length()/3;
+	arma::fmat pt(3, nverts);
+	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
+		pt(0, i) = tplt(idx);
+		pt(1, i) = tplt(idx+1);
+		pt(2, i) = tplt(idx+2);
+	}
 
-	// use the hints to get an initial fit for rigid transformation
+	// batch rotation processing
+	arma::fmat pt_trans =  R * pt;
+	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
+		tmesh(idx) = pt_trans(0, i) + T(0);
+		tmesh(idx+1) = pt_trans(1, i) + T(1);
+		tmesh(idx+2) = pt_trans(2, i) + T(2);
+	}
 
-	// perform ICP to fit the mesh
+	// update the mesh
+	for(int i=0,idx=0;i<tplt.length()/3;i++) {
+		baseMesh.vertex(i).x = tmesh(idx++);
+		baseMesh.vertex(i).y = tmesh(idx++);
+		baseMesh.vertex(i).z = tmesh(idx++);
+	}
+
+	PhGUtils::OBJWriter writer;
+	writer.save(baseMesh, "../Data/tmesh.obj");
+
+	// ICP registration
+	auto params = fitMesh_ICP(msh);
 
 	// for debug, write out the fitted mesh
+
+	return params;
+}
+
+void evalCost_withConstraints(float *p, float *hx, int m, int n, void* adata) {
+	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	auto targets = recon->vcons;
+	auto tplt = recon->tplt;
+
+	float s, rx, ry, rz, tx, ty, tz;
+	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
+	PhGUtils::Point3f T(tx, ty, tz);
+	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz) * s;
+
+	for(int i=0;i<n;i++) {
+		int voffset = targets[i].vidx * 3;
+		const PhGUtils::Point3f& q = targets[i].q;
+		PhGUtils::Point3f p(tplt(voffset),tplt(voffset+1), tplt(voffset+2));
+
+		PhGUtils::transformPoint( p.x, p.y, p.z, R, T );
+
+		hx[i] = p.squaredDistanceTo(q);
+	}
+}
+
+vector<float> MultilinearReconstructor::fit_withConstraints()
+{
+	int npts = vcons.size();
+	vector<float> params(7, 0);
+	params[6] = 100.0;
+	vector<float> meas(npts);
+
+	int iters = slevmar_dif(evalCost_withConstraints, &(params[0]), &(meas[0]), 7, npts, 1024, NULL, NULL, NULL, NULL, this);
+	PhGUtils::message("rigid transformation estimated in " + PhGUtils::toString(iters) + " iterations.");
+	PhGUtils::printVector(params);
+
+	return params;
+}
+
+tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor::fitMesh_ICP(const shared_ptr<PhGUtils::TriMesh>& msh)
+{
+	vector<float> vRT, vWid, vWexp;
 
 	return make_tuple(vRT, vWid, vWexp);
 }

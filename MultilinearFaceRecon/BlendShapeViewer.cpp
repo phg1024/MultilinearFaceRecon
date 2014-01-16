@@ -380,12 +380,17 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 		}
 	case Qt::Key_M:
 		{
-			vector<pair<int, int>> hints;
-			hints.push_back(make_pair(57226, 18191));
-			hints.push_back(make_pair(25903, 2324));
-			hints.push_back(make_pair(19379, 3721));
-			hints.push_back(make_pair(6678, 5344));
-			hints.push_back(make_pair(51566, 16747));
+			vector<pair<int, int>> hints;	// index on the target mesh - index on the template mesh
+			hints.push_back(make_pair(630, 9539));
+			hints.push_back(make_pair(28080, 290));
+			hints.push_back(make_pair(24738, 663));
+			hints.push_back(make_pair(20075, 2095));
+			hints.push_back(make_pair(20704, 200));
+			hints.push_back(make_pair(8247, 1613));
+			hints.push_back(make_pair(4358, 399));
+			hints.push_back(make_pair(19395, 1889));
+			hints.push_back(make_pair(181, 539));
+			hints.push_back(make_pair(20981, 2179));
 			recon.fitMesh("../Data/basis_07.obj", hints);
 		}
 	}
