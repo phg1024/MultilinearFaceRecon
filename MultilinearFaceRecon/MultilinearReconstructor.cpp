@@ -13,6 +13,8 @@
 #include "Geometry/AABB.hpp"
 #include "Geometry/MeshViewer.h"
 
+#include "omp.h"
+
 #define USELEVMAR4WEIGHTS 0
 #define USE_MKL_LS 1		// use mkl least square solver
 #define OUTPUT_STATS 0
@@ -1670,7 +1672,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_ICP() {
 	
 	
 	// use Gauss-Newton
-	float opts[3] = {0.25, 1e-3, 1e-4};
+	float opts[3] = {0.125, 1e-3, 1e-4};
 	int iters = PhGUtils::GaussNewton<float>(evalCost_ICP, evalJacobian_ICP, RTparams, NULL, NULL, nparams, npts, 128, opts, this);
 	
 
@@ -1690,10 +1692,10 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_ICP() {
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
 
-	
+	/*
 	cout << R << endl;
 	cout << T << endl;
-	
+	*/
 
 	return diff / 7 < cc;
 }
@@ -2255,12 +2257,13 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
 	// the lower part is already filled in
 	// ICP terms
 	int ridx = 0;
-	for(int i=0;i<npts_ICP;i++, ridx+=3) {
+	#pragma omp parallel for private(ridx)
+	for(int i=0;i<npts_ICP;i++) {
 		auto bcoords = icpc[i].bcoords;
 		auto v = icpc[i].v;
 		int v0 = v.x * 3, v1 = v.y * 3, v2 = v.z * 3;
 
-		for(int j=0;j<nparams;j++) {
+		for(int j=0, ridx=i*3;j<nparams;j++) {
 			float x = 0, y = 0, z = 0;
 			x += bcoords.x * tm1RT(j, v0  ); y += bcoords.x * tm1RT(j, v0+1); z += bcoords.x * tm1RT(j, v0+2); 
 			x += bcoords.y * tm1RT(j, v1  ); y += bcoords.y * tm1RT(j, v1+1); z += bcoords.y * tm1RT(j, v1+2); 
@@ -2524,12 +2527,13 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_ICP() {
 	// the lower part is already filled in
 	// ICP terms
 	int ridx = 0;
-	for(int i=0;i<npts_ICP;i++, ridx+=3) {
+	#pragma omp parallel for private(ridx)
+	for(int i=0;i<npts_ICP;i++) {
 		auto bcoords = icpc[i].bcoords;
 		auto v = icpc[i].v;
 		int v0 = v[0] * 3, v1 = v[1] * 3, v2 = v[2] * 3;
 
-		for(int j=0;j<nparams;j++) {
+		for(int j=0, ridx=i*3;j<nparams;j++) {
 			float x = 0, y = 0, z = 0;
 
 			x += bcoords.x * tm0RT(j, v0  ); y += bcoords.x * tm0RT(j, v0+1); z += bcoords.x * tm0RT(j, v0+2); 
@@ -2798,7 +2802,9 @@ void MultilinearReconstructor::transformMesh()
 
 	// batch rotation processing
 	arma::fmat pt_trans =  R * pt;
-	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
+	#pragma omp parallel for
+	for(int i=0;i<nverts;i++) {
+		int idx = i * 3;
 		tmesh(idx) = pt_trans(0, i) + T(0);
 		tmesh(idx+1) = pt_trans(1, i) + T(1);
 		tmesh(idx+2) = pt_trans(2, i) + T(2);
@@ -2990,6 +2996,7 @@ void MultilinearReconstructor::transformTM0()
 	int npts = tm0.dim(1) / 3;
 	// don't use the assignment operator, it actually moves the data
 	//tm0cRT = tm0c;
+	#pragma omp parallel for
 	for(int i=0;i<tm0.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
 
@@ -3005,10 +3012,11 @@ void MultilinearReconstructor::transformTM0()
 // transform TM0C with global rigid transformation
 void MultilinearReconstructor::transformTM1()
 {
-	cout << "Transform TM1 ..." << endl;
+	//cout << "Transform TM1 ..." << endl;
 	int npts = tm1.dim(1) / 3;
 	// don't use the assignment operator, it actually moves the data
 	//tm1cRT = tm1c;
+	#pragma omp parallel for
 	for(int i=0;i<tm1.dim(0);i++) {
 		for(int j=0, vidx=0;j<npts;j++, vidx+=3) {
 
@@ -3020,7 +3028,7 @@ void MultilinearReconstructor::transformTM1()
 			PhGUtils::rotatePoint( tm1RT(i, vidx), tm1RT(i, vidx+1), tm1RT(i, vidx+2), Rmat );
 		}
 	}
-	cout << "done." << endl;
+	//cout << "done." << endl;
 }
 
 // transform TM0C with global rigid transformation
@@ -3279,17 +3287,25 @@ void MultilinearReconstructor::renderMesh()
 
 void MultilinearReconstructor::updateMesh()
 {
-	for(int i=0,idx=0;i<tplt.length()/3;i++) {
+	#pragma omp parallel for
+	for(int i=0;i<tplt.length()/3;i++) {
+		int idx = i * 3;
 		baseMesh.vertex(i).x = tmesh(idx++);
 		baseMesh.vertex(i).y = tmesh(idx++);
-		baseMesh.vertex(i).z = tmesh(idx++);
+		baseMesh.vertex(i).z = tmesh(idx);
 	}
+
+#if 0
+	PhGUtils::OBJWriter writer;
+	writer.save(baseMesh, "../Data/tmesh.obj");
+#endif
 }
 
 // mesh fitting functions
 
 tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor::fitMesh(const string& filename, const vector<pair<int, int>>& hint)
 {
+	cout << "fitting mesh with file " << filename << endl;
 	// load the target mesh
 	shared_ptr<PhGUtils::TriMesh> msh = shared_ptr<PhGUtils::TriMesh>(new PhGUtils::TriMesh);
 	PhGUtils::OBJLoader loader;
@@ -3309,50 +3325,21 @@ tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor::fit
 	}
 
 	// pre-registration for rigid transformation ONLY with the given correspondence
-	vector<float> vRT = fit_withConstraints();
+	fit_withConstraints();
 	
-	Rmat = PhGUtils::rotationMatrix(vRT[0], vRT[1], vRT[2]) * vRT[6];
-	for(int i=0;i<3;i++) {
-		for(int j=0;j<3;j++) {
-			R(i, j) = Rmat(i, j);			
-		}
-	}
-	Tvec.x = vRT[3], Tvec.y = vRT[4], Tvec.z = vRT[5];
-	T(0) = vRT[3], T(1) = vRT[4], T(2) = vRT[5];
+	idxvec.resize(msh->vertCount());
+	for(int i=0;i<idxvec.size();i++) idxvec[i] = i;
 
-	// transform the mesh
-	int nverts = tplt.length()/3;
-	arma::fmat pt(3, nverts);
-	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
-		pt(0, i) = tplt(idx);
-		pt(1, i) = tplt(idx+1);
-		pt(2, i) = tplt(idx+2);
-	}
+	// ICP registration
+	fitMesh_ICP(msh);
 
-	// batch rotation processing
-	arma::fmat pt_trans =  R * pt;
-	for(int i=0, idx=0;i<nverts;i++,idx+=3) {
-		tmesh(idx) = pt_trans(0, i) + T(0);
-		tmesh(idx+1) = pt_trans(1, i) + T(1);
-		tmesh(idx+2) = pt_trans(2, i) + T(2);
-	}
-
-	// update the mesh
-	for(int i=0,idx=0;i<tplt.length()/3;i++) {
-		baseMesh.vertex(i).x = tmesh(idx++);
-		baseMesh.vertex(i).y = tmesh(idx++);
-		baseMesh.vertex(i).z = tmesh(idx++);
-	}
-
+	// for debug, write out the fitted mesh
 	PhGUtils::OBJWriter writer;
 	writer.save(baseMesh, "../Data/tmesh.obj");
 
-	// ICP registration
-	auto params = fitMesh_ICP(msh);
-
-	// for debug, write out the fitted mesh
-
-	return params;
+	// the the fitted parameters and return them as a tuple
+	vector<float> vRT(RTparams, RTparams+7), vWid = Wid.toStdVector(), vWexp = Wexp.toStdVector();	
+	return make_tuple(vRT, vWid, vWexp);
 }
 
 void evalCost_withConstraints(float *p, float *hx, int m, int n, void* adata) {
@@ -3376,23 +3363,501 @@ void evalCost_withConstraints(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
-vector<float> MultilinearReconstructor::fit_withConstraints()
-{
-	int npts = vcons.size();
-	vector<float> params(7, 0);
-	params[6] = 100.0;
-	vector<float> meas(npts);
+void evalJacobian_withConstraints(float *p, float *J, int m, int n, void *adata) {
+//PhGUtils::message("jac func");
+	// J is a n-by-m matrix
+	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	auto targets = recon->vcons;
+	auto tplt = recon->tplt;
 
-	int iters = slevmar_dif(evalCost_withConstraints, &(params[0]), &(meas[0]), 7, npts, 1024, NULL, NULL, NULL, NULL, this);
-	PhGUtils::message("rigid transformation estimated in " + PhGUtils::toString(iters) + " iterations.");
-	PhGUtils::printVector(params);
+	float s, rx, ry, rz, tx, ty, tz;
+	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
 
-	return params;
+	// set up rotation matrix and translation vector
+	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz);
+	PhGUtils::Matrix3x3f Jx, Jy, Jz;
+	PhGUtils::jacobian_rotationMatrix(rx, ry, rz, Jx, Jy, Jz);
+
+	// apply the new global transformation
+	for(int i=0, vidx=0, jidx=0;i<n;i++) {
+		// point p
+		int voffset = targets[i].vidx * 3;
+		const PhGUtils::Point3f& q = targets[i].q;
+		PhGUtils::Point3f p(tplt(voffset),tplt(voffset+1), tplt(voffset+2));
+
+		// R * p
+		float rpx = p.x, rpy = p.y, rpz = p.z;
+		PhGUtils::rotatePoint( rpx, rpy, rpz, R );
+
+		// s * R * p + t - q
+		float rkx = s * rpx + tx - q.x, rky = s * rpy + ty - q.y, rkz = s * rpz + tz - q.z;
+
+		float jpx, jpy, jpz;
+		jpx = p.x, jpy = p.y, jpz = p.z;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jx );
+		// \frac{\partial r_i}{\partial \theta_x}
+		J[jidx++] = 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+
+		jpx = p.x, jpy = p.y, jpz = p.z;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jy );
+		// \frac{\partial r_i}{\partial \theta_y}
+		J[jidx++] = 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+
+		jpx = p.x, jpy = p.y, jpz = p.z;
+		PhGUtils::rotatePoint( jpx, jpy, jpz, Jz );
+		// \frac{\partial r_i}{\partial \theta_z}
+		J[jidx++] = 2.0 * s * (jpx * rkx + jpy * rky + jpz * rkz);
+
+		// \frac{\partial r_i}{\partial \t_x}
+		J[jidx++] = 2.0 * rkx;
+
+		// \frac{\partial r_i}{\partial \t_y}
+		J[jidx++] = 2.0 * rky;
+
+		// \frac{\partial r_i}{\partial \t_z}
+		J[jidx++] = 2.0 * rkz;
+
+		// \frac{\partial r_i}{\partial s}
+		J[jidx++] = 2.0 * (rpx * rkx + rpy * rky + rpz * rkz);
+	}
 }
 
-tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor::fitMesh_ICP(const shared_ptr<PhGUtils::TriMesh>& msh)
-{
-	vector<float> vRT, vWid, vWexp;
+void MultilinearReconstructor::fitIdentityWeights_withPrior_Constraints() {
+	//cout << "fitting identity weights ..." << endl;
+	// to use this method, the tensor tm1 must first be updated using the rotation matrix
+	int nparams = core.dim(0);	
+	int npts = vcons.size();
 
-	return make_tuple(vRT, vWid, vWexp);
+	Aid_ICP = PhGUtils::DenseMatrix<float>(npts*3 + nparams, nparams);
+	brhs_ICP = PhGUtils::DenseVector<float>(npts*3 + nparams);
+
+	float wpt_scale = 1e-3;
+	// assemble the matrix, fill in the upper part
+	// the lower part is already filled in
+	int ridx = 0;
+	for(int i=0;i<npts;i++, ridx+=3) {
+		int voffset = vcons[i].vidx * 3;
+		float wpt = w_ICP * wpt_scale;
+
+		for(int j=0;j<nparams;j++) {
+			Aid_ICP(ridx  , j) = tm1RT(j, voffset  ) * wpt;
+			Aid_ICP(ridx+1, j) = tm1RT(j, voffset+1) * wpt;
+			Aid_ICP(ridx+2, j) = tm1RT(j, voffset+2) * wpt;
+		}
+	}
+
+	float w_prior_scale = 1.0;
+	// prior terms
+	for(int j=0;j<Aid_ICP.cols();j++) {
+		for(int i=0, ridx=npts*3;i<nparams;i++, ridx++) {
+			Aid_ICP(ridx, j) = sigma_wid_weighted(i, j) * w_prior_scale;
+		}
+	}
+
+	//PhGUtils::Matrix3x3f invRmat = Rmat.inv();
+
+
+	// assemble the right hand side, fill in the upper part as usual
+	// ICP terms
+	for(int i=0, ridx=0;i<npts;ridx+=3, i++) {
+		const PhGUtils::Point3f& q = vcons[i].q;
+		float wpt = w_ICP * wpt_scale;
+
+		brhs_ICP(ridx) = (q.x - Tvec.x) * wpt;
+		brhs_ICP(ridx+1) = (q.y - Tvec.y) * wpt;
+		brhs_ICP(ridx+2) = (q.z - Tvec.z) * wpt;
+	}
+
+	// prior term
+	// fill in the lower part with the mean vector of identity weights
+	int ndim_id = mu_wid.size();
+	for(int i=0, ridx=npts*3;i<ndim_id;i++,ridx++) {
+		brhs_ICP(ridx) = mu_wid_weighted(i) * w_prior_scale;
+	}
+
+	//cout << "matrix and rhs assembled." << endl;
+
+	//cout << "least square" << endl;
+#if USE_MKL_LS
+	int rtn = leastsquare<float>(Aid_ICP, brhs_ICP);
+#else
+	int rtn = leastsquare_normalmat(Aid_ICP, brhs_ICP, AidtAid, Aidtb);
+#endif
+	//cout << "done." << endl;
+	//debug("rtn", rtn);
+	float diff = 0;
+	//b.print("b");
+	for(int i=0;i<nparams;i++) {
+#if USE_MKL_LS
+		diff += fabs(Wid(i) - brhs_ICP(i));
+		Wid(i) = brhs_ICP(i);		
+#else
+		diff += fabs(Wid(i) - Aidtb(i));
+		Wid(i) = Aidtb(i);	
+#endif
+		//cout << params[i] << ' ';
+	}
+
+	//cout << endl;
+
+	//cout << "identity weights fitted." << endl;
+}
+
+void MultilinearReconstructor::fitExpressionWeights_withPrior_Constraints()
+{
+	//cout << "fitting expression weights ..." << endl;
+	// to use this method, the tensor tm1 must first be updated using the rotation matrix
+	int nparams = core.dim(1);
+	int npts = vcons.size();
+
+	Aexp_ICP = PhGUtils::DenseMatrix<float>(npts*3 + nparams, nparams);
+	brhs_ICP = PhGUtils::DenseVector<float>(npts*3 + nparams);
+
+	// assemble the matrix, fill in the upper part
+	// the lower part is already filled in
+	// ICP terms
+	float wpt_scale = 1e-3;
+	int ridx = 0;
+	for(int i=0;i<npts;i++, ridx+=3) {
+		int voffset = vcons[i].vidx * 3;
+		float wpt = w_ICP * wpt_scale;
+
+		for(int j=0;j<nparams;j++) {
+
+			Aexp_ICP(ridx  , j) = tm0RT(j, voffset  ) * wpt;
+			Aexp_ICP(ridx+1, j) = tm0RT(j, voffset+1) * wpt;
+			Aexp_ICP(ridx+2, j) = tm0RT(j, voffset+2) * wpt;
+		}
+	}
+
+	float w_prior_scale = 1.0;
+	// prior terms
+	for(int j=0;j<Aexp_ICP.cols();j++) {
+		for(int i=0, ridx=npts*3;i<nparams;i++, ridx++) {
+			Aexp_ICP(ridx, j) = sigma_wexp_weighted(i, j) * w_prior_scale;
+		}
+	}
+
+	//PhGUtils::Matrix3x3f invRmat = Rmat.inv();
+
+
+	// assemble the right hand side, fill in the upper part as usual
+	// ICP terms
+	for(int i=0, ridx=0;i<npts;ridx+=3, i++) {
+		const PhGUtils::Point3f& q = vcons[i].q;
+		float wpt = w_ICP * wpt_scale;
+
+		brhs_ICP(ridx) = (q.x - Tvec.x) * wpt;
+		brhs_ICP(ridx+1) = (q.y - Tvec.y) * wpt;
+		brhs_ICP(ridx+2) = (q.z - Tvec.z) * wpt;
+	}
+
+	// prior term
+	// fill in the lower part with the mean vector of identity weights
+	int ndim_exp = mu_wexp.size();
+	for(int i=0, ridx=npts*3;i<ndim_exp;i++,ridx++) {
+		brhs_ICP(ridx) = mu_wexp_weighted(i) * w_prior_scale;
+	}
+
+	//cout << "matrix and rhs assembled." << endl;
+
+	//cout << "least square" << endl;
+	int rtn = leastsquare<float>(Aexp_ICP, brhs_ICP);
+	//cout << "done." << endl;
+	//debug("rtn", rtn);
+	float diff = 0;
+	//b.print("b");
+	for(int i=0;i<nparams;i++) {
+		diff += fabs(Wexp(i) - brhs_ICP(i));
+		Wexp(i) = brhs_ICP(i);		
+		//cout << params[i] << ' ';
+	}
+
+	//cout << endl;
+
+	//cout << "expression weights fitted." << endl;
+}
+
+void MultilinearReconstructor::fit_withConstraints()
+{
+	PhGUtils::message("fit with point constraints...");
+	int npts = vcons.size();
+	RTparams[6] = 100.0;
+	vector<float> meas(npts);
+	
+
+	int iters = 0;
+	float E0 = 0;
+	bool converged = false;
+	const int MaxIterations = 32;
+	while( !converged && iters++ < MaxIterations ) {
+		// fit rigid transformation
+		//int iters = slevmar_dif(evalCost_withConstraints, &(RTparams[0]), &(meas[0]), 7, npts, 1024, NULL, NULL, NULL, NULL, this);
+		int iters = slevmar_der(evalCost_withConstraints, evalJacobian_withConstraints, &(RTparams[0]), &(meas[0]), 7, npts, 1024, NULL, NULL, NULL, NULL, this);
+		/*
+		PhGUtils::message("rigid transformation estimated in " + PhGUtils::toString(iters) + " iterations.");
+		PhGUtils::printArray(RTparams, 7);
+		*/
+
+		Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
+		float diff = 0;
+		for(int i=0;i<3;i++) {
+			for(int j=0;j<3;j++) {
+				diff += fabs(R(i, j) - Rmat(i, j));
+				R(i, j) = Rmat(i, j);			
+			}
+		}
+
+		Tvec.x = RTparams[3], Tvec.y = RTparams[4], Tvec.z = RTparams[5];
+		diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
+		T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
+
+		
+		// fit identity
+		transformTM1();
+		fitIdentityWeights_withPrior_Constraints();
+
+		tm0 = core.modeProduct(Wid, 0);
+		
+		// fit expression
+		transformTM0();		
+		fitExpressionWeights_withPrior_Constraints();
+
+		tm1 = core.modeProduct(Wexp, 1);
+		
+		updateTM();		
+
+		E = computeError_Constraints();
+		PhGUtils::debug("iters", iters, "Error", E);
+
+		converged |= E < errorThreshold;
+		converged |= fabs(E - E0) < errorDiffThreshold;
+
+		E0 = E;
+	}
+}
+
+void MultilinearReconstructor::collectICPConstraints(const shared_ptr<PhGUtils::TriMesh>& msh, int iter, int maxIter)
+{
+	const float scaleFactor = fabs(RTparams[6]);
+	// determine a distance threshold
+	const float DIST_THRES_MAX = 0.1 * scaleFactor;
+	const float DIST_THRES_MIN = 0.001 * scaleFactor;
+	float DIST_THRES = DIST_THRES_MAX + (DIST_THRES_MIN - DIST_THRES_MAX) * iter / (float)maxIter;
+	PhGUtils::message("Collecting ICP constraints...");
+	icpc.clear();
+	icpc.reserve(32768);
+
+	baseMesh.updateAABB();
+
+	int nverts = tplt.length()/3;
+
+	srand(time(NULL));
+
+	random_shuffle(idxvec.begin(), idxvec.end());
+
+	int nsamples = idxvec.size()/4;
+
+	// for each vertex on the template mesh, find the closest point on the target mesh
+	#pragma omp parallel for
+	for(int i=0;i<nsamples;i++) {
+		ICPConstraint cc;
+		cc.q = msh->vertex(idxvec[i]);		
+		PhGUtils::Point3f bcoords;
+
+#define BRUTEFOREC_ICP 0
+#if BRUTEFORCE_ICP
+		float dist = baseMesh.findClosestPoint_bruteforce(cc.q, cc.v, cc.bcoords);
+		if( dist < DIST_THRES ) {
+#else
+		float dist = baseMesh.findClosestPoint(cc.q, cc.v, cc.bcoords, DIST_THRES);
+		if( dist > 0 ) {
+#endif
+			// add a constraint
+			#pragma omp critical
+			{
+			icpc.push_back(cc);
+			}
+		}
+	}
+	
+	cout << "ICP constraints: " << icpc.size() << endl;
+	/*
+	// output ICP constraints to file
+	ofstream fout("icpc.txt");
+	for(int i=0;i<icpc.size();i++) {
+		PhGUtils::Point3f p(0, 0, 0);
+		p = p + icpc[i].bcoords[0] * baseMesh.vertex(icpc[i].v[0]);
+		p = p + icpc[i].bcoords[1] * baseMesh.vertex(icpc[i].v[1]);
+		p = p + icpc[i].bcoords[2] * baseMesh.vertex(icpc[i].v[2]);
+		fout << icpc[i].q << " " << p << endl;
+	}
+	fout.close();
+
+	::system("pause");
+	*/
+}
+
+void MultilinearReconstructor::fitMesh_ICP(
+	const shared_ptr<PhGUtils::TriMesh>& msh)
+{
+	fitPose = true; fitIdentity = true; fitExpression = true;
+	PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
+	
+	cout << "initial guess ..." << endl;
+	PhGUtils::printArray(RTparams, 7);
+	// assemble initial guess and transform mesh
+	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
+	float diff = 0;
+	for(int i=0;i<3;i++) {
+		for(int j=0;j<3;j++) {
+			diff += fabs(R(i, j) - Rmat(i, j));
+			R(i, j) = Rmat(i, j);			
+		}
+	}
+
+	Tvec.x = RTparams[3], Tvec.y = RTparams[4], Tvec.z = RTparams[5];
+	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
+	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
+
+	timerTotal.tic();
+	int iters = 0;
+	float E0 = 0;
+	bool converged = false;
+	const int MaxIterations = 32;
+	while( !converged && iters++ < MaxIterations ) {
+		converged = true;
+
+		// update mesh and render the mesh
+		transformMesh();
+		updateMesh();
+
+		// collect ICP constraints
+		collectICPConstraints(msh, iters, MaxIterations);
+
+		if( fitPose ) {
+			timerRT.tic();
+			converged &= fitRigidTransformationAndScale_ICP();		
+			timerRT.toc();
+		}
+
+		if( fitIdentity ) {			
+			// apply the new global rotation to tm1c
+			// because tm1c is required in fitting identity weights
+			timerOther.tic();
+			transformTM1();
+			timerOther.toc();
+
+			timerID.tic();
+			converged &= fitIdentityWeights_withPrior_ICP();
+			timerID.toc();
+		}
+
+		if( fitIdentity && (fitExpression || fitPose) ) {
+			timerOther.tic();
+			// update tm0 with the new identity weights
+			// now the tensor is not updated with global rigid transformation
+			tm0 = core.modeProduct(Wid, 0);
+			timerOther.toc();
+		}
+
+		if( fitExpression ) {
+			timerOther.tic();
+			// apply the global rotation to tm0c
+			// because tm0 is required in fitting expression weights
+			transformTM0();
+			timerOther.toc();
+
+			timerExp.tic();
+			converged &= fitExpressionWeights_withPrior_ICP();	
+			timerExp.toc();
+		}
+
+		// this is not exactly logically correct
+		// but this works for the case of fitting both pose and expression
+		if( fitExpression && fitIdentity ) {//(fitIdentity || fitPose) ) {
+			timerOther.tic();
+			// update tm1 with the new expression weights
+			// now the tensor is not updated with global rigid transformation
+			tm1 = core.modeProduct(Wexp, 1);
+			timerOther.toc();
+		}
+
+		//::system("pause");
+
+
+		// compute tmc from the new tm1c or new tm0c
+		if( fitIdentity ) {
+			timerOther.tic();
+			updateTM();
+			timerOther.toc();
+		}
+		else if( fitExpression ) {
+			timerOther.tic();
+			updateTMwithTM0();
+			//updateTMC();
+			timerOther.toc();
+		}		
+
+		timerOther.tic();
+		// uncomment to show the transformation process
+		//transformMesh();
+		//Rmat.print("R");
+		//Tvec.print("T");
+		E = computeError_ICP();
+		PhGUtils::debug("iters", iters, "Error", E);
+
+		// adaptive threshold
+		converged |= E < (errorThreshold_ICP / (icpc.size()/5000.0));
+		converged |= fabs(E - E0) < errorDiffThreshold_ICP;
+		E0 = E;
+		timerOther.toc();
+		//emit oneiter();
+		//QApplication::processEvents();
+	}
+
+	timerTransform.tic();
+	
+	if( fitIdentity && fitExpression ) {
+		tplt = core.modeProduct(Wexp, 1).modeProduct(Wid, 0);
+	}
+	timerTransform.toc();
+
+	if( useHistory ) {
+		// post process, impose a moving average for pose
+		RTHistory.push_back(vector<float>(RTparams, RTparams+7));
+		if( RTHistory.size() > historyLength ) RTHistory.pop_front();
+		vector<float> mRT = computeWeightedMeanPose();
+		for(int i=0;i<7;i++) meanRT[i] = mRT[i];
+	}
+
+	timerTransform.tic();
+	//PhGUtils::debug("R", Rmat);
+	//PhGUtils::debug("T", Tvec);
+	transformMesh();
+	timerTransform.toc();
+	//emit oneiter();
+	timerTotal.toc("total time");
+}
+
+float MultilinearReconstructor::computeError_Constraints()
+{
+	// set up rotation matrix and translation vector
+	float E = 0, wsum = 0;
+	// ICP terms
+	for(int i=0;i<vcons.size();i++) {
+		int voffset = vcons[i].vidx * 3;
+
+		PhGUtils::Point3f p(tplt(voffset), tplt(voffset+1), tplt(voffset+2));
+
+		const PhGUtils::Point3f& q = vcons[i].q;
+
+		// p = R * p + T
+		PhGUtils::transformPoint( p.x, p.y, p.z, Rmat, Tvec );
+
+		float dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z;
+		E += (dx * dx + dy * dy + dz * dz);
+	}
+
+	return E / vcons.size();
 }

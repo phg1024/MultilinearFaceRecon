@@ -391,6 +391,14 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 			hints.push_back(make_pair(19395, 1889));
 			hints.push_back(make_pair(181, 539));
 			hints.push_back(make_pair(20981, 2179));
+
+			hints.push_back(make_pair(20712, 544));
+			hints.push_back(make_pair(5785, 2176));
+			hints.push_back(make_pair(15314, 1601));
+			hints.push_back(make_pair(20574, 1592));
+			hints.push_back(make_pair(9333, 698));
+			hints.push_back(make_pair(15240, 2123));
+
 			recon.fitMesh("../Data/basis_07.obj", hints);
 		}
 	}

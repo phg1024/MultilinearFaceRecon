@@ -21,6 +21,8 @@
 #include <QGLWidget>
 #include <QGLFramebufferObject>
 
+#include <concurrent_vector.h>
+
 class MultilinearReconstructor : public QObject
 {
 	Q_OBJECT
@@ -227,7 +229,9 @@ private:
 		float weight;			// constraint weight
 		PhGUtils::Point3f q;	// target point
 	};
-	vector<ICPConstraint> icpc;
+	//vector<ICPConstraint> icpc;
+	// use concurrent vector for thread safety
+	concurrency::concurrent_vector<ICPConstraint> icpc;
 
 private:
 	void collectICPConstraints(int iter, int maxIter);
@@ -243,12 +247,19 @@ private:
 		int vidx;				// vertex on the template mesh
 		PhGUtils::Point3f q;	// target point
 	};
+	vector<int> idxvec;
 	vector<Constraint> vcons;	// constraints for mesh fitting
-	vector<float> fit_withConstraints();
-	tuple<vector<float>, vector<float>, vector<float>> fitMesh_ICP(const shared_ptr<PhGUtils::TriMesh>& msh);
+	void fitIdentityWeights_withPrior_Constraints();
+	void fitExpressionWeights_withPrior_Constraints();
+	void fit_withConstraints();
+	void fitMesh_ICP(
+		const shared_ptr<PhGUtils::TriMesh>& msh);
 
 	friend void evalCost_withConstraints(float *p, float *hx, int m, int n, void* adata);
+	friend void evalJacobian_withConstraints(float *p, float *J, int m, int n, void *adata);
+	void collectICPConstraints(const shared_ptr<PhGUtils::TriMesh>& msh, int iter, int maxIter);
 
+	float computeError_Constraints();
 private:
 	// convergence criteria
 	float cc;
