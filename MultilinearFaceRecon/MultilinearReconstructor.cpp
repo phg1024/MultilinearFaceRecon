@@ -109,6 +109,14 @@ MultilinearReconstructor::~MultilinearReconstructor(void)
 void MultilinearReconstructor::reset()
 {
 	// @TODO	reset the reconstructor
+
+	// reset the identity weights
+
+	// reset the expression weights
+
+	// reset the template mesh
+
+	// reset the rigid transformation parameters
 }
 
 void MultilinearReconstructor::togglePrior()

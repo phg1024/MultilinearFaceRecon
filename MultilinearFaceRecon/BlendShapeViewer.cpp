@@ -399,7 +399,9 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 			hints.push_back(make_pair(9333, 698));
 			hints.push_back(make_pair(15240, 2123));
 
-			recon.fitMesh("../Data/basis_07.obj", hints);
+			QString filename = QFileDialog::getOpenFileName(this, "Please select a mesh file", "../Data/", "*.obj");
+
+			recon.fitMesh(filename.toStdString(), hints);
 		}
 	}
 }

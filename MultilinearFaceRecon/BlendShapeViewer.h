@@ -6,6 +6,7 @@
 #include "MultilinearReconstructor.h"
 //#include "MultilinearReconstructorGPU.cuh"
 
+#include <QtWidgets/QFileDialog>
 #include <QGLFrameBufferObject>
 
 class BlendShapeViewer : public GL3DCanvas
