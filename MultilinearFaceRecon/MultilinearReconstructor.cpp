@@ -53,8 +53,8 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	loadPrior();
 	initializeWeights();
 	createTemplateItem();
-	//updateComputationTensor();
-	init();
+	initRigidTransformationParams();
+	updateMatrices();
 
 	w_landmarks.resize(512);
 
@@ -108,22 +108,23 @@ MultilinearReconstructor::~MultilinearReconstructor(void)
 
 void MultilinearReconstructor::reset()
 {
-	// @TODO	reset the reconstructor
-
-	// reset the identity weights
-
-	// reset the expression weights
+	updateMatrices();
+	// reset the identity weights and expression weights
+	initializeWeights();
 
 	// reset the template mesh
+	createTemplateItem();
 
 	// reset the rigid transformation parameters
+	initRigidTransformationParams();
 }
 
 void MultilinearReconstructor::togglePrior()
 {
 	usePrior = !usePrior;
 	PhGUtils::message((usePrior)?"Using prior":"Not using prior");
-	init();
+	initRigidTransformationParams();
+	updateMatrices();
 }
 
 
@@ -232,11 +233,8 @@ void MultilinearReconstructor::initializeWeights()
 	PhGUtils::message("done.");
 }
 
-void MultilinearReconstructor::init()
+void MultilinearReconstructor::initRigidTransformationParams()
 {
-	//initializeWeights();
-	//createTemplateItem();
-
 	RTparams[0] = 0; RTparams[1] = 0; RTparams[2] = 0;
 	RTparams[3] = meanX; RTparams[4] = meanY; RTparams[5] = meanZ;
 	RTparams[6] = 1.0;
@@ -247,10 +245,6 @@ void MultilinearReconstructor::init()
 
 	Rmat = PhGUtils::Matrix3x3f::identity();
 	Tvec = PhGUtils::Point3f::zero();
-
-	//updateComputationTensor();
-
-	updateMatrices();
 }
 
 void MultilinearReconstructor::fitICP(FittingOption ops /*= FIT_ALL*/)
@@ -469,9 +463,20 @@ void MultilinearReconstructor::collectICPConstraints(int iter, int maxIter)
 		}
 	}
 
-	/*
+	// pick just a portion of all constraints
+	
 	cout << "done. ICP constraints: " << icpc.size() << endl;
 	
+	/*
+	int maxCons = icpc.size() / 2;
+	int minCons = icpc.size() / 20;
+
+	int nsamples = minCons + (maxCons - minCons) * iter / (float)maxIter;
+	std::random_shuffle(icpc.begin(), icpc.end());
+	icpc.resize(nsamples);
+	*/
+	
+	/*
 	// output ICP constraints to file
 	ofstream fout("icpc.txt");
 	for(int i=0;i<icpc.size();i++) {
@@ -2265,7 +2270,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
 	// the lower part is already filled in
 	// ICP terms
 	int ridx = 0;
-	#pragma omp parallel for private(ridx)
+	#pragma omp parallel for
 	for(int i=0;i<npts_ICP;i++) {
 		auto bcoords = icpc[i].bcoords;
 		auto v = icpc[i].v;
@@ -2534,8 +2539,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_ICP() {
 	// assemble the matrix, fill in the upper part
 	// the lower part is already filled in
 	// ICP terms
-	int ridx = 0;
-	#pragma omp parallel for private(ridx)
+	#pragma omp parallel for
 	for(int i=0;i<npts_ICP;i++) {
 		auto bcoords = icpc[i].bcoords;
 		auto v = icpc[i].v;
@@ -2907,7 +2911,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		meanZ += p.z * isValid;
 
 		float dz = p.z - mu_depth;
-		float w_depth = exp(-fabs(dz) / (sigma_depth*50.0));
+		float w_depth = exp(-dz * dz / (sigma_depth*sigma_depth*10000.0));
 
 		// set the landmark weights
 		w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (i<64 || i>74)?isValid*w_depth:isValid*w_boundary*w_depth;
@@ -3313,6 +3317,8 @@ void MultilinearReconstructor::updateMesh()
 
 tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor::fitMesh(const string& filename, const vector<pair<int, int>>& hint)
 {
+	// reset all related parameters
+	reset();
 	cout << "fitting mesh with file " << filename << endl;
 	// load the target mesh
 	shared_ptr<PhGUtils::TriMesh> msh = shared_ptr<PhGUtils::TriMesh>(new PhGUtils::TriMesh);
@@ -3650,7 +3656,7 @@ void MultilinearReconstructor::collectICPConstraints(const shared_ptr<PhGUtils::
 	const float scaleFactor = fabs(RTparams[6]);
 	// determine a distance threshold
 	const float DIST_THRES_MAX = 0.1 * scaleFactor;
-	const float DIST_THRES_MIN = 0.001 * scaleFactor;
+	const float DIST_THRES_MIN = 0.01 * scaleFactor;
 	float DIST_THRES = DIST_THRES_MAX + (DIST_THRES_MIN - DIST_THRES_MAX) * iter / (float)maxIter;
 	PhGUtils::message("Collecting ICP constraints...");
 	icpc.clear();
@@ -3664,7 +3670,10 @@ void MultilinearReconstructor::collectICPConstraints(const shared_ptr<PhGUtils::
 
 	random_shuffle(idxvec.begin(), idxvec.end());
 
-	int nsamples = idxvec.size()/4;
+	int maxSamples = idxvec.size() / 20;
+	int minSamples = idxvec.size() / 200;
+
+	int nsamples = iter/(float)maxIter * (maxSamples-minSamples)+minSamples;
 
 	// for each vertex on the template mesh, find the closest point on the target mesh
 	#pragma omp parallel for

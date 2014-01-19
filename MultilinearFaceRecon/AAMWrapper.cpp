@@ -70,9 +70,9 @@ const vector<float>& AAMWrapper::track( const unsigned char* cimg, const unsigne
 		cvtColor(colorImage, colorIMG_Gray, CV_BGR2GRAY);
 
 		const float standardDepth = 750.0;
-#pragma omp parallel for
-		for (int i=0, idx=0;i<depthImg.rows;i++)
+		for (int i=0;i<depthImg.rows;i++)
 		{
+			int idx = i*depthImg.cols*4;
 			for (int j=0;j<depthImg.cols;j++,idx+=4)
 			{
 				int tmp=(dimg[idx]<<16|dimg[idx+1]<<8|dimg[idx+2]<<0);

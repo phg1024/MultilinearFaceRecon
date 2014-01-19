@@ -86,7 +86,7 @@ public:
 		const vector<unsigned char>& depthdata
 		);
 
-	void init();
+	void initRigidTransformationParams();
 
 	void fit(FittingOption ops = FIT_ALL);
 	void fit_withPrior();
