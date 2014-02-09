@@ -4,7 +4,7 @@
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
 #include "MultilinearReconstructor.h"
-//#include "MultilinearReconstructorGPU.cuh"
+#include "MultilinearReconstructorGPU.cuh"
 
 #include <QtWidgets/QFileDialog>
 #include <QGLFrameBufferObject>
@@ -64,8 +64,8 @@ private:
 
 	vector<PhGUtils::Point3f> targetLandmarks;
 	vector<int> landmarks;
+	MultilinearReconstructorGPU GPURecon;
 	MultilinearReconstructor recon;
-	//MultilinearReconstructorGPU GPURecon;
 
 	PhGUtils::Matrix4x4f mProj, mMv;
 

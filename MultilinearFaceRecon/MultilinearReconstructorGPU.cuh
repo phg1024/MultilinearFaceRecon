@@ -23,7 +23,13 @@ public:
 	MultilinearReconstructorGPU();
 	~MultilinearReconstructorGPU();
 
+	// bind 3D landmarks
 	void bindTarget(const vector<PhGUtils::Point3f>& tgt);
+	void bindRGBDTarget(const vector<unsigned char>& colordata,
+						const vector<unsigned char>& depthdata);
+
+	bool fit_featurepoints();
+
 	bool fitPose();
 	bool fitPoseAndIdentity();
 	bool fitPoseAndExpression();
@@ -76,27 +82,17 @@ private:
 	// the tensor after mode product
 	float* d_tm0, *d_tm1;
 
-	vector<int> landmarkIdx;
+	// template tensor: d_tplt = core x_1 Wid x_2 Wexp
+	float* d_tplt;
 
-	// the truncated core tensor, unfolded
-	float* d_tu0c, *d_tu1c;
-		
-	// the tensor after mode product, with truncation
-	// they are changed ONLY if wid or wexp is changed
-	// tm0c: corec mode product with wid
-	// tm1c: corec mode product with wexp
-	float* d_tm0c, *d_tm1c;
+	vector<int> landmarkIdx;
 
 	// the tensor after mode product, with truncation, and after rigid transformation
 	// they are changed ONLY if the rigid transformation changes
 	// tm0c: corec mode product with wid, after rigid transformation
 	// tm1c: corec mode product with wexp, after rigid transformation
-	float* d_tm0cRT, *d_tm1cRT;
+	float* d_tm0RT, *d_tm1RT;
 
-	// the tensor after 2 mode products, with truncation; 
-	// tmc is the tensor before applying global transformation
-	float* d_tmc;
-	
 	float* d_q;			// target point coordinates
 
 	int* d_fptsIdx;

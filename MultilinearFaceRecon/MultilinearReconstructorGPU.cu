@@ -75,19 +75,21 @@ __host__ void MultilinearReconstructorGPU::preprocess() {
 	//		inside each row, the vertices are arranged by expression
 	//		That is, a row in tu0 can be see as a row-major matrix where each row corresponds to an expression
 	// tm0: a row-major matrix where each row corresponds to an expression
-	cublasSgemv('N', ndims_wexp * ndims_pts, ndims_wid, 1.0, d_tu0, ndims_wid, d_Wid, 1, 0, d_tm0, 1);
+	cublasSgemv('N', ndims_wexp * ndims_pts, ndims_wid, 1.0, d_tu0, ndims_wexp * ndims_pts, d_Wid, 1, 0, d_tm0, 1);
+	writeback(d_tm0, ndims_wexp, ndims_pts, "tm0.txt");
 
 	// tm1 = tu1 * Wexp, use cublas
 	// tu1: ndims_wexp * (ndims_wid * ndims_pts) matrix, each row corresponds to an expression
 	//		inside each row, the vertices are arraged using index-major
 	//		That is, a row in tu1 can be see as a column-major matrix where each column corresponds to an identity
 	// tm1: a column-major matrix where each column corresponds to an identity
-	cublasSgemv('N', ndims_wid * ndims_pts, ndims_wexp, 1.0, d_tu1, ndims_wexp, d_Wid, 1, 0, d_tm0, 1);
+	cublasSgemv('N', ndims_wid * ndims_pts, ndims_wexp, 1.0, d_tu1, ndims_wid * ndims_pts, d_Wexp, 1, 0, d_tm1, 1);
+	writeback(d_tm1, ndims_pts, ndims_wid, "tm1.txt");
 
 	// create template mesh
 	// tplt = tm1 * Wid, use cublas
-
-	// initialize tm0c, tm1c
+	cublasSgemv('T', ndims_wid, ndims_pts, 1.0, d_tm1, ndims_wid, d_Wid, 1, 0.0, d_tplt, 1);
+	writeback(d_tplt, ndims_pts/3, 3, "tplt.txt");
 }
 
 __host__ void MultilinearReconstructorGPU::init() {
@@ -112,6 +114,14 @@ __host__ void MultilinearReconstructorGPU::init() {
 	checkCudaErrors(cudaMemcpy(d_tu1, tu1.rawptr(), sizeof(float)*totalSize, cudaMemcpyHostToDevice));
 
 	PhGUtils::message("done.");
+	showCUDAMemoryUsage();
+
+	// allocate memory for the tm0, tm1, tm0RT, tm1RT, tplt
+	checkCudaErrors(cudaMalloc((void **) &d_tm0, sizeof(float)*core_dim[1]*core_dim[2]));
+	checkCudaErrors(cudaMalloc((void **) &d_tm0RT, sizeof(float)*core_dim[1]*core_dim[2]));
+	checkCudaErrors(cudaMalloc((void **) &d_tm1, sizeof(float)*core_dim[0]*core_dim[2]));
+	checkCudaErrors(cudaMalloc((void **) &d_tm1RT, sizeof(float)*core_dim[0]*core_dim[2]));
+	checkCudaErrors(cudaMalloc((void **) &d_tplt, sizeof(float)*core_dim[2]));
 	showCUDAMemoryUsage();
 
 	// read the prior
@@ -213,37 +223,16 @@ __host__ void MultilinearReconstructorGPU::init() {
 	else {
 		PhGUtils::abort("Failed to load landmarks!");
 	}
-	ndims_pts = landmarkIdx.size() * 3;	// constraints by the points
-
 	// allocate space for landmarks
 	checkCudaErrors(cudaMalloc((void**) &d_fptsIdx, sizeof(int)*landmarkIdx.size()));
+	checkCudaErrors(cudaMalloc((void**) &d_q, sizeof(float)*landmarkIdx.size()));
+
+	// upload the landmark indices
+	checkCudaErrors(cudaMemcpy(d_fptsIdx, &(landmarkIdx[0]), sizeof(int)*landmarkIdx.size(), cudaMemcpyHostToDevice));
+
+	ndims_pts = core_dim[2];	// constraints by the vertices, at most 3 constraints for each vertex
 	checkCudaErrors(cudaMalloc((void**) &d_targets, sizeof(float)*ndims_pts));
 
-	// build the truncated tensor
-	Tensor3<float> corec(core.dim(0), core.dim(1), ndims_pts);
-
-	for(int i=0;i<core.dim(0);i++) {
-		for(int j=0;j<core.dim(1);j++) {
-			for(int k=0, idx=0;k<landmarkIdx.size();k++, idx+=3) {
-				int vidx = landmarkIdx[k] * 3;
-				corec(i, j, idx) = core(i, j, vidx);
-				corec(i, j, idx+1) = core(i, j, vidx+1);
-				corec(i, j, idx+2) = core(i, j, vidx+2);
-			}
-		}
-	}
-	int truncatedSize = core_dim[0] * core_dim[1] * ndims_pts;
-	Tensor2<float> tu0c = corec.unfold(0), tu1c = corec.unfold(1);
-
-	PhGUtils::message("transferring the truncated, unfolded core tensor to GPU ...");
-	// transfer the unfolded core tensor to GPU
-	checkCudaErrors(cudaMalloc((void **) &d_tu0c, sizeof(float)*truncatedSize));
-	checkCudaErrors(cudaMemcpy(d_tu0c, tu0c.rawptr(), sizeof(float)*truncatedSize, cudaMemcpyHostToDevice));
-	
-	checkCudaErrors(cudaMalloc((void **) &d_tu1c, sizeof(float)*truncatedSize));
-	checkCudaErrors(cudaMemcpy(d_tu1c, tu1c.rawptr(), sizeof(float)*truncatedSize, cudaMemcpyHostToDevice));
-
-	PhGUtils::message("done.");
 	showCUDAMemoryUsage();
 
 	PhGUtils::message("allocating memory for computataion ...");
@@ -252,11 +241,18 @@ __host__ void MultilinearReconstructorGPU::init() {
 	checkCudaErrors(cudaMalloc((void **) &d_Aid, sizeof(float)*(ndims_wid + ndims_pts)*ndims_wid));
 	checkCudaErrors(cudaMalloc((void **) &d_Aexp, sizeof(float)*(ndims_wexp + ndims_pts)*ndims_wexp));
 	checkCudaErrors(cudaMalloc((void **) &d_brhs, sizeof(float)*(ndims_pts + max(ndims_wid, ndims_wexp))));
-	checkCudaErrors(cudaMalloc((void **) &d_w_landmarks, sizeof(float)*512));
+	checkCudaErrors(cudaMalloc((void **) &d_w_landmarks, sizeof(float)*256));
 	PhGUtils::message("done.");
 }
 
-__host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Point3f>& tgt) {
+__host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Point3f>& tgt) 
+{
+
+}
+
+__host__ void MultilinearReconstructorGPU::bindRGBDTarget(const vector<unsigned char>& colordata,
+														  const vector<unsigned char>& depthdata) 
+{
 
 }
 

@@ -226,8 +226,10 @@ void MultilinearReconstructor::initializeWeights()
 	}
 
 	tm0 = core.modeProduct(Wid, 0);
+	PhGUtils::write2file("tm0_cpu.txt", [&](ostream& os){tm0.print("", os);});
 	tm0RT = tm0;
 	tm1 = core.modeProduct(Wexp, 1);
+	PhGUtils::write2file("tm1_cpu.txt", [&](ostream& os){tm1.print("", os);});
 	tm1RT = tm1;
 	PhGUtils::message("done.");
 }
