@@ -18,6 +18,7 @@ BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	mesh.initWithLoader( loader );
 
 	recon.setBaseMesh(mesh);
+	GPURecon.setBaseMesh(mesh);
 
 	targetSet = false;
 
@@ -190,6 +191,19 @@ void BlendShapeViewer::drawLandmarks() {
 	}
 }
 
+void BlendShapeViewer::updateMeshWithGPUReconstructor() {
+	//cout << "updating mesh with recon ..." << endl;
+	// set the vertices of mesh with the template mesh in the reconstructor
+	const Tensor1<float>& tplt = GPURecon.currentMesh();
+
+	for(int i=0,idx=0;i<tplt.length()/3;i++) {
+		mesh.vertex(i).x = tplt(idx++);
+		mesh.vertex(i).y = tplt(idx++);
+		mesh.vertex(i).z = tplt(idx++);
+	}
+	update();
+}
+
 void BlendShapeViewer::updateMeshWithReconstructor() {
 	//cout << "updating mesh with recon ..." << endl;
 	// set the vertices of mesh with the template mesh in the reconstructor
@@ -201,6 +215,29 @@ void BlendShapeViewer::updateMeshWithReconstructor() {
 		mesh.vertex(i).z = tplt(idx++);
 	}
 	update();
+}
+
+void BlendShapeViewer::bindTargetLandmarksGPU( const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor::TargetType ttp ) {
+	switch( ttp ) {
+	case MultilinearReconstructor::TargetType_2D:
+		{
+			targetLandmarks.clear();
+			for(int i=0;i<lms.size();i++) {
+				PhGUtils::Point3f p;
+				PhGUtils::colorToWorld(lms[i].x, lms[i].y, lms[i].z, p.x, p.y, p.z);
+				targetLandmarks.push_back(p);
+			}
+			break;
+		}
+	case MultilinearReconstructor::TargetType_3D:
+		{
+			targetLandmarks = lms;
+			break;
+		}
+	}
+
+	GPURecon.bindTarget(lms);
+	targetSet = true;
 }
 
 // @note	lms may have larger size than landmarks, so always use the length of landmarks
@@ -241,6 +278,11 @@ void BlendShapeViewer::bindRGBDTarget(const vector<unsigned char>& colordata, co
 	recon.bindRGBDTarget(colordata, depthdata);
 }
 
+
+void BlendShapeViewer::bindRGBDTargetGPU(const vector<unsigned char>& colordata, const vector<unsigned char>& depthdata)
+{
+	GPURecon.bindRGBDTarget(colordata, depthdata);
+}
 
 void BlendShapeViewer::bindTargetMesh( const string& filename ) {
 	PhGUtils::OBJLoader loader;
@@ -291,6 +333,15 @@ void BlendShapeViewer::fitICP(MultilinearReconstructor::FittingOption ops /*= Mu
 	updateMeshWithReconstructor();
 }
 
+void BlendShapeViewer::fitICP_GPU(MultilinearReconstructorGPU::FittingOption ops /*= MultilinearReconstructorGPU::FIT_ALL*/)
+{
+	//PhGUtils::Timer t;
+	//t.tic();
+	GPURecon.fit(ops);
+	//t.toc("reconstruction");
+
+	updateMeshWithGPUReconstructor();
+}
 
 void BlendShapeViewer::generatePrior() {
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\FaceWarehouse_Data_0\\";
@@ -351,17 +402,18 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 			fit();
 			break;
 		}
-	case Qt::Key_P:
-		{
-			recon.togglePrior();
-			break;
-		}
 	case Qt::Key_E:
 		{
 			PhGUtils::message("Please input expression prior weight:");
 			float w;
 			cin >> w;
 			recon.expPriorWeights(w);
+			break;
+		}
+	case Qt::Key_G:
+		{
+			PhGUtils::message("Triggered GPU recon!");
+			GPURecon.fit(MultilinearReconstructorGPU::FIT_POSE);
 			break;
 		}
 	case Qt::Key_I: 
@@ -402,6 +454,11 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 			QString filename = QFileDialog::getOpenFileName(this, "Please select a mesh file", "../Data/", "*.obj");
 
 			recon.fitMesh(filename.toStdString(), hints);
+		}
+	case Qt::Key_P:
+		{
+			recon.togglePrior();
+			break;
 		}
 	}
 }
@@ -499,4 +556,29 @@ void BlendShapeViewer::drawMeshToFBO()
 	
 	QImage img = PhGUtils::toQImage(&(colorBuffer[0]), 640, 480);	
 	img.save("fbo.png");
+}
+
+void BlendShapeViewer::transferParameters(TransferDirection dir)
+{
+	switch(dir) {
+	case CPUToGPU:
+		{
+			// rigid transformation parameters
+			GPURecon.setPose( recon.getPose() );
+			// identity weights
+			GPURecon.setIdentityWeights( recon.identityWeights() );
+			// expression weights
+			GPURecon.setExpressionWeights( recon.expressionWeights() );
+			break;
+		}
+	case GPUToCPU:
+		{
+			// rigid transformation parameters
+			// identity weights
+			// expression weights
+			break;
+		}
+	default:
+		break;
+	}
 }

@@ -21,8 +21,10 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	viewer = new BlendShapeViewer(this);
 	this->setCentralWidget((QWidget*)viewer);
 
+	aam = new AAMWrapper;
+
 	setupKinectManager();
-	lms.resize(128);
+	lms.resize(78);
 	frameIdx = 0;
 
 	connect(ui.actionLoad_Target, SIGNAL(triggered()), this, SLOT(loadTargetMesh()));
@@ -34,6 +36,7 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	connect(ui.actionReset_Tracking, SIGNAL(triggered()), this, SLOT(resetAAM()));
 	connect(ui.actionBatch_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithBatchInput()));
 	connect(ui.actionBatch_Recon_ICP, SIGNAL(triggered()), this,  SLOT(reconstructionWithBatchInput_ICP()));
+	connect(ui.actionBatch_Recon_ICP_GPU, SIGNAL(triggered()), this,  SLOT(reconstructionWithBatchInput_GPU()));
 
 	connect(ui.actionRecord, SIGNAL(triggered()), this, SLOT(toggleKinectInput_Record()));
 
@@ -49,6 +52,7 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 MultilinearFaceRecon::~MultilinearFaceRecon()
 {
 	delete viewer;
+	delete aam;
 }
 
 void MultilinearFaceRecon::setupKinectManager() {
@@ -100,7 +104,7 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 
 
 	// AAM tracking
-	fpts = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+	fpts = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
 	if( fpts.empty() ) {
 		// tracking failed
 		cerr << "AAM tracking failed." << endl;
@@ -199,7 +203,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 		QApplication::processEvents();		
 		::system("pause");
 #else
-		vector<float> f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+		vector<float> f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
 		colorView->bindLandmarks(f);
 
 		// do not update the mesh if the landmarks are unknown
@@ -244,6 +248,121 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() / validFrames));
 }
 
+
+void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
+{
+#if DOUG
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
+	const string imageName = "DougTalkingComplete_KSeq_";
+	const string colorPostfix = ".jpg";
+	const string depthPostfix = "_depth.png";
+	const int startIdx = 10000;
+	const int imageCount = 250;
+#elif PEIHONG
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
+	const string imageName = "Peihong_";
+	const string colorPostfix = "_color.png";
+	const string depthPostfix = "_depth.png";
+	const int startIdx = 10001;
+	const int imageCount = 250;
+#else
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test_images\\";
+	const string imageName = "00";
+	const string colorPostfix = ".png";
+	const string depthPostfix = "_depth.png";
+	const int startIdx = 2670;
+	const int imageCount = 120;
+#endif
+
+	const int endIdx = startIdx + imageCount;
+
+	const int w = 640;
+	const int h = 480;
+
+	PhGUtils::Timer tRecon, tCombined;
+	int validFrames = 0;
+	frameIdx = 0;
+
+	tCombined.tic();
+	for(int imgidx=1;imgidx<=imageCount;imgidx++) {
+		// process each image and perform reconstruction
+		string colorImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + colorPostfix;
+		string depthImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + depthPostfix;
+		vector<unsigned char> colordata = PhGUtils::fromQImage(colorImageName);
+		vector<unsigned char> depthdata = PhGUtils::fromQImage(depthImageName);
+
+		colorView->bindStreamData(&(colordata[0]), w, h);
+		depthView->bindStreamData(&(depthdata[0]), w, h);
+
+		//rgbimg.save("rgb.png");
+		//depthimg.save("depth.png");
+#if 0
+		vector<float> f, pose;
+		tRecon.tic();
+		reconstructionWithSingleFrame(&(colordata[0]), &(depthdata[0]), pose, f);
+		tRecon.toc();
+
+		if( f.empty() ) continue;
+		validFrames++;
+
+		colorView->bindLandmarks(f);
+
+		QApplication::processEvents();		
+		::system("pause");
+#else
+		
+		vector<float> f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
+		colorView->bindLandmarks(f);
+
+		// do not update the mesh if the landmarks are unknown
+		if( f.empty() ) continue;
+
+		// also bind the 3D feature points
+		// get the 3D landmarks and feed to recon manager
+		int npts = f.size()/2;
+		for(int i=0;i<npts;i++) {
+			int u = f[i];
+			int v = f[i+npts];
+			int idx = (v*w+u)*4;
+			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+
+			// pass 2D features plus depth to the recon			
+			lms[i].x = u;
+			lms[i].y = v;
+			lms[i].z = d;
+			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
+		}
+
+		if( imgidx == 1 ) {
+			viewer->bindRGBDTarget(colordata, depthdata);
+			viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
+			// fit the pose first, then fit the identity and pose together
+			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+			//viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE_AND_IDENTITY);
+
+			viewer->transferParameters(BlendShapeViewer::CPUToGPU);
+
+			viewer->bindRGBDTargetGPU(colordata, depthdata);
+			viewer->bindTargetLandmarksGPU(lms);
+			viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE);
+		}
+		else{
+			viewer->bindRGBDTargetGPU(colordata, depthdata);
+			viewer->bindTargetLandmarksGPU(lms);
+			validFrames++;
+			tRecon.tic();
+			viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE);
+			tRecon.toc();
+		}
+
+		QApplication::processEvents();
+		::system("pause");
+#endif	
+	}
+	tCombined.toc();
+	PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() / validFrames));
+	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() / validFrames));
+}
 
 void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 {
@@ -306,7 +425,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 		QApplication::processEvents();		
 		::system("pause");
 #else
-		vector<float> f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+		vector<float> f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
 		colorView->bindLandmarks(f);
 
 		// do not update the mesh if the landmarks are unknown
@@ -380,7 +499,7 @@ void MultilinearFaceRecon::updateKinectStreams_2D()
 	//rgbimg.save("rgb.png");
 	//depthimg.save("depth.png");
 	tAAM.tic();
-	const vector<float>& f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+	const vector<float>& f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
 	tAAM.toc();
 
 	tView.tic();
@@ -439,7 +558,7 @@ void MultilinearFaceRecon::updateKinectStreams()
 	*/
 
 	tAAM.tic();
-	const vector<float>& f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+	const vector<float>& f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
 	tAAM.toc();
 
 	tView.tic();
@@ -507,7 +626,7 @@ void MultilinearFaceRecon::updateKinectStreams_ICP()
 	*/
 
 	tAAM.tic();
-	const vector<float>& f = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+	const vector<float>& f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
 	tAAM.toc();
 
 	tView.tic();
@@ -621,7 +740,7 @@ void MultilinearFaceRecon::toggleKinectInput_ICP() {
 void MultilinearFaceRecon::resetAAM()
 {
 	timer.stop();
-	aam.reset();
+	aam->reset();
 	timer.start();
 }
 
@@ -678,4 +797,3 @@ void MultilinearFaceRecon::toggleKinectInput_Record()
 		PhGUtils::message("done.");
 	}
 }
-

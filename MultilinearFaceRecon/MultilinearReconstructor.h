@@ -185,6 +185,7 @@ private:
 	vector<float> computeWeightedMeanPose();
 
 private:
+	// offscreen renderer
 	PhGUtils::QuadMesh baseMesh;
 	PhGUtils::Matrix4x4f mProj, mMv;
 
