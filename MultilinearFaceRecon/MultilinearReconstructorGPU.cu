@@ -554,6 +554,26 @@ __global__ void clearICPConstraints() {
 	nicpc = 0;
 }
 
+__device__ float3 color2world(float u, float v, float d) {
+	// focal length
+	const float fx_rgb = 525.0, fy_rgb = 525.0;
+	// for 640x480 image
+	const float cx_rgb = 320.0, cy_rgb = 240.0;
+
+	// This part is correct now.
+	// Given a Kinect depth value, its depth in OpenGL coordinates
+	// system must be negative.
+	float depth = -d/1000.0;
+
+	float3 res;
+	// inverse mapping of projection
+	res.x = -(u - cx_rgb) * depth / fx_rgb;
+	res.y = (v - cy_rgb) * depth / fy_rgb;
+	res.z = depth;
+	return res;
+}
+
+//@note	need to upload the topology of the template mesh for constraint collection
 __global__ void collectICPConstraints_kernel(
 						unsigned char*		indexMap,			// synthesized data
 						float*				depthMap,			// synthesized data
@@ -563,6 +583,30 @@ __global__ void collectICPConstraints_kernel(
 						float thres
 	) {
 	float DIST_THRES = thres;
+
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	int u = x, v = y;
+	int idx = v * 640 + u;
+	int vv = 479 - x;
+	int didx = vv * 640 + u;
+
+	if( depthMap[didx] < 1.0 ) {
+		// valid pixel, see if it is a valid constraint
+		float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+		
+		// bad pixel
+		if( d == 0 ) return;
+
+		// compute target location
+		float3 targetLocation = color2world(u, v, d);
+
+		// take a small window
+		const int wSize = 2;
+
+		// check for the closest point face
+	}
 }
 
 __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int maxIters) {

@@ -707,9 +707,12 @@ void MultilinearReconstructor::fitICP_withPrior() {
 
 		// collect ICP constraints
 		createFaceMask();
+		//PhGUtils::Timer tCons;
+		//tCons.tic();
 		collectICPConstraints(iters, MaxIterations);
 		//collectICPConstraints_topo(iters, MaxIterations);
 		//collectICPConstraints_bruteforce(iters, MaxIterations);
+		//tCons.toc("constraint collection");
 
 
 		if( fitPose ) {
