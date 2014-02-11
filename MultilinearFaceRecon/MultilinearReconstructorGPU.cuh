@@ -65,7 +65,7 @@ public:
 	void fitPoseAndExpression();
 	void fitAll();
 
-	void setBaseMesh(const PhGUtils::QuadMesh& m) { baseMesh = m; }
+	void setBaseMesh(const PhGUtils::QuadMesh& m);
 	const Tensor1<float>& currentMesh() { return tmesh; }
 
 protected:
@@ -120,7 +120,8 @@ private:
 	int core_dim[3];
 
 	// the unfolded tensor
-	float *d_tu0, *d_tu1;
+	float *h_tu0, *h_tu1;	// host side page-locked memory
+	float *d_tu0, *d_tu1;	// device mapped address
 
 	// the tensor after mode product
 	float *d_tm0, *d_tm1;
@@ -148,6 +149,8 @@ private:
 	unsigned char *d_colordata, *d_depthdata;	// image data on device
 
 	d_ICPConstraint* d_icpc;
+	int* d_nicpc;
+	static const int MAX_ICPC_COUNT = 65536;
 	float *d_targetLocations;
 
 	float *d_RTparams;
@@ -157,7 +160,7 @@ private:
 	float *d_mu_wid, *d_mu_wexp;	// blendshape weights
 	float *d_mu_wid_weighted, *d_mu_wexp_weighted;	// blendshape weights weighted by given prior weights
 	int ndims_wid, ndims_wexp, ndims_pts, ndims_fpts;
-	int nfpts, npixels;
+	int npts_mesh, nfpts, npixels;
 
 	float *d_sigma_wid, *d_sigma_wexp;
 	float *d_sigma_wid_weighted, *d_sigma_wexp_weighted;
@@ -172,6 +175,7 @@ private:
 	void renderMesh();
 
 	PhGUtils::QuadMesh baseMesh;
+	int4* d_meshtopo;
 	PhGUtils::Matrix4x4f mProj, mMv;
 
 	shared_ptr<QGLWidget> dummyWgt;

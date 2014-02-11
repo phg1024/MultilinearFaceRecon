@@ -1,9 +1,12 @@
 #include "MultilinearReconstructorGPU.cuh"
-
+#include <helper_math.h>
+#include <helper_functions.h>
 #include "Kinect/KinectUtils.h"
+#include "Utils/Timer.h"
 
 #define FBO_DEBUG_GPU 0
 #define KERNEL_DEBUG 0
+#define OUTPUT_ICPC 1
 
 MultilinearReconstructorGPU::MultilinearReconstructorGPU():
 	d_tu0(nullptr), d_tu1(nullptr), d_tm0(nullptr), d_tm1(nullptr),
@@ -11,11 +14,13 @@ MultilinearReconstructorGPU::MultilinearReconstructorGPU():
 	d_fptsIdx(nullptr), d_q2d(nullptr), d_q(nullptr), 
 	d_colordata(nullptr), d_depthdata(nullptr),
 	d_targetLocations(nullptr), d_RTparams(nullptr),
-	d_A(nullptr), d_b(nullptr)
+	d_A(nullptr), d_b(nullptr), d_meshtopo(nullptr)
 {
 	// set device
 	cudaGLSetGLDevice(gpuGetMaxGflopsDeviceId());
 	checkCudaState();
+
+	cudaSetDeviceFlags(cudaDeviceMapHost);
 
 	PhGUtils::message("initializing CULA ...");
 	culaInitialize();
@@ -147,15 +152,27 @@ __host__ void MultilinearReconstructorGPU::init() {
 
 	tmesh.resize(core_dim[2]);
 
+	// unfold it
 	Tensor2<float> tu0 = core.unfold(0), tu1 = core.unfold(1);
 
 	PhGUtils::message("transferring the unfolded core tensor to GPU ...");
+
+#if 1
+	checkCudaErrors(cudaHostAlloc((void**) &h_tu0, sizeof(float)*totalSize, cudaHostAllocMapped));
+	memcpy(h_tu0, tu0.rawptr(), sizeof(float)*totalSize);
+	checkCudaErrors(cudaHostGetDevicePointer((void**) &d_tu0, h_tu0, 0));
+
+	checkCudaErrors(cudaHostAlloc((void**) &h_tu1, sizeof(float)*totalSize, cudaHostAllocMapped));
+	memcpy(h_tu1, tu1.rawptr(), sizeof(float)*totalSize);
+	checkCudaErrors(cudaHostGetDevicePointer((void**) &d_tu1, h_tu1, 0));
+#else
 	// transfer the unfolded core tensor to GPU
 	checkCudaErrors(cudaMalloc((void **) &d_tu0, sizeof(float)*totalSize));
 	checkCudaErrors(cudaMemcpy(d_tu0, tu0.rawptr(), sizeof(float)*totalSize, cudaMemcpyHostToDevice));
 	
 	checkCudaErrors(cudaMalloc((void **) &d_tu1, sizeof(float)*totalSize));
 	checkCudaErrors(cudaMemcpy(d_tu1, tu1.rawptr(), sizeof(float)*totalSize, cudaMemcpyHostToDevice));
+#endif
 
 	PhGUtils::message("done.");
 	showCUDAMemoryUsage();
@@ -266,6 +283,7 @@ __host__ void MultilinearReconstructorGPU::init() {
 		}
 		PhGUtils::message("landmarks loaded.");
 		cout << "total landmarks = " << landmarkIdx.size() << endl;
+		ndims_fpts = landmarkIdx.size() * 3;
 	}
 	else {
 		PhGUtils::abort("Failed to load landmarks!");
@@ -289,11 +307,14 @@ __host__ void MultilinearReconstructorGPU::init() {
 	// allocate space for Aid, Aexp, AidtAid, AexptAexp, brhs, Aidtb, Aexptb
 	checkCudaErrors(cudaMalloc((void **) &d_RTparams, sizeof(float)*7));
 	int maxParams = max(ndims_wid, ndims_wexp);
-	checkCudaErrors(cudaMalloc((void **) &d_A, sizeof(float)*(maxParams + ndims_pts) * maxParams));
-	checkCudaErrors(cudaMalloc((void **) &d_b, sizeof(float)*(ndims_pts + maxParams)));
+	checkCudaErrors(cudaMalloc((void **) &d_A, sizeof(float)*(maxParams + ndims_fpts + ndims_pts) * maxParams));
+	checkCudaErrors(cudaMalloc((void **) &d_b, sizeof(float)*(ndims_pts + ndims_fpts + maxParams)));
 
 	h_w_landmarks = new float[landmarkIdx.size()*3];
 	checkCudaErrors(cudaMalloc((void**) &d_w_landmarks, sizeof(float)*landmarkIdx.size()*3));
+
+	checkCudaErrors(cudaMalloc((void**) &d_icpc, sizeof(d_ICPConstraint)*MAX_ICPC_COUNT));
+	checkCudaErrors(cudaMalloc((void**) &d_nicpc, sizeof(int)));
 	PhGUtils::message("done.");
 
 	PhGUtils::message("allocating memory for incoming data ...");
@@ -302,7 +323,6 @@ __host__ void MultilinearReconstructorGPU::init() {
 
 	checkCudaErrors(cudaMalloc((void**) &d_indexMap, sizeof(unsigned char)*640*480*4));
 	checkCudaErrors(cudaMalloc((void**) &d_depthMap, sizeof(float)*640*480));
-
 	PhGUtils::message("done.");
 
 	showCUDAMemoryUsage();
@@ -379,6 +399,26 @@ __host__ void MultilinearReconstructorGPU::bindRGBDTarget(const vector<unsigned 
 	checkCudaErrors(cudaMemcpy(d_depthdata, &(depthdata[0]), sz, cudaMemcpyHostToDevice));
 
 	PhGUtils::message("done.");
+}
+
+__host__ void MultilinearReconstructorGPU::setBaseMesh(const PhGUtils::QuadMesh& m) {
+	baseMesh = m;
+	// upload the mesh topology
+	int nfaces = baseMesh.faceCount();
+	vector<int4> topo(nfaces);
+	for(int i=0;i<nfaces;i++) {
+		const PhGUtils::QuadMesh::face_t& f = baseMesh.face(i);
+		topo[i] = make_int4(f.x, f.y, f.z, f.w);
+	}
+
+	PhGUtils::message("uploading mesh topology");
+	cout << "face count = " << nfaces << endl;
+	if( d_meshtopo ) {
+		checkCudaErrors(cudaFree(d_meshtopo));
+	}
+	checkCudaErrors(cudaMalloc((void**) &d_meshtopo, sizeof(int4)*nfaces));
+	checkCudaErrors(cudaMemcpy(d_meshtopo, &(topo[0]), sizeof(int4)*nfaces, cudaMemcpyHostToDevice));
+	showCUDAMemoryUsage();
 }
 
 __host__ void MultilinearReconstructorGPU::initRenderer() {
@@ -549,12 +589,11 @@ __host__ void MultilinearReconstructorGPU::renderMesh()
 	checkCudaErrors(cudaMemcpy(d_depthMap, &depthMap[0], sizeof(float)*640*480, cudaMemcpyHostToDevice));
 }
 
-__device__ int nicpc;
-__global__ void clearICPConstraints() {
-	nicpc = 0;
+__global__ void clearICPConstraints(int* nicpc) {
+	*nicpc = 0;
 }
 
-__device__ float3 color2world(float u, float v, float d) {
+__device__ __forceinline__ float3 color2world(float u, float v, float d) {
 	// focal length
 	const float fx_rgb = 525.0, fy_rgb = 525.0;
 	// for 640x480 image
@@ -573,13 +612,100 @@ __device__ float3 color2world(float u, float v, float d) {
 	return res;
 }
 
+__device__ __forceinline__ int decodeIndex(unsigned char r, unsigned char g, unsigned char b) {
+	int ri = r, gi = g, bi = b;
+	return (ri << 16) | (gi << 8) | bi;
+}
+
+__device__ float point_to_triangle_distance(float3 p0, float3 p1, float3 p2, float3 p3, float3& hit) {
+	float dist = 0;
+
+	float3 d = p1 - p0;
+	float3 e12 = p2 - p1, e13 = p3 - p1, e21 = -e12, e23 = p3 - p2, e31 = -e13, e32 = -e23;
+	float3 e12n = normalize(e12), e13n = normalize(e13), e21n = -e12n, e23n = normalize(e23), e31n = -e13n, e32n = -e23n;
+
+	float3 n = normalize(cross(e12, e13));
+
+	float dDOTn = dot(d, n);
+	float dnorm = length(d);
+	float cosAlpha = dDOTn / dnorm;
+
+	float dn = dDOTn * cosAlpha;
+	float3 p0p0c = -dn * n;
+	float3 p0c = p0 + p0p0c;
+
+	float3 v1 = e21n + e31n, v2 = e12n + e32n, v3 = e13n + e23n;
+	float3 p0cp1 = p1 - p0c, p0cp2 = p2 - p0c, p0cp3 = p3 - p0c;
+
+	float3 c1 = cross(p0cp1, p0cp2), c2 = cross(p0cp2, p0cp3), c3 = cross(p0cp3, p0cp1);
+
+	float d1 = dot(c1, n);
+	float d2 = dot(c2, n);
+	float d3 = dot(c3, n);
+
+	float3 x0 = p0c, x1, x2;
+	bool inside = true;
+	if ( d1 < d2 && d1 < d3 && d1<0 )			//-- outside, p1, p2 side
+	{
+		inside = false;		
+		x1 = p1; x2 = p2;
+	}
+	else if ( d2 < d1 && d2 < d3 && d2<0 )	//-- outside, p2, p3 side
+	{
+		inside = false;
+		x1 = p2; x2 = p3;
+	}
+	else if ( d3 < d1 && d3 < d2 && d3<0 )	//-- outside, p3, p1 side
+	{
+		inside = false;
+		x1 = p3; x2 = p1;
+	}
+
+	if (inside)
+	{
+		hit = p0c;
+		dist = dn;
+	}
+	else
+	{
+		float3 x1x0 = x0 - x1, x2x0 = x0 - x1, x2x1 = x1 - x2;
+		float L_x2x0 = length(x2x0);
+		float t = dot(x1x0, x2x0) / (L_x2x0 * L_x2x0);
+
+		hit = x1 + t * x2x1;
+
+		float3 line = p0 - hit;
+		dist = length(line);
+	}
+
+	return dist;
+
+}
+
+__device__ float3 compute_barycentric_coordinates(float3 p, float3 q1, float3 q2, float3 q3) {
+	float3 e23 = q3 - q2, e21 = q1 - q2, e31 = q1 - q3;
+	float3 d2 = p - q2, d3 = p - q3;
+	float3 oriN = cross(e23, e21);
+	float3 n = normalize(oriN);
+
+	float invBTN = 1.0 / dot(oriN, n);
+	float3 bcoord;
+	bcoord.x = dot(cross(e23, d2), n) * invBTN;
+	bcoord.y = dot(cross(e31, d3), n) * invBTN;
+	bcoord.z = 1 - bcoord.x - bcoord.y;
+
+	return bcoord;
+}
 //@note	need to upload the topology of the template mesh for constraint collection
 __global__ void collectICPConstraints_kernel(
+						float*				mesh,
+						int4*				meshtopo,
 						unsigned char*		indexMap,			// synthesized data
 						float*				depthMap,			// synthesized data
 						unsigned char*		colordata,			// capture data
 						unsigned char*		depthdata,			// capture data
 						d_ICPConstraint*	icpc,				// ICP constraints
+						int*				nicpc,
 						float thres
 	) {
 	float DIST_THRES = thres;
@@ -587,11 +713,15 @@ __global__ void collectICPConstraints_kernel(
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-	int u = x, v = y;
-	int idx = v * 640 + u;
-	int vv = 479 - x;
-	int didx = vv * 640 + u;
+	if( x > 639 || y > 479 ) return;
 
+	int tid = y * 640 + x;
+
+	int u = x, v = y;
+	int idx = (v * 640 + u)*4;
+	int vv = 479 - y;
+	int didx = vv * 640 + u;
+	
 	if( depthMap[didx] < 1.0 ) {
 		// valid pixel, see if it is a valid constraint
 		float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
@@ -600,12 +730,85 @@ __global__ void collectICPConstraints_kernel(
 		if( d == 0 ) return;
 
 		// compute target location
-		float3 targetLocation = color2world(u, v, d);
+		float3 q = color2world(u, v, d);
 
 		// take a small window
 		const int wSize = 2;
+		int checkedFaces[(wSize+1)*(wSize+1)];
+		int checkedCount = 0;
+		float closestDist = FLT_MAX;
+		int3 closestVerts;
+		float3 closestHit;
 
 		// check for the closest point face
+		for(int r = max(v - wSize, 0); r <= min(v + wSize, 479); r++) {
+			int rr = 479 - r;
+			for(int c = max(u - wSize, 0); c <= min(u + wSize, 479); c++) {
+				int pidx = rr * 640 + c;
+				int poffset = pidx << 2;
+
+				float depthVal = depthMap[pidx];
+				if( depthVal < 1.0 ) {
+					int fidx = decodeIndex(indexMap[poffset], indexMap[poffset+1], indexMap[poffset+2]);
+
+					
+					bool checked = false;
+					// see if this face is already checked
+					for(int j=0;j<checkedCount;j++) {
+						if( fidx == checkedFaces[j] ){
+							checked = true;
+							break;
+						}
+					}
+					if( checked ) continue;
+					else {
+						checkedFaces[checkedCount] = fidx;
+						checkedCount++;
+					}
+
+
+					// not checked yet, check out this face
+					int4 f = meshtopo[fidx];
+					int4 vidx = f * 3;
+					float3 v0 = make_float3(mesh[vidx.x], mesh[vidx.x+1], mesh[vidx.x+2]);
+					float3 v1 = make_float3(mesh[vidx.y], mesh[vidx.y+1], mesh[vidx.y+2]);
+					float3 v2 = make_float3(mesh[vidx.z], mesh[vidx.z+1], mesh[vidx.z+2]);
+					float3 v3 = make_float3(mesh[vidx.w], mesh[vidx.w+1], mesh[vidx.w+2]);
+
+					float3 hit1, hit2;
+					float dist1 = point_to_triangle_distance(q, v0, v1, v2, hit1);
+					float dist2 = point_to_triangle_distance(q, v1, v2, v3, hit2);
+				
+					// take the smaller one
+					if( dist1 < dist2 && dist1 < closestDist) {
+						closestDist = dist1;
+						closestVerts.x = f.x, closestVerts.y = f.y, closestVerts.z = f.z;
+						closestHit = hit1;
+					}
+					else if( dist2 < closestDist ) {
+						closestDist = dist2;
+						closestVerts.x = f.y, closestVerts.y = f.z, closestVerts.z = f.w;
+						closestHit = hit2;
+					}
+				}
+			}
+		}
+
+		if( closestDist < DIST_THRES ) {
+			d_ICPConstraint cc;
+			cc.q = q;
+			cc.v = closestVerts;
+			int3 vidx = cc.v*3;
+			
+			float3 v0 = make_float3(mesh[vidx.x], mesh[vidx.x+1], mesh[vidx.x+2]);
+			float3 v1 = make_float3(mesh[vidx.y], mesh[vidx.y+1], mesh[vidx.y+2]);
+			float3 v2 = make_float3(mesh[vidx.z], mesh[vidx.z+1], mesh[vidx.z+2]);
+			
+			cc.bcoords = compute_barycentric_coordinates( closestHit, v0, v1, v2 );
+			int slot = atomicAdd(nicpc, 1);
+			__threadfence();
+			icpc[slot] = cc;
+		}
 	}
 }
 
@@ -615,19 +818,58 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 	float DIST_THRES = DIST_THRES_MAX + (DIST_THRES_MIN - DIST_THRES_MAX) * iters / (float)maxIters;
 	PhGUtils::message("Collecting ICP constraints...");
 	
-	clearICPConstraints<<<1, 1, 0, mystream>>>();
+	writeback(d_depthMap, 480, 640, "d_depthmap.txt");
 
+	clearICPConstraints<<<1, 1, 0, mystream>>>(d_nicpc);
+	checkCudaState();
+	PhGUtils::Timer ticpc;
+	ticpc.tic();
 	dim3 block(16, 16, 1);
 	dim3 grid(640/16, 480/16, 1);
-	collectICPConstraints_kernel<<<grid, block, 0, mystream>>>(
+	collectICPConstraints_kernel<<<grid, block, 0, mystream>>>( d_mesh,
+																d_meshtopo,
 																d_indexMap,
 																d_depthMap,
 																d_colordata,
 																d_depthdata,
 																d_icpc,
+																d_nicpc,
 																DIST_THRES);
 
-	return 0;
+	cudaThreadSynchronize();
+	ticpc.toc("ICPC collection");
+	checkCudaState();
+	PhGUtils::message("ICPC computed.");
+	// copy back the number of ICP constraints
+	int icpcCount = 0;
+	checkCudaErrors(cudaMemcpy(&icpcCount, d_nicpc, sizeof(int), cudaMemcpyDeviceToHost));
+	cout << "ICPC = " << icpcCount << endl;
+	
+#if OUTPUT_ICPC
+	vector<d_ICPConstraint> icpc(640*480);
+	checkCudaErrors(cudaMemcpy(&icpc[0], d_icpc, sizeof(d_ICPConstraint)*MAX_ICPC_COUNT, cudaMemcpyDeviceToHost));
+	ofstream fout("d_icpc.txt");
+	for(int i=0;i<icpcCount;i++) {
+		float3 bc = icpc[i].bcoords;
+		int3 vidx = icpc[i].v * 3;
+		float3 p;
+		p.x = tmesh(vidx.x  ) * bc.x + tmesh(vidx.y  ) * bc.y + tmesh(vidx.z  ) * bc.z;
+		p.y = tmesh(vidx.x+1) * bc.x + tmesh(vidx.y+1) * bc.y + tmesh(vidx.z+1) * bc.z;
+		p.z = tmesh(vidx.x+2) * bc.x + tmesh(vidx.y+2) * bc.y + tmesh(vidx.z+2) * bc.z;
+		fout << icpc[i].q.x << ' '
+			 << icpc[i].q.y << ' '
+			 << icpc[i].q.z << ' '
+			 << p.x << ' '
+			 << p.y << ' '
+			 << p.z << ' '
+			 << bc.x << ' '
+			 << bc.y << ' '
+			 << bc.z << endl;
+	}
+	fout.close();
+#endif
+
+	return icpcCount;
 }
 
 __host__ bool MultilinearReconstructorGPU::fitRigidTransformation() {
