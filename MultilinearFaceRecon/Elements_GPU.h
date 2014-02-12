@@ -133,13 +133,13 @@ public:
 		res(1) = elem[0] * m(1) + elem[1] * m(4) + elem[2] * m(7);
 		res(2) = elem[0] * m(2) + elem[1] * m(5) + elem[2] * m(8);
 
-		res(3) = elem[0] * m(0) + elem[1] * m(3) + elem[2] * m(6);
-		res(4) = elem[0] * m(1) + elem[1] * m(4) + elem[2] * m(7);
-		res(5) = elem[0] * m(2) + elem[1] * m(5) + elem[2] * m(8);
+		res(3) = elem[3] * m(0) + elem[4] * m(3) + elem[5] * m(6);
+		res(4) = elem[3] * m(1) + elem[4] * m(4) + elem[5] * m(7);
+		res(5) = elem[3] * m(2) + elem[4] * m(5) + elem[5] * m(8);
 
-		res(6) = elem[0] * m(0) + elem[1] * m(3) + elem[2] * m(6);
-		res(7) = elem[0] * m(1) + elem[1] * m(4) + elem[2] * m(7);
-		res(8) = elem[0] * m(2) + elem[1] * m(5) + elem[2] * m(8);
+		res(6) = elem[6] * m(0) + elem[7] * m(3) + elem[8] * m(6);
+		res(7) = elem[6] * m(1) + elem[7] * m(4) + elem[8] * m(7);
+		res(8) = elem[6] * m(2) + elem[7] * m(5) + elem[8] * m(8);
 
 		return res;
 	}
@@ -450,4 +450,11 @@ public:
 	__device__ __host__ float& operator()(int r, int c) { return elem[r*4+c]; }
 
 	float elem[16];
+};
+
+struct d_ICPConstraint {
+	int3 v;					// incident vertices
+	float3 bcoords;			// barycentric coordinates
+	float weight;			
+	float3 q;				// target point
 };

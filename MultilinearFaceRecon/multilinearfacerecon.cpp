@@ -356,7 +356,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 		}
 
 		QApplication::processEvents();
-		::system("pause");
+		//::system("pause");
 #endif	
 	}
 	tCombined.toc();
@@ -456,6 +456,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 			//viewer->fitICP(MultilinearReconstructor::FIT_POSE);
 			//viewer->fitICP(MultilinearReconstructor::FIT_IDENTITY);
 			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+			//viewer->fitICP(MultilinearReconstructor::FIT_POSE);
 			viewer->fitICP(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 		}
 		else{

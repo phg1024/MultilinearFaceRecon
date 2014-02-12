@@ -27,12 +27,7 @@
 #include <QGLWidget>
 #include <QGLFramebufferObject>
 
-struct d_ICPConstraint {
-	int3 v;					// incident vertices
-	float3 bcoords;			// barycentric coordiantes
-	float weight;			
-	float3 q;				// target point
-};
+#include "Elements_GPU.h"
 
 class MultilinearReconstructorGPU 
 {
@@ -70,6 +65,7 @@ public:
 
 protected:
 	void init();
+	void initializeWeights();
 	void preprocess();
 	void initRenderer();
 
@@ -100,7 +96,7 @@ private:
 	float h_RTparams[7]; /* sx, ry, rz, tx, ty, tz, scale */
 	
 	bool useHistory;
-	static const int historyLength = 5;
+	static const int historyLength = 10;
 	float historyWeights[historyLength];
 	deque<vector<float>> RTHistory;	// stores the RT parameters for last 5 frames
 	
@@ -150,6 +146,7 @@ private:
 
 	d_ICPConstraint* d_icpc;
 	int* d_nicpc;
+	int nicpc;
 	static const int MAX_ICPC_COUNT = 65536;
 	float *d_targetLocations;
 
@@ -170,6 +167,17 @@ private:
 
 	// computation matrices
 	float *d_A, *d_b;
+
+	// weights again
+	float *d_w_mask, *h_w_mask;
+	float w_fp_scale, w_ICP;
+	float w_chin, w_outer;
+
+	float w_fp, w_history;
+
+	// error term
+	float *d_error, *d_w_error;
+	float *h_error, *h_w_error;
 
 private:
 	void renderMesh();

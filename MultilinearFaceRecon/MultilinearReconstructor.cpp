@@ -384,7 +384,7 @@ void MultilinearReconstructor::collectICPConstraints(int iter, int maxIter)
 	const float DIST_THRES_MAX = 0.010;
 	const float DIST_THRES_MIN = 0.001;
 	float DIST_THRES = DIST_THRES_MAX + (DIST_THRES_MIN - DIST_THRES_MAX) * iter / (float)maxIter;
-	PhGUtils::message("Collecting ICP constraints...");
+	//PhGUtils::message("Collecting ICP constraints...");
 	icpc.clear();
 	icpc.reserve(16384);
 	// the depth map and the face index map are flipped vertically
@@ -399,7 +399,7 @@ void MultilinearReconstructor::collectICPConstraints(int iter, int maxIter)
 				if( q.z == 0 || inside == 0 ) continue;
 
 				// take a small window
-				const int wSize = 2;
+				const int wSize = 5;
 				set<int> checkedFaces;
 
 				float closestDist = numeric_limits<float>::max();
@@ -676,8 +676,8 @@ void MultilinearReconstructor::collectICPConstraints_bruteforce(int iter, int ma
 void MultilinearReconstructor::fitICP_withPrior() {
 	PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
 
-	cout << "initial guess ..." << endl;
-	PhGUtils::printArray(RTparams, 7);
+	//cout << "initial guess ..." << endl;
+	//PhGUtils::printArray(RTparams, 7);
 	// assemble initial guess and transform mesh
 	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
 	float diff = 0;
@@ -696,7 +696,7 @@ void MultilinearReconstructor::fitICP_withPrior() {
 	int iters = 0;
 	float E0 = 0;
 	bool converged = false;
-	const int MaxIterations = 32;
+	const int MaxIterations = 64;
 	while( !converged && iters++ < MaxIterations ) {
 		converged = true;
 
@@ -727,7 +727,7 @@ void MultilinearReconstructor::fitICP_withPrior() {
 			timerOther.tic();
 			transformTM1();
 			timerOther.toc();
-
+			
 			timerID.tic();
 			converged &= fitIdentityWeights_withPrior_ICP();
 			timerID.toc();
@@ -785,7 +785,7 @@ void MultilinearReconstructor::fitICP_withPrior() {
 		//Rmat.print("R");
 		//Tvec.print("T");
 		E = computeError_ICP();
-		PhGUtils::debug("iters", iters, "Error", E);
+		//PhGUtils::debug("iters", iters, "Error", E);
 
 		// adaptive threshold
 		converged |= E < (errorThreshold_ICP / (icpc.size()/5000.0));
@@ -1390,6 +1390,8 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 		int vidx = fp[i].second * 3;
 		float wpt = w_landmarks[i*3] * w_fp_scale;
 		
+		float wpt0 = wpt;
+
 		PhGUtils::Point3f p(tplt(vidx), tplt(vidx+1), tplt(vidx+2));
 
 		// p = R * p + T
@@ -1421,6 +1423,7 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 			float du = u - q.x, dv = v - q.y;
 			hx[hxidx] = (du * du + dv * dv) * wpt;
 		}
+		//cout << "#" << i << "\t" << wpt0 << "\t" << wpt << endl;
 	}
 	
 	// regularization terms
@@ -1683,26 +1686,29 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_ICP() {
 	int iters = slevmar_der(evalCost_ICP, evalJacobian_ICP, RTparams, &(meas[0]), nparams, npts, 128, opts, NULL, NULL, NULL, this);
 	*/
 	
-	
+	float RTparams0[7];
+	for(int i=0;i<7;i++) { RTparams0[i] = RTparams[i]; }
+
 	// use Gauss-Newton
 	float opts[3] = {0.125, 1e-3, 1e-4};
 	int iters = PhGUtils::GaussNewton<float>(evalCost_ICP, evalJacobian_ICP, RTparams, NULL, NULL, nparams, npts, 128, opts, this);
 	
 
-	PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
+	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 	
 	// set up the matrix and translation vector
 	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
 	float diff = 0;
+	for(int i=0;i<7;i++) { diff += RTparams[i] - RTparams0[i]; }
 	for(int i=0;i<3;i++) {
 		for(int j=0;j<3;j++) {
-			diff += fabs(R(i, j) - Rmat(i, j));
+			//diff += fabs(R(i, j) - Rmat(i, j));
 			R(i, j) = Rmat(i, j);			
 		}
 	}
 
 	Tvec.x = RTparams[3], Tvec.y = RTparams[4], Tvec.z = RTparams[5];
-	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
+	//diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
 
 	/*
@@ -1710,7 +1716,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_ICP() {
 	cout << T << endl;
 	*/
 
-	return diff / 7 < cc;
+	return diff / 7 < cc || iters == 0;
 }
 
 void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
@@ -2256,7 +2262,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 }
 
 bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
-	cout << "fitting identity weights ..." << endl;
+	//cout << "fitting identity weights ..." << endl;
 	// to use this method, the tensor tm1 must first be updated using the rotation matrix
 	int nparams = core.dim(0);	
 	int npts_ICP = icpc.size();
@@ -2338,15 +2344,15 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
 		brhs_ICP(ridx) = mu_wid_weighted(i) * w_prior_scale;
 	}
 
-	cout << "matrix and rhs assembled." << endl;
+	//cout << "matrix and rhs assembled." << endl;
 
-	cout << "least square" << endl;
+	//cout << "least square" << endl;
 #if USE_MKL_LS
 	int rtn = leastsquare<float>(Aid_ICP, brhs_ICP);
 #else
 	int rtn = leastsquare_normalmat(Aid_ICP, brhs_ICP, AidtAid, Aidtb);
 #endif
-	cout << "done." << endl;
+	//cout << "done." << endl;
 	//debug("rtn", rtn);
 	float diff = 0;
 	//b.print("b");
@@ -2363,7 +2369,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
 
 	//cout << endl;
 
-	cout << "identity weights fitted." << endl;
+	//cout << "identity weights fitted." << endl;
 
 	return diff / nparams < cc;
 }
@@ -2526,7 +2532,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 }
 
 bool MultilinearReconstructor::fitExpressionWeights_withPrior_ICP() {
-	cout << "fitting identity weights ..." << endl;
+	//cout << "fitting identity weights ..." << endl;
 	// to use this method, the tensor tm1 must first be updated using the rotation matrix
 	int nparams = core.dim(1);
 	int npts_ICP = icpc.size();
@@ -2609,11 +2615,11 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_ICP() {
 		brhs_ICP(ridx) = mu_wexp_weighted(i) * w_prior_scale;
 	}
 
-	cout << "matrix and rhs assembled." << endl;
+	//cout << "matrix and rhs assembled." << endl;
 
-	cout << "least square" << endl;
+	//cout << "least square" << endl;
 	int rtn = leastsquare<float>(Aexp_ICP, brhs_ICP);
-	cout << "done." << endl;
+	//cout << "done." << endl;
 	//debug("rtn", rtn);
 	float diff = 0;
 	//b.print("b");
@@ -2625,7 +2631,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_ICP() {
 
 	//cout << endl;
 
-	cout << "expression weights fitted." << endl;
+	//cout << "expression weights fitted." << endl;
 
 	return diff / nparams < cc;
 }

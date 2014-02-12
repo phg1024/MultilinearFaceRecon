@@ -196,12 +196,14 @@ void BlendShapeViewer::updateMeshWithGPUReconstructor() {
 	// set the vertices of mesh with the template mesh in the reconstructor
 	const Tensor1<float>& tplt = GPURecon.currentMesh();
 
+	//cout << tplt.length() << endl;
 	for(int i=0,idx=0;i<tplt.length()/3;i++) {
 		mesh.vertex(i).x = tplt(idx++);
 		mesh.vertex(i).y = tplt(idx++);
 		mesh.vertex(i).z = tplt(idx++);
 	}
 	update();
+	//::system("pause");
 }
 
 void BlendShapeViewer::updateMeshWithReconstructor() {
@@ -325,20 +327,20 @@ void BlendShapeViewer::fit2d(MultilinearReconstructor::FittingOption ops /*= Mul
 
 void BlendShapeViewer::fitICP(MultilinearReconstructor::FittingOption ops /*= MultilinearReconstructor::FIT_ALL*/)
 {
-	//PhGUtils::Timer t;
-	//t.tic();
+	PhGUtils::Timer t;
+	t.tic();
 	recon.fitICP(ops);
-	//t.toc("reconstruction");
+	t.toc("reconstruction");
 
 	updateMeshWithReconstructor();
 }
 
 void BlendShapeViewer::fitICP_GPU(MultilinearReconstructorGPU::FittingOption ops /*= MultilinearReconstructorGPU::FIT_ALL*/)
 {
-	//PhGUtils::Timer t;
-	//t.tic();
+	PhGUtils::Timer t;
+	t.tic();
 	GPURecon.fit(ops);
-	//t.toc("reconstruction");
+	t.toc("reconstruction");
 
 	updateMeshWithGPUReconstructor();
 }

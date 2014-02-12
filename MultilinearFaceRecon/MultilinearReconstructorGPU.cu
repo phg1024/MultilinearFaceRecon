@@ -3,8 +3,12 @@
 #include <helper_functions.h>
 #include "Kinect/KinectUtils.h"
 #include "Utils/Timer.h"
+#include "Utils/stringutils.h"
 
 #include "Elements_GPU.h"
+#include "utils_GPU.cuh"
+#include "numerical_algorithms.cuh"
+
 
 #define FBO_DEBUG_GPU 0
 #define KERNEL_DEBUG 0
@@ -31,17 +35,17 @@ MultilinearReconstructorGPU::MultilinearReconstructorGPU():
 	cudaStreamCreate(&mystream);
 	checkCudaState();
 
-	w_prior_id = 1e-3;
-	w_prior_exp = 1e-4;
-	w_boundary = 1e-6;
-
 	meanX = meanY = meanZ = 0;
 
 	// initialize offscreen renderer
 	initRenderer();
+
+	NumericalAlgorithms::initialize(50, 16384);
 	
 	// initialize members
 	init();
+
+	initializeWeights();
 
 	// process the loaded data
 	preprocess();
@@ -62,11 +66,21 @@ __host__ void MultilinearReconstructorGPU::setPose(const float* params) {
 __host__ void MultilinearReconstructorGPU::setIdentityWeights(const Tensor1<float>& t) {
 	// copy to GPU
 	checkCudaErrors(cudaMemcpy(d_Wid, t.rawptr(), sizeof(float)*ndims_wid, cudaMemcpyHostToDevice));
+	// update tensor tm0
+	cublasSgemv('N', ndims_wexp * ndims_pts, ndims_wid, 1.0, d_tu0, ndims_wexp * ndims_pts, d_Wid, 1, 0, d_tm0, 1);
+
+	// and the template mesh
+	cublasSgemv('T', ndims_wid, ndims_pts, 1.0, d_tm1, ndims_wid, d_Wid, 1, 0.0, d_tplt, 1);
 }
 
 __host__ void MultilinearReconstructorGPU::setExpressionWeights(const Tensor1<float>& t) {
 	// copy to GPU
 	checkCudaErrors(cudaMemcpy(d_Wexp, t.rawptr(), sizeof(float)*ndims_wexp, cudaMemcpyHostToDevice));
+	// update tensor tm1
+	cublasSgemv('N', ndims_wid * ndims_pts, ndims_wexp, 1.0, d_tu1, ndims_wid * ndims_pts, d_Wexp, 1, 0, d_tm1, 1);
+
+	// and the template mesh
+	cublasSgemv('T', ndims_wid, ndims_pts, 1.0, d_tm1, ndims_wid, d_Wid, 1, 0.0, d_tplt, 1);
 }
 
 __host__ void MultilinearReconstructorGPU::preprocess() {
@@ -286,6 +300,7 @@ __host__ void MultilinearReconstructorGPU::init() {
 		PhGUtils::message("landmarks loaded.");
 		cout << "total landmarks = " << landmarkIdx.size() << endl;
 		ndims_fpts = landmarkIdx.size() * 3;
+		nfpts = landmarkIdx.size();
 	}
 	else {
 		PhGUtils::abort("Failed to load landmarks!");
@@ -295,10 +310,16 @@ __host__ void MultilinearReconstructorGPU::init() {
 	// upload the landmark indices
 	checkCudaErrors(cudaMemcpy(d_fptsIdx, &(landmarkIdx[0]), sizeof(int)*landmarkIdx.size(), cudaMemcpyHostToDevice));
 
+	/*
 	h_q = new float[landmarkIdx.size()*3];
 	checkCudaErrors(cudaMalloc((void**) &d_q, sizeof(float)*landmarkIdx.size()*3));
 	h_q2d = new float[landmarkIdx.size()*3];
 	checkCudaErrors(cudaMalloc((void**) &d_q2d, sizeof(float)*landmarkIdx.size()*3));
+	*/
+	checkCudaErrors(cudaHostAlloc((void**) &h_q, sizeof(float)*landmarkIdx.size()*3, cudaHostAllocMapped));
+	checkCudaErrors(cudaHostGetDevicePointer((void**) &d_q, h_q, 0));
+	checkCudaErrors(cudaHostAlloc((void**) &h_q2d, sizeof(float)*landmarkIdx.size()*3, cudaHostAllocMapped));
+	checkCudaErrors(cudaHostGetDevicePointer((void**) &d_q2d, h_q2d, 0));
 
 	ndims_pts = core_dim[2];	// constraints by the vertices, at most 3 constraints for each vertex
 
@@ -312,11 +333,26 @@ __host__ void MultilinearReconstructorGPU::init() {
 	checkCudaErrors(cudaMalloc((void **) &d_A, sizeof(float)*(maxParams + ndims_fpts + ndims_pts) * maxParams));
 	checkCudaErrors(cudaMalloc((void **) &d_b, sizeof(float)*(ndims_pts + ndims_fpts + maxParams)));
 
-	h_w_landmarks = new float[landmarkIdx.size()*3];
-	checkCudaErrors(cudaMalloc((void**) &d_w_landmarks, sizeof(float)*landmarkIdx.size()*3));
+	/*
+	h_w_mask = new float[landmarkIdx.size()];
+	checkCudaErrors(cudaMalloc((void**) &d_w_mask, sizeof(float)*landmarkIdx.size()));
+
+	h_w_landmarks = new float[landmarkIdx.size()];
+	checkCudaErrors(cudaMalloc((void**) &d_w_landmarks, sizeof(float)*landmarkIdx.size()));
+	*/
+	checkCudaErrors(cudaHostAlloc((void**) &h_w_mask, sizeof(float)*landmarkIdx.size(), cudaHostAllocMapped));
+	checkCudaErrors(cudaHostGetDevicePointer((void**) &d_w_mask, h_w_mask, 0));
+	checkCudaErrors(cudaHostAlloc((void**) &h_w_landmarks, sizeof(float)*landmarkIdx.size(), cudaHostAllocMapped));
+	checkCudaErrors(cudaHostGetDevicePointer((void**) &d_w_landmarks, h_w_landmarks, 0));
+
 
 	checkCudaErrors(cudaMalloc((void**) &d_icpc, sizeof(d_ICPConstraint)*MAX_ICPC_COUNT));
 	checkCudaErrors(cudaMalloc((void**) &d_nicpc, sizeof(int)));
+
+	h_error = new float[MAX_ICPC_COUNT];
+	checkCudaErrors(cudaMalloc((void**) &d_error, sizeof(float)*MAX_ICPC_COUNT));
+	h_w_error = new float[MAX_ICPC_COUNT];
+	checkCudaErrors(cudaMalloc((void**) &d_w_error, sizeof(float)*MAX_ICPC_COUNT));
 	PhGUtils::message("done.");
 
 	PhGUtils::message("allocating memory for incoming data ...");
@@ -330,13 +366,46 @@ __host__ void MultilinearReconstructorGPU::init() {
 	showCUDAMemoryUsage();
 }
 
+__host__ void MultilinearReconstructorGPU::initializeWeights() {
+	w_prior_id = 1e-3;
+	w_prior_exp = 2.5e-4;
+
+	w_boundary = 1e-8;
+	w_chin = 1e-6;
+	w_outer = 1e2;
+	w_fp = 2.5;
+
+	w_history = 0.0001;
+	w_ICP = 1.5;
+
+	historyWeights[0] = 0.02;
+	historyWeights[1] = 0.04;
+	historyWeights[2] = 0.08;
+	historyWeights[3] = 0.16;
+	historyWeights[4] = 0.32;
+	historyWeights[5] = 0.64;
+	historyWeights[6] = 1.28;
+	historyWeights[7] = 2.56;
+	historyWeights[8] = 5.12;
+	historyWeights[9] = 10.24;
+
+	for(int i=0;i<78;i++) {
+		if( i < 42 || i > 74 ) h_w_mask[i] = 1.0;
+		else {
+			if( i > 63 ) h_w_mask[i] = w_outer * w_fp;
+			else h_w_mask[i] = w_chin * w_fp;
+		}
+	}
+	//checkCudaErrors(cudaMemcpy(d_w_mask, w_mask, sizeof(float)*78, cudaMemcpyHostToDevice));
+}
+
 __host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Point3f>& pts)
 {
-	cout << "binding " << pts.size() << " targets ..." << endl;
+	//cout << "binding " << pts.size() << " targets ..." << endl;
 	// update q array and q2d array on host side
 	// they are stored in page-locked memory
-	int npts = pts.size();
-	for(int i=0;i<npts;i++) {
+	int numpts = pts.size();
+	for(int i=0;i<numpts;i++) {
 		int idx = i*3;
 		h_q2d[idx] = pts[i].x, h_q2d[idx+1] = pts[i].y, h_q2d[idx+2] = pts[i].z;
 		PhGUtils::colorToWorld(pts[i].x, pts[i].y, pts[i].z, h_q[idx], h_q[idx+1], h_q[idx+2]);
@@ -345,16 +414,16 @@ __host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Poi
 	// compute depth mean and variance
 	int validZcount = 0;
 	float mu_depth = 0, sigma_depth = 0;
-	for(int i=0;i<npts;i++) {
-		float z = pts[i].z;
+	for(int i=0;i<numpts;i++) {
+		float z = h_q[i*3+2];
 		if( z != 0 ){
 			mu_depth += z;
 			validZcount++;
 		}
 	}
 	mu_depth /= validZcount;
-	for(int i=0;i<npts;i++) {
-		float z = pts[i].z;
+	for(int i=0;i<numpts;i++) {
+		float z = h_q[i*3+2];
 		if( z != 0 ){
 			float dz = z - mu_depth;
 			sigma_depth += dz * dz;
@@ -366,7 +435,7 @@ __host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Poi
 	int validCount = 0;
 	meanX = 0; meanY = 0; meanZ = 0;
 	// initialize weights
-	for(int i=0, idx=0;i<npts;i++, idx+=3) {
+	for(int i=0, idx=0;i<numpts;i++, idx+=3) {
 		const float3& p = make_float3(h_q[idx], h_q[idx+1], h_q[idx+2]);
 		int isValid = (fabs(p.z) > DEPTH_THRES)?1:0;
 
@@ -378,29 +447,38 @@ __host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Poi
 		float w_depth = exp(-fabs(dz) / (sigma_depth*50.0));
 
 		// set the landmark weights
-		h_w_landmarks[idx] = h_w_landmarks[idx+1] = h_w_landmarks[idx+2] = (i<64 || i>74)?isValid*w_depth:isValid*w_boundary*w_depth;
+		h_w_landmarks[i] = (i<64 || i>74)?isValid*w_depth:isValid*w_boundary*w_depth;
 		validCount += isValid;
 	}
 
 	// upload to GPU
-	PhGUtils::message("uploading targets to GPU ...");
-	checkCudaErrors(cudaMemcpy(d_q2d, h_q2d, sizeof(float)*npts*3, cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_q, h_q, sizeof(float)*npts*3, cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_w_landmarks, h_w_landmarks, sizeof(float)*npts*3, cudaMemcpyHostToDevice));
-	PhGUtils::message("done.");
+	/*
+	//PhGUtils::message("uploading targets to GPU ...");
+	cudaMemcpy(d_q2d, h_q2d, sizeof(float)*numpts*3, cudaMemcpyHostToDevice);
+	checkCudaState();
+	//writeback(d_q2d, numpts, 3, "d_q2d.txt");
+	cudaMemcpy(d_q, h_q, sizeof(float)*numpts*3, cudaMemcpyHostToDevice);
+	checkCudaState();
+	//writeback(d_q, numpts, 3, "d_q.txt");
+	cudaMemcpy(d_w_landmarks, h_w_landmarks, sizeof(float)*numpts, cudaMemcpyHostToDevice);
+	checkCudaState();
+	//PhGUtils::message("done.");
+	*/
 }
 
 __host__ void MultilinearReconstructorGPU::bindRGBDTarget(const vector<unsigned char>& colordata,
 														  const vector<unsigned char>& depthdata) 
 {
-	PhGUtils::message("uploading image targets to GPU ...");
+	//PhGUtils::message("uploading image targets to GPU ...");
 
 	// update both color data and depth data
 	const int sz = sizeof(unsigned char)*640*480*4;
-	checkCudaErrors(cudaMemcpy(d_colordata, &(colordata[0]), sz, cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(d_depthdata, &(depthdata[0]), sz, cudaMemcpyHostToDevice));
+	cudaMemcpy(d_colordata, &(colordata[0]), sz, cudaMemcpyHostToDevice);
+	checkCudaState();
+	cudaMemcpy(d_depthdata, &(depthdata[0]), sz, cudaMemcpyHostToDevice);
+	checkCudaState();
 
-	PhGUtils::message("done.");
+	//PhGUtils::message("done.");
 }
 
 __host__ void MultilinearReconstructorGPU::setBaseMesh(const PhGUtils::QuadMesh& m) {
@@ -473,28 +551,29 @@ __host__ void MultilinearReconstructorGPU::fit(FittingOption op) {
 }
 
 __host__ void MultilinearReconstructorGPU::fitPose() {
-	cout << "fitting pose ..." << endl;
+	//cout << "fitting pose ..." << endl;
 	
 	// make rotation matrix and translation vector
-	cout << "initial guess ..." << endl;
-	PhGUtils::printArray(h_RTparams, 7);
+	//cout << "initial guess ..." << endl;
+	//PhGUtils::printArray(h_RTparams, 7);
 
+	cc = 1e-4;
 	float errorThreshold_ICP = 1e-5;
 	float errorDiffThreshold_ICP = errorThreshold * 1e-4;
 
 	int iters = 0;
 	float E0 = 0, E;
 	bool converged = false;
-	const int MaxIterations = 32;
+	const int MaxIterations = 64;
 
 	while( !converged && iters++<MaxIterations ) {
 		transformMesh();
 		updateMesh();
 		renderMesh();
-		int nicpc = collectICPConstraints(iters, MaxIterations);
+		nicpc = collectICPConstraints(iters, MaxIterations);
 		converged = fitRigidTransformation();
 		E = computeError();
-		PhGUtils::debug("iters", iters, "Error", E);
+		//PhGUtils::debug("iters", iters, "Error", E);
 
 		// adaptive threshold
 		converged |= E < (errorThreshold_ICP / (nicpc/5000.0));
@@ -595,123 +674,6 @@ __global__ void clearICPConstraints(int* nicpc) {
 	*nicpc = 0;
 }
 
-__device__ __forceinline__ float3 color2world(float u, float v, float d) {
-	// focal length
-	const float fx_rgb = 525.0, fy_rgb = 525.0;
-	// for 640x480 image
-	const float cx_rgb = 320.0, cy_rgb = 240.0;
-
-	// This part is correct now.
-	// Given a Kinect depth value, its depth in OpenGL coordinates
-	// system must be negative.
-	float depth = -d/1000.0;
-
-	float3 res;
-	// inverse mapping of projection
-	res.x = -(u - cx_rgb) * depth / fx_rgb;
-	res.y = (v - cy_rgb) * depth / fy_rgb;
-	res.z = depth;
-	return res;
-}
-
-__device__ __forceinline__ float3 world2color(float3 p) {
-	// focal length
-	const float fx_rgb = 525.0, fy_rgb = 525.0;
-	// for 640x480 image
-	const float cx_rgb = 320.0, cy_rgb = 240.0;
-
-	float invZ = 1.0 / p.z;
-	float3 uvd;
-	uvd.x = clamp(cx_rgb - p.x * fx_rgb * invZ, 0.f, 639.f);
-	uvd.y = clamp(cy_rgb + p.y * fy_rgb * invZ, 0.f, 479.f);
-	uvd.z = -p.z*1000.0f;
-	return uvd;
-}
-
-__device__ __forceinline__ int decodeIndex(unsigned char r, unsigned char g, unsigned char b) {
-	int ri = r, gi = g, bi = b;
-	return (ri << 16) | (gi << 8) | bi;
-}
-
-__device__ float point_to_triangle_distance(float3 p0, float3 p1, float3 p2, float3 p3, float3& hit) {
-	float dist = 0;
-
-	float3 d = p1 - p0;
-	float3 e12 = p2 - p1, e13 = p3 - p1, e21 = -e12, e23 = p3 - p2, e31 = -e13, e32 = -e23;
-	float3 e12n = normalize(e12), e13n = normalize(e13), e21n = -e12n, e23n = normalize(e23), e31n = -e13n, e32n = -e23n;
-
-	float3 n = normalize(cross(e12, e13));
-
-	float dDOTn = dot(d, n);
-	float dnorm = length(d);
-	float cosAlpha = dDOTn / dnorm;
-
-	float dn = dDOTn * cosAlpha;
-	float3 p0p0c = -dn * n;
-	float3 p0c = p0 + p0p0c;
-
-	float3 v1 = e21n + e31n, v2 = e12n + e32n, v3 = e13n + e23n;
-	float3 p0cp1 = p1 - p0c, p0cp2 = p2 - p0c, p0cp3 = p3 - p0c;
-
-	float3 c1 = cross(p0cp1, p0cp2), c2 = cross(p0cp2, p0cp3), c3 = cross(p0cp3, p0cp1);
-
-	float d1 = dot(c1, n);
-	float d2 = dot(c2, n);
-	float d3 = dot(c3, n);
-
-	float3 x0 = p0c, x1, x2;
-	bool inside = true;
-	if ( d1 < d2 && d1 < d3 && d1<0 )			//-- outside, p1, p2 side
-	{
-		inside = false;		
-		x1 = p1; x2 = p2;
-	}
-	else if ( d2 < d1 && d2 < d3 && d2<0 )	//-- outside, p2, p3 side
-	{
-		inside = false;
-		x1 = p2; x2 = p3;
-	}
-	else if ( d3 < d1 && d3 < d2 && d3<0 )	//-- outside, p3, p1 side
-	{
-		inside = false;
-		x1 = p3; x2 = p1;
-	}
-
-	if (inside)
-	{
-		hit = p0c;
-		dist = dn;
-	}
-	else
-	{
-		float3 x1x0 = x0 - x1, x2x0 = x0 - x1, x2x1 = x1 - x2;
-		float L_x2x0 = length(x2x0);
-		float t = dot(x1x0, x2x0) / (L_x2x0 * L_x2x0);
-
-		hit = x1 + t * x2x1;
-
-		float3 line = p0 - hit;
-		dist = length(line);
-	}
-
-	return dist;
-
-}
-
-__device__ float3 compute_barycentric_coordinates(float3 p, float3 q1, float3 q2, float3 q3) {
-	float3 e23 = q3 - q2, e21 = q1 - q2, e31 = q1 - q3;
-	float3 d2 = p - q2, d3 = p - q3;
-	float3 oriN = cross(e23, e21);
-	float3 n = normalize(oriN);
-
-	float invBTN = 1.0 / dot(oriN, n);
-	float3 bcoord;
-	bcoord.x = dot(cross(e23, d2), n) * invBTN;
-	bcoord.y = dot(cross(e31, d3), n) * invBTN;
-	bcoord.z = 1 - bcoord.x - bcoord.y;
-
-	return bcoord;
-}
 //@note	need to upload the topology of the template mesh for constraint collection
 __global__ void collectICPConstraints_kernel(
 						float*				mesh,
@@ -749,9 +711,9 @@ __global__ void collectICPConstraints_kernel(
 		float3 q = color2world(u, v, d);
 
 		// take a small window
-		const int wSize = 2;
-		int checkedFaces[(wSize+1)*(wSize+1)];
-		int checkedCount = 0;
+		const int wSize = 5;
+		//int checkedFaces[9];
+		//int checkedCount = 0;
 		float closestDist = FLT_MAX;
 		int3 closestVerts;
 		float3 closestHit;
@@ -759,28 +721,27 @@ __global__ void collectICPConstraints_kernel(
 		// check for the closest point face
 		for(int r = max(v - wSize, 0); r <= min(v + wSize, 479); r++) {
 			int rr = 479 - r;
-			for(int c = max(u - wSize, 0); c <= min(u + wSize, 479); c++) {
+			for(int c = max(u - wSize, 0); c <= min(u + wSize, 639); c++) {
 				int pidx = rr * 640 + c;
 				int poffset = pidx << 2;
 
 				float depthVal = depthMap[pidx];
 				if( depthVal < 1.0 ) {
 					int fidx = decodeIndex(indexMap[poffset], indexMap[poffset+1], indexMap[poffset+2]);
-
 					
-					bool checked = false;
-					// see if this face is already checked
-					for(int j=0;j<checkedCount;j++) {
-						if( fidx == checkedFaces[j] ){
-							checked = true;
-							break;
-						}
-					}
-					if( checked ) continue;
-					else {
-						checkedFaces[checkedCount] = fidx;
-						checkedCount++;
-					}
+					//bool checked = false;
+					//// see if this face is already checked
+					//for(int j=0;j<checkedCount;j++) {
+					//	if( fidx == checkedFaces[j] ){
+					//		checked = true;
+					//		break;
+					//	}
+					//}
+					//if( checked ) continue;
+					//else {
+					//	checkedFaces[checkedCount] = fidx;
+					//	checkedCount++;
+					//}
 
 
 					// not checked yet, check out this face
@@ -832,16 +793,16 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 	const float DIST_THRES_MAX = 0.010;
 	const float DIST_THRES_MIN = 0.001;
 	float DIST_THRES = DIST_THRES_MAX + (DIST_THRES_MIN - DIST_THRES_MAX) * iters / (float)maxIters;
-	PhGUtils::message("Collecting ICP constraints...");
+	//PhGUtils::message("Collecting ICP constraints...");
 	
-	writeback(d_depthMap, 480, 640, "d_depthmap.txt");
+	//writeback(d_depthMap, 480, 640, "d_depthmap.txt");
 
 	clearICPConstraints<<<1, 1, 0, mystream>>>(d_nicpc);
 	checkCudaState();
 	PhGUtils::Timer ticpc;
-	ticpc.tic();
+	//ticpc.tic();
 	dim3 block(16, 16, 1);
-	dim3 grid(640/16, 480/16, 1);
+	dim3 grid(640/block.x, 480/block.y, 1);
 	collectICPConstraints_kernel<<<grid, block, 0, mystream>>>( d_mesh,
 																d_meshtopo,
 																d_indexMap,
@@ -853,13 +814,14 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 																DIST_THRES);
 
 	cudaThreadSynchronize();
-	ticpc.toc("ICPC collection");
+	//ticpc.toc("ICPC collection");
 	checkCudaState();
-	PhGUtils::message("ICPC computed.");
+	//PhGUtils::message("ICPC computed.");
 	// copy back the number of ICP constraints
 	int icpcCount = 0;
-	checkCudaErrors(cudaMemcpy(&icpcCount, d_nicpc, sizeof(int), cudaMemcpyDeviceToHost));
-	cout << "ICPC = " << icpcCount << endl;
+	cudaMemcpy(&icpcCount, d_nicpc, sizeof(int), cudaMemcpyDeviceToHost);
+	checkCudaState();
+	//cout << "ICPC = " << icpcCount << endl;
 	
 #if OUTPUT_ICPC
 	vector<d_ICPConstraint> icpc(640*480);
@@ -885,286 +847,134 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 	fout.close();
 #endif
 
+	// update scaling factor
+	w_fp_scale = icpcCount / 1000.0;
+
 	return icpcCount;
 }
 
-// use one dimensional configuration
-__global__ void cost_ICP(float *unknowns, float *costfunc, int offset,
-							 d_ICPConstraint* d_icpc, int nicpc,
-							 float *d_tplt,
-							 float w_ICP
-							 ) 
-{
+__host__ bool MultilinearReconstructorGPU::fitRigidTransformation() {
+	cudaMemcpy(NumericalAlgorithms::x, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToDevice);
+	checkCudaState();
+	int itmax = 128;
+	float opts[] = {0.125, 1e-3, 1e-4};
+	// gauss-newton algorithm to estimate a new set of parameters
+	int iters = NumericalAlgorithms::GaussNewton(
+		7, nfpts+nicpc, itmax, opts,
+		d_fptsIdx, d_q, d_q2d, nfpts, d_w_landmarks, d_w_mask, w_fp_scale,
+		d_icpc, nicpc, w_ICP,
+		d_tplt,
+		mystream
+		);
+	cudaThreadSynchronize();
+	//PhGUtils::message("rigid transformation estimated in " + PhGUtils::toString(iters) + " iterations.");
+	// update the parameters and check if convergence is obtained
+	cudaMemcpy(d_RTparams, NumericalAlgorithms::x, sizeof(float)*7, cudaMemcpyDeviceToDevice);
+	checkCudaState();
+	vector<float> RTparams(7);
+	cudaMemcpy(&(RTparams[0]), NumericalAlgorithms::x, sizeof(float)*7, cudaMemcpyDeviceToHost);
+	checkCudaState();
+
+	//PhGUtils::message("gauss-newton returned.");
+	float diff = 0;
+	for(int i=0;i<7;i++) {
+		diff += fabs(RTparams[i] - h_RTparams[i]);
+		h_RTparams[i] = RTparams[i];
+		//cout << RTparams[i] << ' ';
+	}
+	//cout << endl;
+
+	return diff/7<cc || iters == 0;
+}
+
+__global__ void computeError_ICP(float *params, float *d_error, float *d_w_error, int offset, 
+								 d_ICPConstraint *d_icpc, int nicpc, float w_ICP, float *d_tplt) {
+
 	int tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if( tid >= nicpc ) return;
 
 	float s, rx, ry, rz, tx, ty, tz;
-	rx = unknowns[0], ry = unknowns[1], rz = unknowns[2];
-	tx = unknowns[3], ty = unknowns[4], tz = unknowns[5];
-	s = unknowns[6];
+	rx = params[0], ry = params[1], rz = params[2];
+	tx = params[3], ty = params[4], tz = params[5];
+	s = params[6];
 
 	mat3 R = mat3::rotation(rx, ry, rz) * s;
 	float3 T = make_float3(tx, ty, tz);
 
-	d_ICPConstraint icpc = d_icpc[tid];
-	const int3& v = icpc.v;
-	const float3& bc = icpc.bcoords;
+	int3 v = d_icpc[tid].v;
+	float3 bc = d_icpc[tid].bcoords;
 
-	int3 vidx = icpc.v*3;
+	int3 vidx = v * 3;
 
 	float3 v0 = make_float3(d_tplt[vidx.x], d_tplt[vidx.x+1], d_tplt[vidx.x+2]);
 	float3 v1 = make_float3(d_tplt[vidx.y], d_tplt[vidx.y+1], d_tplt[vidx.y+2]);
 	float3 v2 = make_float3(d_tplt[vidx.z], d_tplt[vidx.z+1], d_tplt[vidx.z+2]);
-
-	const float3& q = icpc.q;
-
 	float3 p = v0 * bc.x + v1 * bc.y + v2 * bc.z;
+
+	const float3& q = d_icpc[tid].q;
+
+	// p = R * p + T
 	p = R * p + T;
 
-	costfunc[tid+offset] = length(p - q) * w_ICP;
+	d_w_error[tid+offset] = w_ICP;
+	d_error[tid+offset] = dot(p-q, p-q) * w_ICP;
 }
 
-__global__ void jacobian_ICP(float *unknowns, float *J, int offset,
-							 d_ICPConstraint* d_icpc, int nicpc,
-							 float *d_tplt,
-							 float w_ICP) 
-{
-	int tid = blockIdx.x * blockDim.x + threadIdx.x;
-	if( tid >= nicpc ) return;
+__global__ void computeError_FeaturePoints(float *params, float *d_error, float *d_w_error, int offset,
+		int *d_fptsIdx, float *d_q, float *d_q2d, int nfpts,
+		float *d_tplt,
+		float *d_w_landmarks, float *d_w_mask,
+		float w_fp_scale) 
+	{
+		int tid = blockIdx.x * blockDim.x + threadIdx.x;
+		if( tid >= nfpts ) return;
 
-	float s, rx, ry, rz, tx, ty, tz;
-	rx = unknowns[0], ry = unknowns[1], rz = unknowns[2];
-	tx = unknowns[3], ty = unknowns[4], tz = unknowns[5];
-	s = unknowns[6];
+		float s, rx, ry, rz, tx, ty, tz;
+		rx = params[0], ry = params[1], rz = params[2];
+		tx = params[3], ty = params[4], tz = params[5];
+		s = params[6];
 
-	mat3 R = mat3::rotation(rx, ry, rz) * s;
-	float3 T = make_float3(tx, ty, tz);
-	mat3 Jx, Jy, Jz;
-	mat3::jacobian(rx, ry, rz, Jx, Jy, Jz);
+		mat3 R = mat3::rotation(rx, ry, rz) * s;
+		float3 T = make_float3(tx, ty, tz);
 
-	d_ICPConstraint icpc = d_icpc[tid];
-	const int3& v = icpc.v;
-	const float3& bc = icpc.bcoords;
+		int voffset = tid * 3;
+		float wpt = d_w_landmarks[tid] * w_fp_scale * d_w_mask[tid];
 
-	int3 vidx = icpc.v*3;
-
-	float3 v0 = make_float3(d_tplt[vidx.x], d_tplt[vidx.x+1], d_tplt[vidx.x+2]);
-	float3 v1 = make_float3(d_tplt[vidx.y], d_tplt[vidx.y+1], d_tplt[vidx.y+2]);
-	float3 v2 = make_float3(d_tplt[vidx.z], d_tplt[vidx.z+1], d_tplt[vidx.z+2]);
-
-	const float3& q = icpc.q;
-
-	float3 p = v0 * bc.x + v1 * bc.y + v2 * bc.z;
-
-	int jidx = tid*7+offset;
-
-	// R * p
-	float3 rp = R * p;
-
-	// s * R * p + t - q
-	float3 rk = s * rp + T - q;
-
-	float3 jp = Jx * p;
-	// \frac{\partial r_i}{\partial \theta_x}
-	J[jidx++] = 2.0 * s * dot(jp, rk) * w_ICP;	
-
-	jp = Jy * p;
-	// \frac{\partial r_i}{\partial \theta_y}
-	J[jidx++] = 2.0 * s * dot(jp, rk) * w_ICP;
-
-	jp = Jz * p;
-	// \frac{\partial r_i}{\partial \theta_z}
-	J[jidx++] = 2.0 * s * dot(jp, rk) * w_ICP;
-
-	// \frac{\partial r_i}{\partial \t_x}
-	J[jidx++] = 2.0 * rk.x * w_ICP;
-
-	// \frac{\partial r_i}{\partial \t_y}
-	J[jidx++] = 2.0 * rk.y * w_ICP;
-
-	// \frac{\partial r_i}{\partial \t_z}
-	J[jidx++] = 2.0 * rk.z * w_ICP;
-
-	// \frac{\partial r_i}{\partial s}
-	J[jidx++] = 2.0 * dot(rp, rk) * w_ICP;
-}
-
-// use one dimensional configuration
-/* @note	d_w_mask is		1.0				if i<42 || i > 74
-							w_outer * w_fp	if 63 < i <= 74
-							w_chin * w_fp	if 42 <= i <= 63
-*/
-__global__ void cost_FeaturePoints(float *unknowns, float *costfunc, int offset,
-								   int *d_fptsIdx, float *d_q, float *d_q2d, int nfpts,
-								   float *d_tplt,
-								   float *d_w_landmarks, float *d_w_mask,
-								   float w_fp_scale) 
-{
-	int tid = blockIdx.x * blockDim.x + threadIdx.x;
-	if( tid >= nfpts ) return;
-
-	float s, rx, ry, rz, tx, ty, tz;
-	rx = unknowns[0], ry = unknowns[1], rz = unknowns[2];
-	tx = unknowns[3], ty = unknowns[4], tz = unknowns[5];
-	s = unknowns[6];
-
-	mat3 R = mat3::rotation(rx, ry, rz) * s;
-	float3 T = make_float3(tx, ty, tz);
-
-	int voffset = tid * 3;
-	float wpt = d_w_landmarks[tid] * w_fp_scale * d_w_mask[tid];
-
-	int vidx = d_fptsIdx[tid] * 3;
-	float3 p = make_float3(d_tplt[vidx], d_tplt[vidx+1], d_tplt[vidx+2]);
+		int vidx = d_fptsIdx[tid] * 3;
+		float3 p = make_float3(d_tplt[vidx], d_tplt[vidx+1], d_tplt[vidx+2]);
 
 
-	if( tid < 42 || tid > 74 ) {
-		float3 q = make_float3(d_q[voffset], d_q[voffset+1], d_q[voffset+2]);
-		costfunc[tid+offset] = length(p-q)*wpt;
+		if( tid < 42 || tid > 74 ) {
+			float3 q = make_float3(d_q[voffset], d_q[voffset+1], d_q[voffset+2]);
+			d_error[tid+offset] = dot(p-q, p-q)*wpt;
+			d_w_error[tid+offset] = wpt;
+		}
+		else {
+			float3 q = make_float3(d_q2d[voffset], d_q2d[voffset+1], d_q2d[voffset+2]);
+			float3 uvd = world2color(p);
+			float du = uvd.x - q.x, dv = uvd.y - q.y;
+			d_error[tid+offset] = (du*du+dv*dv)*wpt;
+			d_w_error[tid+offset] = wpt;
+		}
 	}
-	else {
-		float3 q = make_float3(d_q2d[voffset], d_q2d[voffset+1], d_q2d[voffset+2]);
-		float3 uvd = world2color(p);
-		float du = uvd.x - q.x, dv = uvd.y - q.y;
-		costfunc[tid+offset] = (du*du+dv*dv)*wpt;
-	}
-}
-
-__global__ void jacobian_FeaturePoints(float *unknowns, float *J, int offset,
-								   int *d_fptsIdx, float *d_q, float *d_q2d, int nfpts,
-								   float *d_tplt,
-								   float *d_w_landmarks, float *d_w_mask,
-								   float w_fp_scale) 
-{
-	int tid = blockIdx.x * blockDim.x + threadIdx.x;
-	if( tid >= nfpts ) return;
-
-	float s, rx, ry, rz, tx, ty, tz;
-	rx = unknowns[0], ry = unknowns[1], rz = unknowns[2];
-	tx = unknowns[3], ty = unknowns[4], tz = unknowns[5];
-	s = unknowns[6];
-
-	mat3 R = mat3::rotation(rx, ry, rz) * s;
-	float3 T = make_float3(tx, ty, tz);
-	mat3 Jx, Jy, Jz;
-	mat3::jacobian(rx, ry, rz, Jx, Jy, Jz);
-
-	int voffset = tid * 3;
-	float wpt = d_w_landmarks[tid] * w_fp_scale * d_w_mask[tid];
-
-	int vidx = d_fptsIdx[tid] * 3;
-	int jidx = tid*7+offset;
-	float3 p = make_float3(d_tplt[vidx], d_tplt[vidx+1], d_tplt[vidx+2]);
-
-	if( tid < 42 || tid > 74 ) {
-		float3 q = make_float3(d_q[voffset], d_q[voffset+1], d_q[voffset+2]);
-
-		// R * p
-		float3 rp = R * p;
-
-		// s * R * p + t - q
-		float3 rk = s * rp + T - q;
-
-		float3 jp = Jx * p;
-		// \frac{\partial r_i}{\partial \theta_x}
-		J[jidx++] = 2.0 * s * dot(jp, rk) * wpt;	
-
-		jp = Jy * p;
-		// \frac{\partial r_i}{\partial \theta_y}
-		J[jidx++] = 2.0 * s * dot(jp, rk) * wpt;
-
-		jp = Jz * p;
-		// \frac{\partial r_i}{\partial \theta_z}
-		J[jidx++] = 2.0 * s * dot(jp, rk) * wpt;
-
-		// \frac{\partial r_i}{\partial \t_x}
-		J[jidx++] = 2.0 * rk.x * wpt;
-
-		// \frac{\partial r_i}{\partial \t_y}
-		J[jidx++] = 2.0 * rk.y * wpt;
-
-		// \frac{\partial r_i}{\partial \t_z}
-		J[jidx++] = 2.0 * rk.z * wpt;
-
-		// \frac{\partial r_i}{\partial s}
-		J[jidx++] = 2.0 * dot(rp, rk) * wpt;
-	}
-	else {
-		float3 q = make_float3(d_q2d[voffset], d_q2d[voffset+1], d_q2d[voffset+2]);
-
-		float3 rp = R * p;
-		float3 pk = s * rp + T;
-
-		float inv_z = 1.0 / pk.z;
-		float inv_z2 = inv_z * inv_z;
-
-		const float f_x = 525.0, f_y = 525.0;
-		float Jf[6] = {0};
-		Jf[0] = -f_x * inv_z; Jf[2] = f_x * pk.x * inv_z2;
-		Jf[4] = f_y * inv_z; Jf[5] = -f_y * pk.y * inv_z2;
-
-		float3 uvd = world2color(pk);
-		float pu = uvd.x, pv = uvd.y, pd = uvd.z;
-
-		// residue
-		float rkx = pu - q.x, rky = pv - q.y;
-
-		// J_? * p_k
-		float3 jp = Jx * p;
-		// J_f * J_? * p_k
-		float jfjpx, jfjpy;
-		
-		jfjpx = Jf[0] * jp.x + Jf[2] * jp.z;
-		jfjpy = Jf[4] * jp.y + Jf[5] * jp.z;
-		// \frac{\partial r_i}{\partial \theta_x}
-		J[jidx++] = 2.0 * s * (jfjpx * rkx + jfjpy * rky) * wpt;
-
-		jp = Jy * p;
-		jfjpx = Jf[0] * jp.x + Jf[2] * jp.z;
-		jfjpy = Jf[4] * jp.y + Jf[5] * jp.z;
-		// \frac{\partial r_i}{\partial \theta_y}
-		J[jidx++] = 2.0 * s * (jfjpx * rkx + jfjpy * rky) * wpt;
-
-		jp = Jz * p;
-		jfjpx = Jf[0] * jp.x + Jf[2] * jp.z;
-		jfjpy = Jf[4] * jp.y + Jf[5] * jp.z;
-		// \frac{\partial r_i}{\partial \theta_z}
-		J[jidx++] = 2.0 * s * (jfjpx * rkx + jfjpy * rky) * wpt;
-
-		// \frac{\partial r_i}{\partial \t_x}
-		J[jidx++] = 2.0 * (Jf[0] * rkx) * wpt;
-
-		// \frac{\partial r_i}{\partial \t_y}
-		J[jidx++] = 2.0 * (Jf[4] * rky) * wpt;
-
-		// \frac{\partial r_i}{\partial \t_z}
-		J[jidx++] = 2.0 * (Jf[2] * rkx + Jf[5] * rky) * wpt;
-
-		// \frac{\partial r_i}{\partial s}
-		jfjpx = Jf[0] * rp.x + Jf[2] * rp.z;
-		jfjpy = Jf[4] * rp.y + Jf[5] * rp.z;
-		J[jidx++] = 2.0 * (jfjpx * rkx + jfjpy * rky) * wpt;
-	}
-}
-
-__global__ void cost_History() {
-}
-
-__global__ void jacobian_History() {
-}
-
-__host__ bool MultilinearReconstructorGPU::fitRigidTransformation() {
-	// gauss-newton algorithm to estimate a new set of parameters
-	int iters = GaussNewton();
-	// update the parameters and check if convergence is obtained
-	return true;
-}
-
-__global__ void computeError_kernel() {
-}
 
 __host__ float MultilinearReconstructorGPU::computeError() {
-	return true;
+	checkCudaState();
+	//cout << d_error << endl;
+	//cout << d_w_error << endl;
+	computeError_ICP<<<dim3((int)(ceil(nicpc/256.0)), 1, 1), dim3(256, 1, 1), 0, mystream>>>(d_RTparams, d_error, d_w_error, 0, d_icpc, nicpc, w_ICP, d_tplt);
+	checkCudaState();
+	computeError_FeaturePoints<<<dim3(1, 1, 1), dim3(nfpts, 1, 1), 0, mystream>>>(d_RTparams, d_error, d_w_error, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+	checkCudaState();
+
+	cudaMemcpy(h_error, d_error, sizeof(float)*(nicpc+nfpts), cudaMemcpyDeviceToHost);
+	checkCudaState();
+	cudaMemcpy(h_w_error, d_w_error, sizeof(float)*(nicpc+nfpts), cudaMemcpyDeviceToHost);
+	checkCudaState();
+	float E = 0, Wsum = 0;
+	for(int i=0;i<nfpts+nicpc;++i) { E += h_error[i]; Wsum += h_w_error[i]; }
+
+	return E / Wsum;
 }
 
 // one dimensional configuration
@@ -1180,9 +990,9 @@ __global__ void setupRigidTransformation(float r00, float r01, float r02,
 	R2 = make_float3(r20, r21, r22);
 	 T = make_float3( t0,  t1,  t2);
 
-	printf("%f, %f, %f\n", R0.x, R0.y, R0.z);
-	printf("%f, %f, %f\n", R1.x, R1.y, R1.z);
-	printf("%f, %f, %f\n", R2.x, R2.y, R2.z);
+	//printf("%f, %f, %f\n", R0.x, R0.y, R0.z);
+	//printf("%f, %f, %f\n", R1.x, R1.y, R1.z);
+	//printf("%f, %f, %f\n", R2.x, R2.y, R2.z);
 }
 
 __global__ void transformMesh_kernel(int nverts, float *d_tplt, float *d_mesh) 
@@ -1201,9 +1011,9 @@ __global__ void transformMesh_kernel(int nverts, float *d_tplt, float *d_mesh)
 
 __host__ void MultilinearReconstructorGPU::transformMesh() {
 	PhGUtils::Matrix3x3f Rot = PhGUtils::rotationMatrix(h_RTparams[0], h_RTparams[1], h_RTparams[2]) * h_RTparams[6];
-	cout << Rot << endl;
+	//cout << Rot << endl;
 	float3 Tvec = make_float3(h_RTparams[3], h_RTparams[4], h_RTparams[5]);
-	cout << Tvec << endl;
+	//cout << Tvec << endl;
 	int npts = ndims_pts/3;
 	
 	checkCudaState();
@@ -1212,10 +1022,10 @@ __host__ void MultilinearReconstructorGPU::transformMesh() {
 									   Rot(2, 0), Rot(2, 1), Rot(2, 2),	   Tvec.x,    Tvec.y,    Tvec.z);
 	checkCudaState();
 
-	cout << "npts = " << npts << endl;
+	//cout << "npts = " << npts << endl;
 	dim3 block(256, 1);
 	dim3 grid((int)ceil(npts/(float)(block.x)), 1, 1);
-	cout << "grid: " << grid.x << "x" << grid.y << endl;
+	//cout << "grid: " << grid.x << "x" << grid.y << endl;
 	transformMesh_kernel<<<grid, block, 0, mystream>>>(npts, d_tplt, d_mesh);
 	
 	checkCudaState();
@@ -1223,15 +1033,14 @@ __host__ void MultilinearReconstructorGPU::transformMesh() {
 
 __host__ void MultilinearReconstructorGPU::updateMesh()
 {
-	cout << "mesh size = " << tmesh.length() << endl;
-	cout << "device mesh address = " << d_mesh << endl;
-	cout << "bytes to transfer = " << sizeof(float)*ndims_pts << endl;
-	checkCudaErrors(cudaMemcpy(tmesh.rawptr(), d_mesh, sizeof(float)*ndims_pts, cudaMemcpyDeviceToHost));
-	cudaError_t err = cudaDeviceSynchronize();
-	checkCudaErrors(err);
+	//cout << "mesh size = " << tmesh.length() << endl;
+	//cout << "device mesh address = " << d_mesh << endl;
+	//cout << "bytes to transfer = " << sizeof(float)*ndims_pts << endl;
+	cudaMemcpy(tmesh.rawptr(), d_mesh, sizeof(float)*ndims_pts, cudaMemcpyDeviceToHost);
+	checkCudaState();
 
-	writeback(d_mesh, ndims_pts/3, 3, "d_mesh.txt");
-	writeback(d_tplt, ndims_pts/3, 3, "d_tplt.txt");
+	//writeback(d_mesh, ndims_pts/3, 3, "d_mesh.txt");
+	//writeback(d_tplt, ndims_pts/3, 3, "d_tplt.txt");
 
 	//#pragma omp parallel for
 	for(int i=0;i<tmesh.length()/3;i++) {
@@ -1241,7 +1050,7 @@ __host__ void MultilinearReconstructorGPU::updateMesh()
 		baseMesh.vertex(i).z = tmesh(idx);
 	}
 
-#if 1
+#if 0
 	PhGUtils::OBJWriter writer;
 	writer.save(baseMesh, "../Data/tmesh.obj");
 #endif
