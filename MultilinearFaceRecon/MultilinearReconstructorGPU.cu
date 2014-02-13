@@ -167,6 +167,7 @@ __host__ void MultilinearReconstructorGPU::init() {
 	int totalSize = core_dim[0] * core_dim[1] * core_dim[2];
 
 	tmesh.resize(core_dim[2]);
+	npts_mesh = core_dim[2]/3;
 
 	// unfold it
 	Tensor2<float> tu0 = core.unfold(0), tu1 = core.unfold(1);
@@ -534,12 +535,12 @@ __host__ void MultilinearReconstructorGPU::fit(FittingOption op) {
 		}
 	case FIT_POSE_AND_IDENTITY:
 		{
-
+			fitPoseAndIdentity();
 			break;
 		}
 	case FIT_POSE_AND_EXPRESSION:
 		{
-
+			fitPoseAndExpression();
 			break;
 		}
 	case FIT_ALL:
@@ -586,13 +587,272 @@ __host__ void MultilinearReconstructorGPU::fitPose() {
 	updateMesh();
 }
 
+__global__ void transformTM0_kernel(float *d_tm0RT, mat3 R, int npts, int ndims) {
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if( tid >= npts ) return;
+
+	int stride = npts * 3;
+	int offset  = tid * 3;
+	for(int i=0;i<ndims;++i,offset+=stride) {
+		transform_point(R, d_tm0RT[offset], d_tm0RT[offset+1], d_tm0RT[offset+2]);
+	}
+}
+
+__host__ void MultilinearReconstructorGPU::transformTM0() {
+	cudaMemcpy(d_tm0RT, d_tm0, sizeof(float)*ndims_pts*ndims_wexp, cudaMemcpyDeviceToDevice);
+	checkCudaState();
+	// call the transformation kernel
+	const int threads = 1024;
+	mat3 R = mat3::rotation(h_RTparams[0], h_RTparams[1], h_RTparams[2]);
+	transformTM0_kernel<<<(int)(ceil(npts_mesh/(float)threads)), threads>>>(d_tm0RT, R, npts_mesh, ndims_wexp);
+	checkCudaState();
+}
+
+__global__ void transformTM1_kernel(float *d_tm1RT, mat3 R, int npts, int ndims) {
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if( tid >= npts ) return;
+	int offset  = tid * 3 * ndims;
+	for(int i=0;i<ndims;++i,offset+=3) {
+		transform_point(R, d_tm1RT[offset], d_tm1RT[offset+1], d_tm1RT[offset+2]);
+	}
+}
+
+__host__ void MultilinearReconstructorGPU::transformTM1() {
+	cudaMemcpy(d_tm1RT, d_tm1, sizeof(float)*ndims_pts*ndims_wid, cudaMemcpyDeviceToDevice);
+	checkCudaState();
+	// call the transformation kernel
+	const int threads = 1024;
+	mat3 R = mat3::rotation(h_RTparams[0], h_RTparams[1], h_RTparams[2]);
+	transformTM1_kernel<<<(int)(ceil(npts_mesh/(float)threads)), threads>>>(d_tm1RT, R, npts_mesh, ndims_wid);
+	checkCudaState();
+	//writeback(d_tm1RT, npts_mesh*3, ndims_wid, "d_tm1RT.txt");
+	checkCudaState();
+}
+
+__global__ void fitIdentity_ICPCTerm(d_ICPConstraint *d_icpc, int nicpc, int ndims, int off, int boff,
+									 float *d_tm1RT, float *d_A, float *d_b,
+									 float3 T, float w_ICP) {
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if( tid >= nicpc ) return;
+
+	const d_ICPConstraint& icpc = d_icpc[tid];
+	const float3& bc = icpc.bcoords;
+	int3 vidx = icpc.v * 3;
+
+	int offset = tid * 3 * ndims + off;
+	int boffset = tid * 3 + boff;
+	for(int i=0;i<ndims;++i) {
+		int j = offset+i;
+		float3 v0 = make_float3(d_tm1RT[j], d_tm1RT[j+1], d_tm1RT[j+2]);
+		j += ndims;
+		float3 v1 = make_float3(d_tm1RT[j], d_tm1RT[j+1], d_tm1RT[j+2]);
+		j += ndims;
+		float3 v2 = make_float3(d_tm1RT[j], d_tm1RT[j+1], d_tm1RT[j+2]);
+		float3 p = (v0 * bc.x + v1 * bc.y + v2 * bc.z) * w_ICP;
+		d_A[j] = p.x;
+		d_A[j+ndims] = p.y;
+		d_A[j+ndims*2] = p.z;
+	}
+
+	const float3& q = icpc.q;
+
+	d_b[boffset  ] = (q.x - T.x) * w_ICP;
+	d_b[boffset+1] = (q.y - T.y) * w_ICP;
+	d_b[boffset+2] = (q.z - T.z) * w_ICP;
+}
+
+__global__ void fitIdentity_FeaturePointsTerm(int *d_fptsIdx, float *d_q, int nfpts, int ndims, int off, int boff,
+											  float *d_tm1RT, float *d_A, float *d_b,											  
+											  float3 T, float *d_w_landmarks, float w_fp_scale) {
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if( tid >= nfpts ) return;
+
+	int offset = tid * 3 * ndims + off;
+	float wpt = d_w_landmarks[tid] * w_fp_scale;
+	int voffset = d_fptsIdx[tid] * 3 * ndims;
+
+	for(int i=0;i<ndims;++i) {
+		int j = offset+i;
+		int k = voffset+i;
+		float3 p = make_float3(d_tm1RT[k], d_tm1RT[k+1], d_tm1RT[k+2]);	
+		d_A[j] = p.x * wpt;
+		d_A[j+ndims] = p.y * wpt;
+		d_A[j+ndims*2] = p.z * wpt;
+	}
+
+	int boffset = tid * 3 + boff;
+	int qoffset = tid * 3;
+	d_b[boffset  ] = (d_q[qoffset  ] - T.x) * wpt;
+	d_b[boffset+1] = (d_q[qoffset+1] - T.y) * wpt;
+	d_b[boffset+2] = (d_q[qoffset+2] - T.z) * wpt;
+}
+
+__global__ void fitIdentity_PriorTerm(float *d_A, float *d_b, float *d_sigma_wid_weighted, float *d_mu_wid_weighted,
+									  int ndims, int off, int boff, 
+									  float w_prior_scale) {
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if( tid >= ndims ) return;
+
+	int poffset = tid*ndims;
+	int offset = poffset+off;	
+	for(int i=0;i<ndims;i++) {		
+		d_A[offset++] = d_sigma_wid_weighted[poffset++] * w_prior_scale;
+	}
+
+	d_b[tid+boff] = d_mu_wid_weighted[tid] * w_prior_scale;
+}
+
+__host__ bool MultilinearReconstructorGPU::fitIdentityWeights() {
+	float3 T = make_float3(h_RTparams[3], h_RTparams[4], h_RTparams[5]);
+	const int threads = 1024;
+	checkCudaState();
+	// assemble the matrix and right hand side
+	fitIdentity_ICPCTerm<<<(int)(ceil(nicpc/(float)threads)),threads>>>(d_icpc, nicpc, ndims_wid, 0, 0,
+									 d_tm1RT, d_A, d_b,
+									 T, w_ICP);
+	checkCudaState();
+	//cout << nicpc << ", " << ndims_wid << endl;
+	//writeback(d_A, nicpc*3, ndims_wid, "d_A0.txt");
+	checkCudaState();
+	fitIdentity_FeaturePointsTerm<<<1, 128>>>(d_fptsIdx, d_q, nfpts, ndims_wid, nicpc*ndims_wid*3, nicpc*3,
+											  d_tm1RT, d_A, d_b,											  
+											  T, d_w_landmarks, w_fp_scale);
+	checkCudaState();
+	//writeback(d_A, (nicpc+nfpts)*3, ndims_wid, "d_A1.txt");
+	checkCudaState();
+	fitIdentity_PriorTerm<<<1, 64>>>(d_A, d_b, d_sigma_wid, d_mu_wid_weighted,
+									  ndims_wid, (nicpc+nfpts)*ndims_wid*3, (nicpc+nfpts)*3, 
+									  w_fp_scale*0.5);
+	checkCudaState();
+	//writeback(d_A, (nicpc+nfpts)*3+ndims_wid, ndims_wid, "d_A2.txt");
+	checkCudaState();
+
+	// solve for new set of parameters
+	culaDeviceSgels('T', (nicpc+nfpts)*ndims_wid*3+ndims_wid, ndims_wid, 1, d_A, ndims_wid, d_b, (nicpc+nfpts)*ndims_wid*3+ndims_wid);
+	checkCudaState();
+
+	vector<float> Wid(ndims_wid), brhs(ndims_wid);
+	cudaMemcpy(&Wid[0], d_Wid, sizeof(float)*ndims_wid, cudaMemcpyDeviceToHost);
+	checkCudaState();
+	cudaMemcpy(&brhs[0], d_b, sizeof(float)*ndims_wid, cudaMemcpyDeviceToHost);
+	checkCudaState();
+
+	float diff = 0;
+	//b.print("b");
+	for(int i=0;i<ndims_wid;i++) {
+		diff += fabs(Wid[i] - brhs[i]);
+	}
+
+	return diff/ndims_wid < cc;
+}
+
 __host__ void MultilinearReconstructorGPU::fitPoseAndIdentity() {
+	cc = 1e-4;
+	float errorThreshold_ICP = 1e-5;
+	float errorDiffThreshold_ICP = errorThreshold * 1e-4;
+
+	int iters = 0;
+	float E0 = 0, E;
+	bool converged = false;
+	const int MaxIterations = 64;
+
+	while( !converged && iters++<MaxIterations ) {
+		transformMesh();
+		updateMesh();
+		renderMesh();
+		nicpc = collectICPConstraints(iters, MaxIterations);
+		converged = fitRigidTransformation();
+
+		// transform tm1
+		transformTM1();
+
+		// fit identity weights
+		converged &= fitIdentityWeights();
+
+		// update tplt with tm1
+		cublasSgemv('T', ndims_wid, ndims_pts, 1.0, d_tm1, ndims_wid, d_Wid, 1, 0.0, d_tplt, 1);
+
+		E = computeError();
+		//PhGUtils::debug("iters", iters, "Error", E);
+
+		// adaptive threshold
+		converged |= E < (errorThreshold_ICP / (nicpc/5000.0));
+		converged |= fabs(E - E0) < errorDiffThreshold_ICP;
+		E0 = E;
+	}
+
+	// use the latest parameters
+	transformMesh();
+	updateMesh();
 }
 
 __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
+	throw "Not implemented yet";
+
+	cc = 1e-4;
+	float errorThreshold_ICP = 1e-5;
+	float errorDiffThreshold_ICP = errorThreshold * 1e-4;
+
+	int iters = 0;
+	float E0 = 0, E;
+	bool converged = false;
+	const int MaxIterations = 64;
+
+	while( !converged && iters++<MaxIterations ) {
+		transformMesh();
+		updateMesh();
+		renderMesh();
+		nicpc = collectICPConstraints(iters, MaxIterations);
+		converged = fitRigidTransformation();
+		E = computeError();
+		//PhGUtils::debug("iters", iters, "Error", E);
+
+		// transform tm0
+
+		// fit expression weights
+
+		// update tplt with tm0
+
+		// adaptive threshold
+		converged |= E < (errorThreshold_ICP / (nicpc/5000.0));
+		converged |= fabs(E - E0) < errorDiffThreshold_ICP;
+		E0 = E;
+	}
+
+	// use the latest parameters
+	transformMesh();
+	updateMesh();
 }
 
 __host__ void MultilinearReconstructorGPU::fitAll() {
+	throw "Not implemented yet";
+	cc = 1e-4;
+	float errorThreshold_ICP = 1e-5;
+	float errorDiffThreshold_ICP = errorThreshold * 1e-4;
+
+	int iters = 0;
+	float E0 = 0, E;
+	bool converged = false;
+	const int MaxIterations = 64;
+
+	while( !converged && iters++<MaxIterations ) {
+		transformMesh();
+		updateMesh();
+		renderMesh();
+		nicpc = collectICPConstraints(iters, MaxIterations);
+		converged = fitRigidTransformation();
+		E = computeError();
+		//PhGUtils::debug("iters", iters, "Error", E);
+
+		// adaptive threshold
+		converged |= E < (errorThreshold_ICP / (nicpc/5000.0));
+		converged |= fabs(E - E0) < errorDiffThreshold_ICP;
+		E0 = E;
+	}
+
+	// use the latest parameters
+	transformMesh();
+	updateMesh();
 }
 
 __host__ void MultilinearReconstructorGPU::renderMesh()

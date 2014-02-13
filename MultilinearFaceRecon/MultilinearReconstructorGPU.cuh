@@ -72,8 +72,13 @@ protected:
 protected:
 	int collectICPConstraints(int, int);
 	bool fitRigidTransformation();
+	bool fitIdentityWeights();
+	bool fitExpressionWeights();
 
 	float computeError();
+
+	void transformTM0();
+	void transformTM1();
 
 	void transformMesh();	// transform the mesh on the gpu side
 	void updateMesh();		// copy back the generated mesh and update the current mesh on CPU side
@@ -160,7 +165,7 @@ private:
 	int npts_mesh, nfpts, npixels;
 
 	float *d_sigma_wid, *d_sigma_wexp;
-	float *d_sigma_wid_weighted, *d_sigma_wexp_weighted;
+	//float *d_sigma_wid_weighted, *d_sigma_wexp_weighted;
 
 	// weights
 	float *d_Wid, *d_Wexp;

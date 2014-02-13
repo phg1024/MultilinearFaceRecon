@@ -344,7 +344,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 
 			viewer->bindRGBDTargetGPU(colordata, depthdata);
 			viewer->bindTargetLandmarksGPU(lms);
-			viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE);
+			viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE_AND_IDENTITY);
 		}
 		else{
 			viewer->bindRGBDTargetGPU(colordata, depthdata);
@@ -356,7 +356,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 		}
 
 		QApplication::processEvents();
-		//::system("pause");
+		::system("pause");
 #endif	
 	}
 	tCombined.toc();
