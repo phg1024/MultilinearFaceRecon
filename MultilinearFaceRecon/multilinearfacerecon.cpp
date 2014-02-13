@@ -351,12 +351,12 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 			viewer->bindTargetLandmarksGPU(lms);
 			validFrames++;
 			tRecon.tic();
-			viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE);
+			viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE_AND_EXPRESSION);
 			tRecon.toc();
 		}
 
 		QApplication::processEvents();
-		::system("pause");
+		//::system("pause");
 #endif	
 	}
 	tCombined.toc();

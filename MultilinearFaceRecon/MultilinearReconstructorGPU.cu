@@ -603,7 +603,7 @@ __host__ void MultilinearReconstructorGPU::transformTM0() {
 	checkCudaState();
 	// call the transformation kernel
 	const int threads = 1024;
-	mat3 R = mat3::rotation(h_RTparams[0], h_RTparams[1], h_RTparams[2]);
+	mat3 R = mat3::rotation(h_RTparams[0], h_RTparams[1], h_RTparams[2])*h_RTparams[6];
 	transformTM0_kernel<<<(int)(ceil(npts_mesh/(float)threads)), threads>>>(d_tm0RT, R, npts_mesh, ndims_wexp);
 	checkCudaState();
 }
@@ -622,7 +622,7 @@ __host__ void MultilinearReconstructorGPU::transformTM1() {
 	checkCudaState();
 	// call the transformation kernel
 	const int threads = 1024;
-	mat3 R = mat3::rotation(h_RTparams[0], h_RTparams[1], h_RTparams[2]);
+	mat3 R = mat3::rotation(h_RTparams[0], h_RTparams[1], h_RTparams[2])*h_RTparams[6];
 	transformTM1_kernel<<<(int)(ceil(npts_mesh/(float)threads)), threads>>>(d_tm1RT, R, npts_mesh, ndims_wid);
 	checkCudaState();
 	//writeback(d_tm1RT, npts_mesh*3, ndims_wid, "d_tm1RT.txt");
@@ -737,11 +737,16 @@ __host__ bool MultilinearReconstructorGPU::fitIdentityWeights() {
 	cudaMemcpy(&brhs[0], d_b, sizeof(float)*ndims_wid, cudaMemcpyDeviceToHost);
 	checkCudaState();
 
+	cudaMemcpy(d_Wid, d_b, sizeof(float)*ndims_wid, cudaMemcpyDeviceToDevice);
+	checkCudaState();
+
 	float diff = 0;
 	//b.print("b");
 	for(int i=0;i<ndims_wid;i++) {
 		diff += fabs(Wid[i] - brhs[i]);
+		//cout << brhs[i] << ' ';
 	}
+	//cout << endl;
 
 	return diff/ndims_wid < cc;
 }
@@ -784,11 +789,59 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndIdentity() {
 	// use the latest parameters
 	transformMesh();
 	updateMesh();
+		
+	// update tm0, for the following steps
+	cublasSgemv('N', ndims_wexp * ndims_pts, ndims_wid, 1.0, d_tu0, ndims_wexp * ndims_pts, d_Wid, 1, 0, d_tm0, 1);
+}
+
+__host__ bool MultilinearReconstructorGPU::fitExpressionWeights() {
+	float3 T = make_float3(h_RTparams[3], h_RTparams[4], h_RTparams[5]);
+	const int threads = 1024;
+	checkCudaState();
+	// assemble the matrix and right hand side
+	fitIdentity_ICPCTerm<<<(int)(ceil(nicpc/(float)threads)),threads>>>(d_icpc, nicpc, ndims_wexp, 0, 0,
+									 d_tm0RT, d_A, d_b,
+									 T, w_ICP);
+	checkCudaState();
+	//cout << nicpc << ", " << ndims_wid << endl;
+	//writeback(d_A, nicpc*3, ndims_wid, "d_A0.txt");
+	checkCudaState();
+	fitIdentity_FeaturePointsTerm<<<1, 128>>>(d_fptsIdx, d_q, nfpts, ndims_wexp, nicpc*ndims_wexp*3, nicpc*3,
+											  d_tm0RT, d_A, d_b,											  
+											  T, d_w_landmarks, w_fp_scale);
+	checkCudaState();
+	//writeback(d_A, (nicpc+nfpts)*3, ndims_wid, "d_A1.txt");
+	checkCudaState();
+	fitIdentity_PriorTerm<<<1, 64>>>(d_A, d_b, d_sigma_wexp, d_mu_wexp_weighted,
+									  ndims_wexp, (nicpc+nfpts)*ndims_wexp*3, (nicpc+nfpts)*3, 
+									  w_fp_scale*0.5);
+	checkCudaState();
+	//writeback(d_A, (nicpc+nfpts)*3+ndims_wid, ndims_wid, "d_A2.txt");
+	checkCudaState();
+
+	// solve for new set of parameters
+	culaDeviceSgels('T', (nicpc+nfpts)*ndims_wexp*3+ndims_wexp, ndims_wexp, 1, d_A, ndims_wexp, d_b, (nicpc+nfpts)*ndims_wexp*3+ndims_wexp);
+	checkCudaState();
+
+	vector<float> Wexp(ndims_wexp), brhs(ndims_wexp);
+	cudaMemcpy(&Wexp[0], d_Wexp, sizeof(float)*ndims_wexp, cudaMemcpyDeviceToHost);
+	checkCudaState();
+	cudaMemcpy(&brhs[0], d_b, sizeof(float)*ndims_wexp, cudaMemcpyDeviceToHost);
+	checkCudaState();
+
+	cudaMemcpy(d_Wexp, d_b, sizeof(float)*ndims_wexp, cudaMemcpyDeviceToDevice);
+	checkCudaState();
+
+	float diff = 0;
+	//b.print("b");
+	for(int i=0;i<ndims_wexp;i++) {
+		diff += fabs(Wexp[i] - brhs[i]);
+	}
+
+	return diff/ndims_wexp < cc;
 }
 
 __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
-	throw "Not implemented yet";
-
 	cc = 1e-4;
 	float errorThreshold_ICP = 1e-5;
 	float errorDiffThreshold_ICP = errorThreshold * 1e-4;
@@ -804,14 +857,14 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 		renderMesh();
 		nicpc = collectICPConstraints(iters, MaxIterations);
 		converged = fitRigidTransformation();
+		// transform tm0
+		transformTM0();
+		// fit expression weights
+		converged &= fitExpressionWeights();
+		// update tplt with tm0
+		cublasSgemv('N', ndims_wexp, ndims_pts, 1.0, d_tm0, ndims_wexp, d_Wexp, 1, 0.0, d_tplt, 1);
 		E = computeError();
 		//PhGUtils::debug("iters", iters, "Error", E);
-
-		// transform tm0
-
-		// fit expression weights
-
-		// update tplt with tm0
 
 		// adaptive threshold
 		converged |= E < (errorThreshold_ICP / (nicpc/5000.0));
