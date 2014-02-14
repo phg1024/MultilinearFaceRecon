@@ -321,6 +321,7 @@ namespace NumericalAlgorithms {
 		cudaMemcpy(deltaX, x, sizeof(float)*m, cudaMemcpyDeviceToDevice);
 		checkCudaState();
 
+		//cout << nicpc << endl;
 		// compute initial residue with GPU
 		dim3 block(256, 1, 1);
 		dim3 grid((int)(ceil(nicpc/(float)block.x)), 1, 1);

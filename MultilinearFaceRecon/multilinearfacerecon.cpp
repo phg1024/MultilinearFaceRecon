@@ -264,7 +264,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10001;
-	const int imageCount = 250;
+	const int imageCount = 90;
 #else
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test_images\\";
 	const string imageName = "00";

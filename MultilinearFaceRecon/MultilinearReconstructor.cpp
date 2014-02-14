@@ -785,7 +785,7 @@ void MultilinearReconstructor::fitICP_withPrior() {
 		//Rmat.print("R");
 		//Tvec.print("T");
 		E = computeError_ICP();
-		//PhGUtils::debug("iters", iters, "Error", E);
+		PhGUtils::debug("iters", iters, "Error", E);
 
 		// adaptive threshold
 		converged |= E < (errorThreshold_ICP / (icpc.size()/5000.0));
@@ -831,6 +831,13 @@ void MultilinearReconstructor::fitICP_withPrior() {
 	timerTotal.toc();
 
 	renderMesh();
+
+	ofstream fout;
+	fout.open("c_wexp.txt", ios::app);
+	for(int i=0;i<Wexp.length();i++) 
+		fout << Wexp(i) << ' ';
+	fout << endl;
+	fout.close();
 
 #if OUTPUT_STATS
 	cout << "Total iterations = " << iters << endl;
@@ -2344,7 +2351,11 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
 		brhs_ICP(ridx) = mu_wid_weighted(i) * w_prior_scale;
 	}
 
+	//ofstream fout("Aid.txt");
+	//PhGUtils::print2DArray(Aid_ICP.ptr(), Aid_ICP.cols(), Aid_ICP.rows(), fout);
+	//fout.close();
 	//cout << "matrix and rhs assembled." << endl;
+	//::system("pause");
 
 	//cout << "least square" << endl;
 #if USE_MKL_LS
@@ -2615,10 +2626,19 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_ICP() {
 		brhs_ICP(ridx) = mu_wexp_weighted(i) * w_prior_scale;
 	}
 
+	/*
+	ofstream fout("Aexp.txt");
+	PhGUtils::print2DArray(Aexp_ICP.ptr(), Aexp_ICP.cols(), Aexp_ICP.rows(), fout);
+	fout.close();
+	::system("pause");
+	*/
 	//cout << "matrix and rhs assembled." << endl;
 
 	//cout << "least square" << endl;
+	PhGUtils::Timer tls;
+	tls.tic();
 	int rtn = leastsquare<float>(Aexp_ICP, brhs_ICP);
+	tls.toc("least square");
 	//cout << "done." << endl;
 	//debug("rtn", rtn);
 	float diff = 0;
