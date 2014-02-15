@@ -71,11 +71,12 @@ protected:
 
 protected:
 	int collectICPConstraints(int, int);
-	bool fitRigidTransformation();
+	bool fitRigidTransformation(bool fitScale=true);
 	bool fitIdentityWeights();
 	bool fitExpressionWeights();
 
 	float computeError();
+	vector<float> computeWeightedMeanPose();
 
 	void transformTM0();
 	void transformTM1();
@@ -156,6 +157,7 @@ private:
 	float *d_targetLocations;
 
 	float *d_RTparams;
+	float *d_meanRT;
 
 	// weights prior
 	float *d_mu_wid0, *d_mu_wexp0;	// neutral face weights
@@ -171,7 +173,8 @@ private:
 	float *d_Wid, *d_Wexp;
 
 	// computation matrices
-	float *d_A, *d_b;
+	double *d_A, *d_b;
+	double *d_AtA, *d_Atb;
 
 	// weights again
 	float *d_w_mask, *h_w_mask;

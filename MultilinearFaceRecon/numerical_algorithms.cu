@@ -67,7 +67,7 @@ namespace NumericalAlgorithms {
 		costfunc[tid+offset] = dot(pq, pq) * w_ICP;
 	}
 
-	__global__ void jacobian_ICP(float *unknowns, float *J, int offset,
+	__global__ void jacobian_ICP(int m, float *unknowns, float *J, int offset,
 		d_ICPConstraint* d_icpc, int nicpc,
 		float *d_tplt,
 		float w_ICP) 
@@ -99,7 +99,7 @@ namespace NumericalAlgorithms {
 
 		float3 p = v0 * bc.x + v1 * bc.y + v2 * bc.z;
 
-		int jidx = (tid+offset)*7;
+		int jidx = (tid+offset)*m;
 
 		// R * p
 		float3 rp = R * p;
@@ -128,6 +128,8 @@ namespace NumericalAlgorithms {
 		// \frac{\partial r_i}{\partial \t_z}
 		J[jidx++] = 2.0 * rk.z * w_ICP;
 
+		// fixed scale
+		if( m < 7 ) return;
 		// \frac{\partial r_i}{\partial s}
 		J[jidx++] = 2.0 * dot(rp, rk) * w_ICP;
 	}
@@ -175,7 +177,7 @@ namespace NumericalAlgorithms {
 		}
 	}
 
-	__global__ void jacobian_FeaturePoints(float *unknowns, float *J, int offset,
+	__global__ void jacobian_FeaturePoints(int m, float *unknowns, float *J, int offset,
 		int *d_fptsIdx, float *d_q, float *d_q2d, int nfpts,
 		float *d_tplt,
 		float *d_w_landmarks, float *d_w_mask,
@@ -198,7 +200,7 @@ namespace NumericalAlgorithms {
 		float wpt = d_w_landmarks[tid] * w_fp_scale * d_w_mask[tid];
 
 		int vidx = d_fptsIdx[tid] * 3;
-		int jidx = (tid+offset)*7;
+		int jidx = (tid+offset)*m;
 		float3 p = make_float3(d_tplt[vidx], d_tplt[vidx+1], d_tplt[vidx+2]);
 
 		if( tid < 42 || tid > 74 ) {
@@ -231,6 +233,8 @@ namespace NumericalAlgorithms {
 			// \frac{\partial r_i}{\partial \t_z}
 			J[jidx++] = 2.0 * rk.z * wpt;
 
+			// fixed scale
+			if( m < 7 ) return;
 			// \frac{\partial r_i}{\partial s}
 			J[jidx++] = 2.0 * dot(rp, rk) * wpt;
 		}
@@ -285,6 +289,8 @@ namespace NumericalAlgorithms {
 			// \frac{\partial r_i}{\partial \t_z}
 			J[jidx++] = 2.0 * (Jf[2] * rkx + Jf[5] * rky) * wpt;
 
+			// fixed scale
+			if( m < 7 ) return;
 			// \frac{\partial r_i}{\partial s}
 			jfjpx = Jf[0] * rp.x + Jf[2] * rp.z;
 			jfjpy = Jf[4] * rp.y + Jf[5] * rp.z;
@@ -342,17 +348,17 @@ namespace NumericalAlgorithms {
 		while( cublasSnrm2(m, deltaX, 1) > DIFF_THRES && cublasSnrm2(n, r, 1) > R_THRES && iters < itmax ) {
 			//// compute jacobian with GPU
 			//t.tic();
-			jacobian_ICP<<<grid, block, 0, mystream>>>(x, J, 0, d_icpc, nicpc, d_tplt, w_ICP);
+			jacobian_ICP<<<grid, block, 0, mystream>>>(m, x, J, 0, d_icpc, nicpc, d_tplt, w_ICP);
 			//cudaThreadSynchronize();
 			//t.toc("jacobian ICP");
 			checkCudaState();
 			//t.tic();
-			jacobian_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, J, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+			jacobian_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(m, x, J, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
 			//cudaThreadSynchronize();
 			//t.toc("jacobian feature points");
 			checkCudaState();
 
-			//writeback(J, nicpc+nfpts, 7, "d_J.txt");
+			//writeback(J, nicpc+nfpts, m, "d_J.txt");
 
 			//// store old values			
 			//cudaMemcpy(x0, x, sizeof(float)*m, cudaMemcpyDeviceToDevice);
@@ -363,7 +369,7 @@ namespace NumericalAlgorithms {
 			cublasSsyrk('U', 'N', m, n, 1.0, J, m, 0, JtJ, m);
 			//cudaThreadSynchronize();
 			//t.toc("JtJ");
-			//writeback(JtJ, 7, 7, "d_JtJ.txt");
+			//writeback(JtJ, m, m, "d_JtJ.txt");
 
 			//// compute Jtr
 			//t.tic();
