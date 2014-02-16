@@ -298,10 +298,25 @@ namespace NumericalAlgorithms {
 		}
 	}
 
-	__global__ void cost_History() {
+	__global__ void cost_History(float *unknowns, float *costfunc, int offset, float *d_meanRT, float w_history) {
+		int tid = blockIdx.x * blockDim.x + threadIdx.x;
+		if( tid >= 7 ) return;
+
+		float diff = unknowns[tid] - d_meanRT[tid];
+		costfunc[offset+tid] = diff * diff * w_history;
 	}
 
-	__global__ void jacobian_History() {
+	__global__ void jacobian_History(int m,float *unknowns, float *J, int offset, float *d_meanRT, float w_history) {
+		int tid = blockIdx.x * blockDim.x + threadIdx.x;
+		if( tid >= m ) return;
+
+		float diff = unknowns[tid] - d_meanRT[tid];
+
+		int jidx = (offset+tid)*m;
+		for(int j=0;j<m;j++) {
+			J[jidx+j] = 0;
+		}
+		J[jidx+tid] = 2.0 * diff * w_history;
 	}
 
 	/* Gaussian-Newton algorithm for estimating rigid transformation */
@@ -309,6 +324,7 @@ namespace NumericalAlgorithms {
 		int *d_fptsIdx, float *d_q, float *d_q2d, int nfpts,		// feature points
 		float *d_w_landmarks, float *d_w_mask, float w_fp_scale,	// weights for feature points
 		d_ICPConstraint * d_icpc, int nicpc, float w_ICP,			// ICP terms
+		float *d_meanRT, float w_history,							// history term
 		float *d_tplt,												// template mesh
 		cudaStream_t& mystream
 		) 
@@ -335,6 +351,8 @@ namespace NumericalAlgorithms {
 		checkCudaState();
 		cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
 		checkCudaState();
+		cost_History<<<1, 16>>>(x, r, nicpc+nfpts, d_meanRT, w_history);
+		checkCudaState();
 		//writeback(r, nicpc+nfpts, 1, "d_r.txt");
 
 		//writeback(d_w_landmarks, nfpts, 1, "d_w_landmarks.txt");
@@ -357,6 +375,8 @@ namespace NumericalAlgorithms {
 			//cudaThreadSynchronize();
 			//t.toc("jacobian feature points");
 			checkCudaState();
+
+			jacobian_History<<<1, 16, 0, mystream>>>(m, x, J, nicpc+nfpts, d_meanRT, w_history);
 
 			//writeback(J, nicpc+nfpts, m, "d_J.txt");
 
@@ -402,6 +422,9 @@ namespace NumericalAlgorithms {
 			cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
 			//cudaThreadSynchronize();
 			//t.toc("cost feature point");
+			checkCudaState();
+	
+			cost_History<<<1, 16, 0, mystream>>>(x, r, nicpc+nfpts, d_meanRT, w_history);
 			checkCudaState();
 
 			//::system("pause");

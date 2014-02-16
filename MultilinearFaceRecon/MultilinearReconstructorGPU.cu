@@ -40,6 +40,7 @@ MultilinearReconstructorGPU::MultilinearReconstructorGPU():
 	// initialize offscreen renderer
 	initRenderer();
 
+	// should be large enough
 	NumericalAlgorithms::initialize(50, 16384);
 	
 	// initialize members
@@ -383,7 +384,7 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	w_outer = 1e2;
 	w_fp = 2.5;
 
-	w_history = 0.0001;
+	w_history = 0.00001;
 	w_ICP = 1.5;
 
 	historyWeights[0] = 0.02;
@@ -1001,12 +1002,12 @@ __host__ bool MultilinearReconstructorGPU::fitExpressionWeights() {
 __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	cc = 1e-4;
 	float errorThreshold_ICP = 1e-5;
-	float errorDiffThreshold_ICP = 1e-4;
+	float errorDiffThreshold_ICP = 1e-2;
 
 	int iters = 0;
 	float E0 = 1, E = 0;
 	bool converged = false;
-	const int MaxIterations = 64;
+	const int MaxIterations = 8;
 
 	while( !converged && iters++<MaxIterations ) {
 		converged = true;
@@ -1044,9 +1045,11 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	fout.close();
 	*/
 
+	/*
 	for(int i=0;i<7;i++)
 		cout << h_RTparams[i] << '\t';
 	cout << endl;
+	*/
 
 	// use the latest parameters
 	transformMesh();
@@ -1371,6 +1374,7 @@ __host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale)
 		nparams, nfpts+nicpc, itmax, opts,
 		d_fptsIdx, d_q, d_q2d, nfpts, d_w_landmarks, d_w_mask, w_fp_scale,
 		d_icpc, nicpc, w_ICP,
+		d_meanRT, w_history,
 		d_tplt,
 		mystream
 		);

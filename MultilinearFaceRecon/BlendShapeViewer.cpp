@@ -399,6 +399,11 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 	GL3DCanvas::keyPressEvent(e);
 
 	switch( e->key() ) {
+	case Qt::Key_Escape:
+		{
+			cudaDeviceReset();
+			exit(0);
+		}
 	case Qt::Key_Space:
 		{
 			fit();
