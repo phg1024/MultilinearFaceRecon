@@ -185,6 +185,7 @@ private:
 	vector<float> computeWeightedMeanPose();
 
 private:
+	// offscreen renderer
 	PhGUtils::QuadMesh baseMesh;
 	PhGUtils::Matrix4x4f mProj, mMv;
 
@@ -198,8 +199,8 @@ private:
 	vector<unsigned char> faceMask;					// mask over the target RGBD image
 	vector<PhGUtils::Point3f> targetLocations;		// target locations obtain by back projecting color and depth image
 
-	PhGUtils::DenseMatrix<float> Aid_ICP, Aexp_ICP;
-	PhGUtils::DenseVector<float> brhs_ICP;
+	PhGUtils::DenseMatrix<double> Aid_ICP, Aexp_ICP;
+	PhGUtils::DenseVector<double> brhs_ICP;
 
 	float w_ICP;
 

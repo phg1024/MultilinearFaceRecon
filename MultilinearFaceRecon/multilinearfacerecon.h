@@ -36,6 +36,7 @@ public slots:
 	);
 
 	void reconstructionWithBatchInput_ICP();
+	void reconstructionWithBatchInput_GPU();
 
 private:
 	void setupStreamViews();
@@ -64,7 +65,7 @@ private:
 	PhGUtils::KinectManager kman;
 	int frameIdx;
 	vector<PhGUtils::Point3f> lms;		// landmarks got from AAM tracking
-	AAMWrapper aam;
+	AAMWrapper* aam;
 	shared_ptr<StreamViewer> colorView, depthView;
 
 	PhGUtils::Timer tAAM, tKman, tView, tRecon;

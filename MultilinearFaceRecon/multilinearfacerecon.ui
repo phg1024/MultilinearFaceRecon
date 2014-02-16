@@ -54,6 +54,7 @@
     <addaction name="actionReset_Tracking"/>
     <addaction name="actionBatch_Recon"/>
     <addaction name="actionBatch_Recon_ICP"/>
+    <addaction name="actionBatch_Recon_ICP_GPU"/>
     <addaction name="actionRecord"/>
    </widget>
    <addaction name="menuFile"/>
@@ -116,6 +117,11 @@
   <action name="actionRecord">
    <property name="text">
     <string>Record</string>
+   </property>
+  </action>
+  <action name="actionBatch_Recon_ICP_GPU">
+   <property name="text">
+    <string>Batch Recon ICP GPU</string>
    </property>
   </action>
  </widget>

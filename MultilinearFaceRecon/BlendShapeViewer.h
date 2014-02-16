@@ -4,7 +4,7 @@
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
 #include "MultilinearReconstructor.h"
-//#include "MultilinearReconstructorGPU.cuh"
+#include "MultilinearReconstructorGPU.cuh"
 
 #include <QtWidgets/QFileDialog>
 #include <QGLFrameBufferObject>
@@ -18,13 +18,26 @@ public:
 
 	void bindTargetMesh(const string& filename);
 	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts, MultilinearReconstructor::TargetType ttp = MultilinearReconstructor::TargetType_3D);
+	void bindTargetLandmarksGPU( const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor::TargetType ttp = MultilinearReconstructor::TargetType_2D );
 	void bindRGBDTarget(
 		const vector<unsigned char>& colordata,
 		const vector<unsigned char>& depthdata
 		);
+	void bindRGBDTargetGPU(
+		const vector<unsigned char>& colordata,
+		const vector<unsigned char>& depthdata
+		);
+
+	enum TransferDirection{
+		CPUToGPU,
+		GPUToCPU
+	};
+	void transferParameters(TransferDirection dir);
+
 	void fit(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void fit2d(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void fitICP(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
+	void fitICP_GPU(MultilinearReconstructorGPU::FittingOption ops = MultilinearReconstructorGPU::FIT_ALL);
 
 	void generatePrior();
 
@@ -57,6 +70,7 @@ private:
 
 private slots:
 	void updateMeshWithReconstructor();	
+	void updateMeshWithGPUReconstructor();	
 
 private:
 	bool targetSet;
@@ -64,8 +78,8 @@ private:
 
 	vector<PhGUtils::Point3f> targetLandmarks;
 	vector<int> landmarks;
+	MultilinearReconstructorGPU GPURecon;
 	MultilinearReconstructor recon;
-	//MultilinearReconstructorGPU GPURecon;
 
 	PhGUtils::Matrix4x4f mProj, mMv;
 
