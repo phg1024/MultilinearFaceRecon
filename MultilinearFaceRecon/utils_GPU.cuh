@@ -5,10 +5,17 @@
 #include <helper_functions.h>
 
 __device__ __forceinline__ void transform_point(const mat3& R, float &x, float &y, float &z) {
-	float3 p = make_float3(x, y, z);
-	x = R(0) * p.x + R(1) * p.y + R(2) * p.z;
-	y = R(3) * p.x + R(4) * p.y + R(5) * p.z;
-	z = R(6) * p.x + R(7) * p.y + R(8) * p.z;
+	float x0 = x, y0 = y, z0 = z;
+	x = R(0) * x0 + R(1) * y0 + R(2) * z0;
+	y = R(3) * x0 + R(4) * y0 + R(5) * z0;
+	z = R(6) * x0 + R(7) * y0 + R(8) * z0;
+}
+
+__device__ __forceinline__ void transform_translate_point(const mat3& R, const float3& T, float &x, float &y, float &z) {
+	float x0 = x, y0 = y, z0 = z;
+	x = R(0) * x0 + R(1) * y0 + R(2) * z0 + T.x;
+	y = R(3) * x0 + R(4) * y0 + R(5) * z0 + T.y;
+	z = R(6) * x0 + R(7) * y0 + R(8) * z0 + T.z;
 }
 
 __device__ __forceinline__ float3 color2world(float u, float v, float d) {

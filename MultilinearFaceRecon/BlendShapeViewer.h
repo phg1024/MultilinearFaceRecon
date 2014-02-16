@@ -41,6 +41,9 @@ public:
 
 	void generatePrior();
 
+	void printStats();
+	void printStatsGPU();
+
 	const MultilinearReconstructor& getReconstructor() const {
 		return recon;
 	}
@@ -71,7 +74,7 @@ private:
 private slots:
 	void updateMeshWithReconstructor();	
 	void updateMeshWithGPUReconstructor();	
-
+	
 private:
 	bool targetSet;
 	PhGUtils::QuadMesh mesh, targetMesh;

@@ -10,8 +10,11 @@
 #include "Utils/cudautils.h"
 #include "Utils/Timer.h"
 
+#include "mkl.h"
+
 namespace NumericalAlgorithms {
 	float *x0, *x, *deltaX, *r, *J, *JtJ;
+	float *h_JtJ, *h_Jtr;
 
 	void initialize(int nparams, int nconstraints) {
 		checkCudaErrors(cudaMalloc((void**)&x0, sizeof(float)*nparams));
@@ -21,6 +24,9 @@ namespace NumericalAlgorithms {
 		checkCudaErrors(cudaMalloc((void**)&r, sizeof(float)*nconstraints));
 		checkCudaErrors(cudaMalloc((void**)&J, sizeof(float)*nconstraints*nparams));
 		checkCudaErrors(cudaMalloc((void**)&JtJ, sizeof(float)*nparams*nparams));
+
+		h_JtJ = new float[nparams*nparams];
+		h_Jtr = new float[nparams];
 	}
 
 	void finalize() {
@@ -30,6 +36,9 @@ namespace NumericalAlgorithms {
 		checkCudaErrors(cudaFree(r));
 		checkCudaErrors(cudaFree(J));
 		checkCudaErrors(cudaFree(JtJ));
+
+		delete[] h_JtJ;
+		delete[] h_Jtr;
 	}
 
 	// use one dimensional configuration
@@ -345,7 +354,7 @@ namespace NumericalAlgorithms {
 
 		//cout << nicpc << endl;
 		// compute initial residue with GPU
-		dim3 block(256, 1, 1);
+		dim3 block(1024, 1, 1);
 		dim3 grid((int)(ceil(nicpc/(float)block.x)), 1, 1);
 		cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, d_icpc, nicpc, d_tplt, w_ICP);
 		checkCudaState();
@@ -361,7 +370,7 @@ namespace NumericalAlgorithms {
 		//cout << "w_fp_scale = " << w_fp_scale << endl;
 
 		int iters = 0;
-		//PhGUtils::Timer t;
+		PhGUtils::Timer t;
 		// while not converged
 		while( cublasSnrm2(m, deltaX, 1) > DIFF_THRES && cublasSnrm2(n, r, 1) > R_THRES && iters < itmax ) {
 			//// compute jacobian with GPU
@@ -401,10 +410,21 @@ namespace NumericalAlgorithms {
 			//// compute deltaX
 			
 			//t.tic();
+#if 0
 			culaDeviceSpotrf('U', m, JtJ, m);
 			culaDeviceSpotrs('U', m, 1, JtJ, m, deltaX, m);
+			t.toc("JtJ\\Jtr");
+#else
+			cudaMemcpy(h_JtJ, JtJ, sizeof(float)*m*m, cudaMemcpyDeviceToHost);
+			cudaMemcpy(h_Jtr, deltaX, sizeof(float)*m, cudaMemcpyDeviceToHost);
+
+			LAPACKE_spotrf( LAPACK_COL_MAJOR, 'U', m, h_JtJ, m );
+			LAPACKE_spotrs( LAPACK_COL_MAJOR, 'U', m, 1, h_JtJ, m, h_Jtr, m );
+
+			cudaMemcpy(deltaX, h_Jtr, sizeof(float)*m, cudaMemcpyHostToDevice);
+			//t.toc("h_JtJ\\h_Jtr");
+#endif
 			//cudaThreadSynchronize();
-			//t.toc("JtJ\\Jtr");
 			//writeback(deltaX, 7, 1, "d_deltaX.txt");
 
 			//// update x

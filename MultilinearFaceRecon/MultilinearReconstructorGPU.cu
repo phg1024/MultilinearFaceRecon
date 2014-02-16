@@ -377,15 +377,15 @@ __host__ void MultilinearReconstructorGPU::init() {
 
 __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	w_prior_id = 1e-3;
-	w_prior_exp = 2.5e-4;
+	w_prior_exp = 5e-4;
 
 	w_boundary = 1e-8;
 	w_chin = 1e-6;
 	w_outer = 1e2;
 	w_fp = 2.5;
 
-	w_history = 0.00001;
-	w_ICP = 1.5;
+	w_history = 0.0001;
+	w_ICP = 1.0;
 
 	historyWeights[0] = 0.02;
 	historyWeights[1] = 0.04;
@@ -1002,7 +1002,7 @@ __host__ bool MultilinearReconstructorGPU::fitExpressionWeights() {
 __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	cc = 1e-4;
 	float errorThreshold_ICP = 1e-5;
-	float errorDiffThreshold_ICP = 1e-2;
+	float errorDiffThreshold_ICP = 1e-4;
 
 	int iters = 0;
 	float E0 = 1, E = 0;
@@ -1011,22 +1011,43 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 
 	while( !converged && iters++<MaxIterations ) {
 		converged = true;
+		tTrans.tic();
 		transformMesh();
-		updateMesh();
-		renderMesh();
-		nicpc = collectICPConstraints(iters, MaxIterations);
-		converged &= fitRigidTransformation(false);
-		// transform tm0
-		transformTM0();
-		// fit expression weights
-		converged &= fitExpressionWeights();
+		tTrans.toc();
 
-		// update tplt with tm0
+		tUpdate.tic();
+		updateMesh();
+		tUpdate.toc();
+
+		tRender.tic();
+		renderMesh();
+		tRender.toc();
+
+		tCollect.tic();
+		nicpc = collectICPConstraints(iters, MaxIterations);
+		tCollect.toc();
+
+		tRigid.tic();
+		converged &= fitRigidTransformation(false);
+		tRigid.toc();
+
+		tTrans0.tic();
+		transformTM0();
+		tTrans0.toc();
+
+		tExpr.tic();
+		converged &= fitExpressionWeights();
+		tExpr.toc();
+
+		tUpdate0.tic();
 		cublasSgemv('N', ndims_pts, ndims_wexp, 1.0, d_tm0, ndims_pts, d_Wexp, 1, 0.0, d_tplt, 1);
+		tUpdate0.toc();
 		
 		//::system("pause");
+		tError.tic();
 		E = computeError();
-		PhGUtils::debug("iters", iters, "Error", E, "Error diff", fabs((E-E0)/E0));
+		tError.toc();
+		//PhGUtils::debug("iters", iters, "Error", E, "Error diff", fabs((E-E0)/E0));
 
 		// adaptive threshold
 		converged |= E < (errorThreshold_ICP / (nicpc/5000.0));
@@ -1051,6 +1072,7 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	cout << endl;
 	*/
 
+	printf("finished in %d iterations.", iters);
 	// use the latest parameters
 	transformMesh();
 	updateMesh();
@@ -1203,7 +1225,7 @@ __global__ void collectICPConstraints_kernel(
 		float3 q = color2world(u, v, d);
 
 		// take a small window
-		const int wSize = 5;
+		const int wSize = 3;
 		//int checkedFaces[9];
 		//int checkedCount = 0;
 		float closestDist = FLT_MAX;
@@ -1293,7 +1315,7 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 	checkCudaState();
 	PhGUtils::Timer ticpc;
 	//ticpc.tic();
-	dim3 block(16, 16, 1);
+	dim3 block(8, 8, 1);
 	dim3 grid(640/block.x, 480/block.y, 1);
 	collectICPConstraints_kernel<<<grid, block, 0, mystream>>>( d_mesh,
 																d_meshtopo,
@@ -1367,7 +1389,7 @@ __host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale)
 
 	cudaMemcpy(NumericalAlgorithms::x, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToDevice);
 	checkCudaState();
-	int itmax = 128;
+	int itmax = 32;
 	float opts[] = {0.125, 1e-3, 1e-4};
 	// gauss-newton algorithm to estimate a new set of parameters
 	int iters = NumericalAlgorithms::GaussNewton(
@@ -1475,7 +1497,7 @@ __host__ float MultilinearReconstructorGPU::computeError() {
 	checkCudaState();
 	//cout << d_error << endl;
 	//cout << d_w_error << endl;
-	computeError_ICP<<<dim3((int)(ceil(nicpc/256.0)), 1, 1), dim3(256, 1, 1), 0, mystream>>>(d_RTparams, d_error, d_w_error, 0, d_icpc, nicpc, w_ICP, d_tplt);
+	computeError_ICP<<<dim3((int)(ceil(nicpc/1024.0)), 1, 1), dim3(1024, 1, 1), 0, mystream>>>(d_RTparams, d_error, d_w_error, 0, d_icpc, nicpc, w_ICP, d_tplt);
 	checkCudaState();
 	computeError_FeaturePoints<<<dim3(1, 1, 1), dim3(nfpts, 1, 1), 0, mystream>>>(d_RTparams, d_error, d_w_error, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
 	checkCudaState();
@@ -1568,4 +1590,16 @@ __host__ void MultilinearReconstructorGPU::updateMesh()
 	PhGUtils::OBJWriter writer;
 	writer.save(baseMesh, "../Data/tmesh.obj");
 #endif
+}
+
+__host__ void MultilinearReconstructorGPU::printStats() {
+	PhGUtils::message("Time cost for transforming mesh = " + PhGUtils::toString(tTrans.elapsed()*1000.0) + "ms.");
+	PhGUtils::message("Time cost for updating mesh = " + PhGUtils::toString(tUpdate.elapsed()*1000.0) + "ms.");
+	PhGUtils::message("Time cost for rendering mesh = " + PhGUtils::toString(tRender.elapsed()*1000.0) + "ms.");
+	PhGUtils::message("Time cost for collecting constraints = " + PhGUtils::toString(tCollect.elapsed()*1000.0) + "ms.");
+	PhGUtils::message("Time cost for estimating rigid transformation = " + PhGUtils::toString(tRigid.elapsed()*1000.0) + "ms.");
+	PhGUtils::message("Time cost for transforming template = " + PhGUtils::toString(tTrans0.elapsed()*1000.0) + "ms.");
+	PhGUtils::message("Time cost for estimating expression weights = " + PhGUtils::toString(tExpr.elapsed()*1000.0) + "ms.");
+	PhGUtils::message("Time cost for updating template = " + PhGUtils::toString(tUpdate0.elapsed()*1000.0) + "ms.");
+	PhGUtils::message("Time cost for computing error = " + PhGUtils::toString(tError.elapsed()*1000.0) + "ms.");
 }

@@ -335,6 +335,10 @@ void BlendShapeViewer::fitICP(MultilinearReconstructor::FittingOption ops /*= Mu
 	updateMeshWithReconstructor();
 }
 
+void BlendShapeViewer::printStatsGPU() {
+	GPURecon.printStats();
+}
+
 void BlendShapeViewer::fitICP_GPU(MultilinearReconstructorGPU::FittingOption ops /*= MultilinearReconstructorGPU::FIT_ALL*/)
 {
 	PhGUtils::Timer t;
@@ -588,4 +592,9 @@ void BlendShapeViewer::transferParameters(TransferDirection dir)
 	default:
 		break;
 	}
+}
+
+void BlendShapeViewer::printStats()
+{
+	recon.printStats();
 }

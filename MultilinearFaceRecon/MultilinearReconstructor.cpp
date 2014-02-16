@@ -3920,3 +3920,8 @@ float MultilinearReconstructor::computeError_Constraints()
 
 	return E / vcons.size();
 }
+
+void MultilinearReconstructor::printStats()
+{
+
+}

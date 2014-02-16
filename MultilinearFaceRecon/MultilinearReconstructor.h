@@ -97,6 +97,8 @@ public:
 	void fitICP(FittingOption ops = FIT_ALL);
 	void fitICP_withPrior();
 
+	void printStats();
+
 	// fit a mesh given a path to file and a hint for initial fit
 	// returns rotation, translation, scale, identity weights and expression weights
 	tuple<vector<float>, vector<float>, vector<float>> fitMesh(const string& filename, const vector<pair<int, int>>& hint);

@@ -20,6 +20,7 @@
 #include "Utils/utility.hpp"
 #include "Utils/fileutils.h"
 #include "Utils/cudautils.h"
+#include "Utils/Timer.h"
 
 #include <cula.h>
 #include <cublas.h>
@@ -203,4 +204,11 @@ private:
 	// GPU copy of the synthesized depth and index
 	unsigned char* d_indexMap;
 	float* d_depthMap;
+
+public:
+	void printStats();
+
+private:
+	PhGUtils::Timer tTrans, tUpdate, tRender, tCollect, 
+		tRigid, tTrans0, tExpr, tUpdate0, tError;
 };
