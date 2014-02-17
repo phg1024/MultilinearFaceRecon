@@ -72,7 +72,7 @@ protected:
 
 protected:
 	int collectICPConstraints(int, int);
-	bool fitRigidTransformation(bool fitScale=true);
+	bool fitRigidTransformation(bool fitScale, int&);
 	bool fitIdentityWeights();
 	bool fitExpressionWeights();
 
@@ -211,4 +211,8 @@ public:
 private:
 	PhGUtils::Timer tTrans, tUpdate, tRender, tCollect, 
 		tRigid, tTrans0, tExpr, tUpdate0, tError;
+	vector<int> constraintCount;
+	double totalCons;
+	vector<int> rigidIterations;
+	double totalRigidIters;
 };

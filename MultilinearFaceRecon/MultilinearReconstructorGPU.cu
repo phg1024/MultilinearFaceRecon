@@ -4,6 +4,7 @@
 #include "Kinect/KinectUtils.h"
 #include "Utils/Timer.h"
 #include "Utils/stringutils.h"
+#include "Utils/utility.hpp"
 
 #include "Elements_GPU.h"
 #include "utils_GPU.cuh"
@@ -380,7 +381,7 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	w_prior_exp = 5e-4;
 
 	w_boundary = 1e-8;
-	w_chin = 1e-6;
+	w_chin = 2.5e-6;
 	w_outer = 1e2;
 	w_fp = 2.5;
 
@@ -406,6 +407,8 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 		}
 	}
 	//checkCudaErrors(cudaMemcpy(d_w_mask, w_mask, sizeof(float)*78, cudaMemcpyHostToDevice));
+
+	totalCons = 0;
 }
 
 __host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Point3f>& pts)
@@ -586,12 +589,14 @@ __host__ void MultilinearReconstructorGPU::fitPose() {
 	bool converged = false;
 	const int MaxIterations = 64;
 
+	int rigidIters;
+
 	while( !converged && iters++<MaxIterations ) {
 		transformMesh();
 		updateMesh();
 		renderMesh();
 		nicpc = collectICPConstraints(iters, MaxIterations);
-		converged = fitRigidTransformation();
+		converged = fitRigidTransformation(true, rigidIters);
 		E = computeError();
 		//PhGUtils::debug("iters", iters, "Error", E);
 
@@ -613,7 +618,7 @@ __global__ void transformTM0_kernel(float *d_tm0RT, mat3 R, int npts, int ndims)
 	int stride = npts * 3;
 	int offset  = tid * 3;
 	for(int i=0;i<ndims;++i,offset+=stride) {
-		transform_point(R, d_tm0RT[offset], d_tm0RT[offset+1], d_tm0RT[offset+2]);
+		rotate_point(R, d_tm0RT[offset], d_tm0RT[offset+1], d_tm0RT[offset+2]);
 	}
 }
 
@@ -634,7 +639,7 @@ __global__ void transformTM1_kernel(float *d_tm1RT, mat3 R, int npts, int ndims)
 	if( tid >= npts ) return;
 	int offset  = tid * 3 * ndims;
 	for(int i=0;i<ndims;++i,offset++) {
-		transform_point(R, d_tm1RT[offset], d_tm1RT[offset+ndims], d_tm1RT[offset+ndims*2]);
+		rotate_point(R, d_tm1RT[offset], d_tm1RT[offset+ndims], d_tm1RT[offset+ndims*2]);
 	}
 }
 
@@ -816,6 +821,7 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndIdentity() {
 	float E0 = 0, E;
 	bool converged = false;
 	const int MaxIterations = 64;
+	int rigidIters;
 
 	while( !converged && iters++<MaxIterations ) {
 		converged = true;
@@ -823,7 +829,7 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndIdentity() {
 		updateMesh();
 		renderMesh();
 		nicpc = collectICPConstraints(iters, MaxIterations);
-		converged &= fitRigidTransformation();
+		converged &= fitRigidTransformation(true, rigidIters);
 
 		// transform tm1
 		transformTM1();
@@ -1009,6 +1015,9 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	bool converged = false;
 	const int MaxIterations = 8;
 
+	constraintCount.clear();
+	int rigidIters;
+
 	while( !converged && iters++<MaxIterations ) {
 		converged = true;
 		tTrans.tic();
@@ -1025,10 +1034,12 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 
 		tCollect.tic();
 		nicpc = collectICPConstraints(iters, MaxIterations);
+		constraintCount.push_back(nicpc);
 		tCollect.toc();
 
 		tRigid.tic();
-		converged &= fitRigidTransformation(false);
+		converged &= fitRigidTransformation(false, rigidIters);
+		rigidIterations.push_back(rigidIters);
 		tRigid.toc();
 
 		tTrans0.tic();
@@ -1071,8 +1082,14 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 		cout << h_RTparams[i] << '\t';
 	cout << endl;
 	*/
-
-	printf("finished in %d iterations.", iters);
+	double avgcons = PhGUtils::average(constraintCount);
+	double avgiters = PhGUtils::average(rigidIterations);
+	printf("Finished in %d iterations. \n \
+		Average constaints = %8.1f. \n \
+		Averate iterations for rigid transformation = %8.1f", iters, avgcons, avgiters);
+	totalCons += avgcons;
+	totalRigidIters += avgiters;
+	constraintCount.clear();
 	// use the latest parameters
 	transformMesh();
 	updateMesh();
@@ -1089,12 +1106,14 @@ __host__ void MultilinearReconstructorGPU::fitAll() {
 	bool converged = false;
 	const int MaxIterations = 64;
 
+	int rigidIters;
+
 	while( !converged && iters++<MaxIterations ) {
 		transformMesh();
 		updateMesh();
 		renderMesh();
 		nicpc = collectICPConstraints(iters, MaxIterations);
-		converged = fitRigidTransformation();
+		converged = fitRigidTransformation(true, rigidIters);
 		E = computeError();
 		//PhGUtils::debug("iters", iters, "Error", E);
 
@@ -1209,6 +1228,8 @@ __global__ void collectICPConstraints_kernel(
 
 	int tid = y * 640 + x;
 
+	if( tid & 0x1 ) return;
+
 	int u = x, v = y;
 	int idx = (v * 640 + u)*4;
 	int vv = 479 - y;
@@ -1222,7 +1243,7 @@ __global__ void collectICPConstraints_kernel(
 		if( d == 0 ) return;
 
 		// compute target location
-		float3 q = color2world(u, v, d);
+		float3 q = color2world_fast(u, v, d);
 
 		// take a small window
 		const int wSize = 3;
@@ -1336,7 +1357,7 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 	cudaMemcpy(&icpcCount, d_nicpc, sizeof(int), cudaMemcpyDeviceToHost);
 	checkCudaState();
 	//cout << "ICPC = " << icpcCount << endl;
-	
+
 #if OUTPUT_ICPC
 	vector<d_ICPConstraint> icpc(640*480);
 	checkCudaErrors(cudaMemcpy(&icpc[0], d_icpc, sizeof(d_ICPConstraint)*MAX_ICPC_COUNT, cudaMemcpyDeviceToHost));
@@ -1384,15 +1405,15 @@ __host__ vector<float> MultilinearReconstructorGPU::computeWeightedMeanPose() {
 	return m;
 }
 
-__host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale) {
+__host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale, int& iters) {
 	int nparams = fitScale?7:6;
 
 	cudaMemcpy(NumericalAlgorithms::x, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToDevice);
 	checkCudaState();
 	int itmax = 32;
-	float opts[] = {0.125, 1e-3, 1e-4};
+	float opts[] = {0.5, 1e-3, 1e-4};
 	// gauss-newton algorithm to estimate a new set of parameters
-	int iters = NumericalAlgorithms::GaussNewton(
+	iters = NumericalAlgorithms::GaussNewton(
 		nparams, nfpts+nicpc, itmax, opts,
 		d_fptsIdx, d_q, d_q2d, nfpts, d_w_landmarks, d_w_mask, w_fp_scale,
 		d_icpc, nicpc, w_ICP,
@@ -1602,4 +1623,6 @@ __host__ void MultilinearReconstructorGPU::printStats() {
 	PhGUtils::message("Time cost for estimating expression weights = " + PhGUtils::toString(tExpr.elapsed()*1000.0) + "ms.");
 	PhGUtils::message("Time cost for updating template = " + PhGUtils::toString(tUpdate0.elapsed()*1000.0) + "ms.");
 	PhGUtils::message("Time cost for computing error = " + PhGUtils::toString(tError.elapsed()*1000.0) + "ms.");
+	PhGUtils::message("Total number of constraints = " + PhGUtils::toString(totalCons) + ".");
+	PhGUtils::message("Total number of rigid tranformation iterations = " + PhGUtils::toString(totalRigidIters) + ".");
 }

@@ -111,20 +111,28 @@ namespace NumericalAlgorithms {
 		int jidx = (tid+offset)*m;
 
 		// R * p
-		float3 rp = R * p;
+		//float3 rp = R * p;
+		float3 rp = p;
+		rotate_point(R, rp.x, rp.y, rp.z);
 
 		// s * R * p + t - q
 		float3 rk = s * rp + T - q;
 
-		float3 jp = Jx * p;
+		//float3 jp = Jx * p;
+		float3 jp = p;
+		rotate_point(Jx, jp.x, jp.y, jp.z);
+
 		// \frac{\partial r_i}{\partial \theta_x}
 		J[jidx++] = 2.0 * s * dot(jp, rk) * w_ICP;	
 
-		jp = Jy * p;
+		//jp = Jy * p;
+		jp = p;
+		rotate_point(Jy, jp.x, jp.y, jp.z);
 		// \frac{\partial r_i}{\partial \theta_y}
 		J[jidx++] = 2.0 * s * dot(jp, rk) * w_ICP;
 
-		jp = Jz * p;
+		//jp = Jz * p;
+		rotate_point(Jz, jp.x, jp.y, jp.z);
 		// \frac{\partial r_i}{\partial \theta_z}
 		J[jidx++] = 2.0 * s * dot(jp, rk) * w_ICP;
 

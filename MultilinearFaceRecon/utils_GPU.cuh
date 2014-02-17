@@ -4,18 +4,38 @@
 #include <helper_math.h>
 #include <helper_functions.h>
 
-__device__ __forceinline__ void transform_point(const mat3& R, float &x, float &y, float &z) {
+__device__ __forceinline__ void rotate_point(const mat3& R, float &x, float &y, float &z) {
 	float x0 = x, y0 = y, z0 = z;
 	x = R(0) * x0 + R(1) * y0 + R(2) * z0;
 	y = R(3) * x0 + R(4) * y0 + R(5) * z0;
 	z = R(6) * x0 + R(7) * y0 + R(8) * z0;
 }
 
-__device__ __forceinline__ void transform_translate_point(const mat3& R, const float3& T, float &x, float &y, float &z) {
+__device__ __forceinline__ void rotate_translate_point(const mat3& R, const float3& T, float &x, float &y, float &z) {
 	float x0 = x, y0 = y, z0 = z;
 	x = R(0) * x0 + R(1) * y0 + R(2) * z0 + T.x;
 	y = R(3) * x0 + R(4) * y0 + R(5) * z0 + T.y;
 	z = R(6) * x0 + R(7) * y0 + R(8) * z0 + T.z;
+}
+
+__device__ __forceinline__ float3 color2world_fast(float u, float v, float d) {
+	// focal length
+	// const float fx_rgb = 525.0, fy_rgb = 525.0;
+	const float inv_fx_rgb = 1.0/525.0, inv_fy_rgb = 1.0/525.0;
+	// for 640x480 image
+	const float cx_rgb = 320.0, cy_rgb = 240.0;
+
+	// This part is correct now.
+	// Given a Kinect depth value, its depth in OpenGL coordinates
+	// system must be negative.
+	float depth = -d * 0.001;
+
+	float3 res;
+	// inverse mapping of projection
+	res.x = -(u - cx_rgb) * depth * inv_fx_rgb;
+	res.y = (v - cy_rgb) * depth * inv_fy_rgb;
+	res.z = depth;
+	return res;
 }
 
 __device__ __forceinline__ float3 color2world(float u, float v, float d) {
