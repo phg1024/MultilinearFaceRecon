@@ -192,7 +192,11 @@ private:
 	void renderMesh();
 
 	PhGUtils::QuadMesh baseMesh;
-	int4* d_meshtopo;
+	int4 *d_meshtopo;
+	vector<unsigned int> h_meshtopo;
+	float3 *d_meshverts;
+	vector<float3> h_meshverts;		// converted triangle mesh vertices
+	vector<float3> h_faceidx;		// converted triangle mesh face indices
 	PhGUtils::Matrix4x4f mProj, mMv;
 
 	shared_ptr<QGLWidget> dummyWgt;

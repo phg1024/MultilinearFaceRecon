@@ -14,6 +14,7 @@
 #define FBO_DEBUG_GPU 0
 #define KERNEL_DEBUG 0
 #define OUTPUT_ICPC 0
+#define FAST_RENDER 1
 
 MultilinearReconstructorGPU::MultilinearReconstructorGPU():
 	d_tu0(nullptr), d_tu1(nullptr), d_tm0(nullptr), d_tm1(nullptr),
@@ -21,7 +22,7 @@ MultilinearReconstructorGPU::MultilinearReconstructorGPU():
 	d_fptsIdx(nullptr), d_q2d(nullptr), d_q(nullptr), 
 	d_colordata(nullptr), d_depthdata(nullptr),
 	d_targetLocations(nullptr), d_RTparams(nullptr),
-	d_A(nullptr), d_b(nullptr), d_meshtopo(nullptr)
+	d_A(nullptr), d_b(nullptr), d_meshtopo(nullptr), d_meshverts(nullptr)
 {
 	// set device
 	cudaGLSetGLDevice(gpuGetMaxGflopsDeviceId());
@@ -378,10 +379,11 @@ __host__ void MultilinearReconstructorGPU::init() {
 
 __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	w_prior_id = 1e-3;
-	w_prior_exp = 5e-4;
+	w_prior_exp = 7.5e-4;
 
 	w_boundary = 1e-8;
 	w_chin = 2.5e-6;
+	//w_chin = 1e-8;
 	w_outer = 1e2;
 	w_fp = 2.5;
 
@@ -497,10 +499,29 @@ __host__ void MultilinearReconstructorGPU::setBaseMesh(const PhGUtils::QuadMesh&
 	baseMesh = m;
 	// upload the mesh topology
 	int nfaces = baseMesh.faceCount();
+	int nverts = baseMesh.vertCount();
+	cout << "setting base mesh: #v = " << nverts << ", #f = " << nfaces << endl;
 	vector<int4> topo(nfaces);
+	//h_meshtopo.resize(nfaces*2*3);
+	h_meshverts.resize(nfaces*4);
+	h_faceidx.resize(nfaces*4);
 	for(int i=0;i<nfaces;i++) {
 		const PhGUtils::QuadMesh::face_t& f = baseMesh.face(i);
 		topo[i] = make_int4(f.x, f.y, f.z, f.w);
+		//h_meshtopo[i*6+0] = f.x; h_meshtopo[i*6+1] = f.y; h_meshtopo[i*6+2] = f.z;
+		//h_meshtopo[i*6+3] = f.y; h_meshtopo[i*6+4] = f.z; h_meshtopo[i*6+5] = f.w;
+
+		float3 clr;
+		PhGUtils::encodeIndex<float>(i, clr.x, clr.y, clr.z);		
+		// fill the color array		
+#if FAST_RENDER
+		h_faceidx[i*4+0] = h_faceidx[i*4+1] = h_faceidx[i*4+2] = h_faceidx[i*4+3] = clr;
+#else
+		h_faceidx[f.x] = clr;
+		h_faceidx[f.y] = clr;
+		h_faceidx[f.z] = clr;
+		h_faceidx[f.w] = clr;
+#endif
 	}
 
 	PhGUtils::message("uploading mesh topology");
@@ -510,6 +531,12 @@ __host__ void MultilinearReconstructorGPU::setBaseMesh(const PhGUtils::QuadMesh&
 	}
 	checkCudaErrors(cudaMalloc((void**) &d_meshtopo, sizeof(int4)*nfaces));
 	checkCudaErrors(cudaMemcpy(d_meshtopo, &(topo[0]), sizeof(int4)*nfaces, cudaMemcpyHostToDevice));
+
+	if( d_meshverts ) {
+		checkCudaErrors(cudaFree(d_meshverts));
+	}
+	checkCudaErrors(cudaMalloc((void**) &d_meshverts, sizeof(float3)*nfaces*4));
+
 	showCUDAMemoryUsage();
 }
 
@@ -1013,7 +1040,7 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	int iters = 0;
 	float E0 = 1, E = 0;
 	bool converged = false;
-	const int MaxIterations = 8;
+	const int MaxIterations = 16;
 
 	constraintCount.clear();
 	int rigidIters;
@@ -1162,7 +1189,30 @@ __host__ void MultilinearReconstructorGPU::renderMesh()
 
 	glShadeModel(GL_SMOOTH);
 
-	baseMesh.drawFaceIndices();	
+#if !FAST_RENDER
+	baseMesh.drawFaceIndices();
+#else
+	//Enable the vertex array functionality:
+	glEnableClientState(GL_VERTEX_ARRAY);
+	//Enable the color array functionality (so we can specify a color for each vertex)
+	glEnableClientState(GL_COLOR_ARRAY);
+	//pass the vertex pointer:
+	glVertexPointer( 3,   //3 components per vertex (x,y,z)
+					 GL_FLOAT,
+					 sizeof(float3),
+					 &h_meshverts[0]);
+	//pass the color pointer
+	glColorPointer(  3,   //3 components per vertex (r,g,b)
+					 GL_FLOAT,
+					 sizeof(float3),
+					 &h_faceidx[0]);  //Pointer to the first color
+	//cout << h_meshtopo.size() / 3 << endl;
+	glDrawArrays( GL_QUADS, 0, h_meshverts.size() );
+	//glDrawElements(GL_TRIANGLES, h_meshtopo.size(), GL_UNSIGNED_INT, &h_meshtopo[0]);
+
+	glDisableClientState(GL_VERTEX_ARRAY);
+	glDisableClientState(GL_COLOR_ARRAY);
+#endif
 
 	glReadPixels(0, 0, 640, 480, GL_DEPTH_COMPONENT, GL_FLOAT, &(depthMap[0]));
 #if FBO_DEBUG_GPU
@@ -1196,6 +1246,7 @@ __host__ void MultilinearReconstructorGPU::renderMesh()
 
 	QImage img = PhGUtils::toQImage(&(indexMap[0]), 640, 480);	
 	img.save("fbo.png");
+	::system("pause");
 #endif
 
 	// upload result to GPU
@@ -1263,7 +1314,7 @@ __global__ void collectICPConstraints_kernel(
 				float depthVal = depthMap[pidx];
 				if( depthVal < 1.0 ) {
 					int fidx = decodeIndex(indexMap[poffset], indexMap[poffset+1], indexMap[poffset+2]);
-					
+					fidx = clamp(fidx, 0, 11399);
 					//bool checked = false;
 					//// see if this face is already checked
 					//for(int j=0;j<checkedCount;j++) {
@@ -1282,6 +1333,7 @@ __global__ void collectICPConstraints_kernel(
 					// not checked yet, check out this face
 					int4 f = meshtopo[fidx];
 					int4 vidx = f * 3;
+					
 					float3 v0 = make_float3(mesh[vidx.x], mesh[vidx.x+1], mesh[vidx.x+2]);
 					float3 v1 = make_float3(mesh[vidx.y], mesh[vidx.y+1], mesh[vidx.y+2]);
 					float3 v2 = make_float3(mesh[vidx.z], mesh[vidx.z+1], mesh[vidx.z+2]);
@@ -1311,7 +1363,7 @@ __global__ void collectICPConstraints_kernel(
 			cc.q = q;
 			cc.v = closestVerts;
 			int3 vidx = cc.v*3;
-			
+						
 			float3 v0 = make_float3(mesh[vidx.x], mesh[vidx.x+1], mesh[vidx.x+2]);
 			float3 v1 = make_float3(mesh[vidx.y], mesh[vidx.y+1], mesh[vidx.y+2]);
 			float3 v2 = make_float3(mesh[vidx.z], mesh[vidx.z+1], mesh[vidx.z+2]);
@@ -1438,6 +1490,7 @@ __host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale,
 		//cout << RTparams[i] << ' ';
 	}
 	//cout << endl;
+	//::system("pause");
 
 	return diff/nparams<cc || iters == 0;
 }
@@ -1588,24 +1641,63 @@ __host__ void MultilinearReconstructorGPU::transformMesh() {
 	checkCudaState();
 }
 
+__global__ void updateMesh_kernel(float* d_mesh, float3* d_meshverts, int4* d_meshtopo, int nfaces) {
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if( tid >= nfaces ) return;
+	
+	const int4& vidx = d_meshtopo[tid] * 3;
+	int voffset = tid * 4;
+	// fill the vertex array
+	d_meshverts[voffset+0] = make_float3(d_mesh[vidx.x], d_mesh[vidx.x+1], d_mesh[vidx.x+2]);
+	d_meshverts[voffset+1] = make_float3(d_mesh[vidx.y], d_mesh[vidx.y+1], d_mesh[vidx.y+2]);
+	d_meshverts[voffset+2] = make_float3(d_mesh[vidx.z], d_mesh[vidx.z+1], d_mesh[vidx.z+2]);
+	d_meshverts[voffset+3] = make_float3(d_mesh[vidx.w], d_mesh[vidx.w+1], d_mesh[vidx.w+2]);
+}
+
 __host__ void MultilinearReconstructorGPU::updateMesh()
 {
+	cudaMemcpy(tmesh.rawptr(), d_mesh, sizeof(float)*ndims_pts, cudaMemcpyDeviceToHost);
+	checkCudaState();
+
+	//#pragma omp parallel for
+#if !FAST_RENDER
 	//cout << "mesh size = " << tmesh.length() << endl;
 	//cout << "device mesh address = " << d_mesh << endl;
 	//cout << "bytes to transfer = " << sizeof(float)*ndims_pts << endl;
-	cudaMemcpy(tmesh.rawptr(), d_mesh, sizeof(float)*ndims_pts, cudaMemcpyDeviceToHost);
-	checkCudaState();
 
 	//writeback(d_mesh, ndims_pts/3, 3, "d_mesh.txt");
 	//writeback(d_tplt, ndims_pts/3, 3, "d_tplt.txt");
 
-	//#pragma omp parallel for
 	for(int i=0;i<tmesh.length()/3;i++) {
 		int idx = i * 3;
 		baseMesh.vertex(i).x = tmesh(idx++);
 		baseMesh.vertex(i).y = tmesh(idx++);
 		baseMesh.vertex(i).z = tmesh(idx);
 	}
+#else
+	/*
+	for(int i=0;i<baseMesh.faceCount();i++) {
+		const PhGUtils::QuadMesh::face_t& f = baseMesh.face(i);
+		int4 vidx = make_int4(f.x, f.y, f.z, f.w)*3;		
+		float3 v0 = make_float3(tmesh(vidx.x), tmesh(vidx.x+1), tmesh(vidx.x+2));
+		float3 v1 = make_float3(tmesh(vidx.y), tmesh(vidx.y+1), tmesh(vidx.y+2));
+		float3 v2 = make_float3(tmesh(vidx.z), tmesh(vidx.z+1), tmesh(vidx.z+2));
+		float3 v3 = make_float3(tmesh(vidx.w), tmesh(vidx.w+1), tmesh(vidx.w+2));
+		// fill the vertex array
+		h_meshverts[i*4+0] = v0;
+		h_meshverts[i*4+1] = v1;
+		h_meshverts[i*4+2] = v2;
+		h_meshverts[i*4+3] = v3;
+	}
+	*/
+	
+	updateMesh_kernel<<<(int)ceil(baseMesh.faceCount()/1024.0), 1024>>>(d_mesh, d_meshverts, d_meshtopo, baseMesh.faceCount());
+	checkCudaState();
+	cudaMemcpy(&h_meshverts[0], d_meshverts, sizeof(float3)*baseMesh.faceCount()*4, cudaMemcpyDeviceToHost);
+	checkCudaState();
+#endif
+	
 
 #if 0
 	PhGUtils::OBJWriter writer;
