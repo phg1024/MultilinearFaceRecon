@@ -90,7 +90,7 @@ private:
 	// convergence criteria
 	float cc;
 	float errorThreshold, errorDiffThreshold;
-	static const int MAXITERS = 8;
+	static const int MAXITERS = 16;
 	bool usePrior;
 
 	// weights for prior
@@ -196,6 +196,9 @@ private:
 	vector<unsigned int> h_meshtopo;
 	float3 *d_meshverts;
 	vector<float3> h_meshverts;		// converted triangle mesh vertices
+	int validfaces;
+	vector<int> frontFaces;
+	vector<bool> isBackFace;
 	vector<float3> h_faceidx;		// converted triangle mesh face indices
 	PhGUtils::Matrix4x4f mProj, mMv;
 

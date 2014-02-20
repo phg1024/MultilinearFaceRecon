@@ -477,7 +477,7 @@ namespace NumericalAlgorithms {
 		cudaStream_t& mystream
 		) 
 	{	
-		int frac = 8;
+		int frac = 1;
 		// setup parameters
 		float delta, R_THRES, DIFF_THRES;
 		if( opts == NULL ) {
@@ -513,7 +513,7 @@ namespace NumericalAlgorithms {
 		//cout << "w_ICP = " << w_ICP << endl;
 		//cout << "w_fp_scale = " << w_fp_scale << endl;
 		
-		float dstep = (delta - 0.1) / itmax;
+		float dstep = (delta - 0.05) / itmax;
 		int iters = 0;
 		PhGUtils::Timer t;
 		// while not converged

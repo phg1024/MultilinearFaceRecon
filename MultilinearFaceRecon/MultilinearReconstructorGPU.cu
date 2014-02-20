@@ -383,13 +383,13 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	w_prior_exp = 7.5e-4;
 
 	w_boundary = 1e-8;
-	w_chin = 2.5e-7;
+	w_chin = 1e-7;
 	//w_chin = 1e-8;
-	w_outer = 5e-8;//1e2;
+	w_outer = 0.5e-9;//1e2;
 	w_fp = 2.5;
 
-	w_history = 0.0005;
-	w_ICP = 1.0;
+	w_history = 0.0001;
+	w_ICP = 1.5;
 
 	historyWeights[0] = 0.02;
 	historyWeights[1] = 0.04;
@@ -502,13 +502,19 @@ __host__ void MultilinearReconstructorGPU::setBaseMesh(const PhGUtils::QuadMesh&
 	int nfaces = baseMesh.faceCount();
 	int nverts = baseMesh.vertCount();
 	cout << "setting base mesh: #v = " << nverts << ", #f = " << nfaces << endl;
+	validfaces = 0;
+	frontFaces.clear();
 	vector<int4> topo(nfaces);
 	//h_meshtopo.resize(nfaces*2*3);
+	isBackFace.resize(nfaces);
 	h_meshverts.resize(nfaces*4);
 	h_faceidx.resize(nfaces*4);
 	for(int i=0;i<nfaces;i++) {
 		const PhGUtils::QuadMesh::face_t& f = baseMesh.face(i);
 		topo[i] = make_int4(f.x, f.y, f.z, f.w);
+		const PhGUtils::QuadMesh::vert_t& v0 = baseMesh.vertex(f.x);
+		if( v0.z < -0.25 ) isBackFace[i] = true;
+		else isBackFace[i] = false;
 		//h_meshtopo[i*6+0] = f.x; h_meshtopo[i*6+1] = f.y; h_meshtopo[i*6+2] = f.z;
 		//h_meshtopo[i*6+3] = f.y; h_meshtopo[i*6+4] = f.z; h_meshtopo[i*6+5] = f.w;
 
@@ -516,7 +522,10 @@ __host__ void MultilinearReconstructorGPU::setBaseMesh(const PhGUtils::QuadMesh&
 		PhGUtils::encodeIndex<float>(i, clr.x, clr.y, clr.z);		
 		// fill the color array		
 #if FAST_RENDER
-		h_faceidx[i*4+0] = h_faceidx[i*4+1] = h_faceidx[i*4+2] = h_faceidx[i*4+3] = clr;
+		if( isBackFace[i] ) continue;
+		else frontFaces.push_back(i);
+		h_faceidx[validfaces+0] = h_faceidx[validfaces+1] = h_faceidx[validfaces+2] = h_faceidx[validfaces+3] = clr;
+        validfaces+=4;
 #else
 		h_faceidx[f.x] = clr;
 		h_faceidx[f.y] = clr;
@@ -762,7 +771,7 @@ __global__ void copySolutionToB(double *d_Atb, float *d_b, int ndims)
 	int tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if( tid >= ndims ) return;
 
-	d_b[tid] = d_Atb[tid];
+	d_b[tid] = 0.5 * (d_Atb[tid] + d_b[tid]);
 }
 
 __host__ bool MultilinearReconstructorGPU::fitIdentityWeights() {
@@ -1020,6 +1029,7 @@ __host__ bool MultilinearReconstructorGPU::fitExpressionWeights() {
 	checkCudaState();
 #endif
 
+	// full update
 	cudaMemcpy(&brhs[0], d_b, sizeof(float)*ndims_wexp, cudaMemcpyDeviceToHost);
 	checkCudaState();
 
@@ -1041,7 +1051,7 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	int iters = 0;
 	float E0 = 1, E = 0;
 	bool converged = false;
-	const int MaxIterations = 16;
+	const int MaxIterations = 8;
 
 	constraintCount.clear();
 	int rigidIters;
@@ -1208,7 +1218,7 @@ __host__ void MultilinearReconstructorGPU::renderMesh()
 					 sizeof(float3),
 					 &h_faceidx[0]);  //Pointer to the first color
 	//cout << h_meshtopo.size() / 3 << endl;
-	glDrawArrays( GL_QUADS, 0, h_meshverts.size() );
+	glDrawArrays( GL_QUADS, 0, validfaces );
 	//glDrawElements(GL_TRIANGLES, h_meshtopo.size(), GL_UNSIGNED_INT, &h_meshtopo[0]);
 
 	glDisableClientState(GL_VERTEX_ARRAY);
@@ -1464,7 +1474,7 @@ __host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale,
 	cudaMemcpy(NumericalAlgorithms::x, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToDevice);
 	checkCudaState();
 	int itmax = 32;
-	float opts[] = {0.5, 2.5e-6, 1e-4};
+	float opts[] = {0.5, 2.5e-7, 1e-4};
 	// gauss-newton algorithm to estimate a new set of parameters
 	iters = NumericalAlgorithms::GaussNewton_fp(
 		nparams, nfpts+nicpc, itmax, opts,
@@ -1677,26 +1687,27 @@ __host__ void MultilinearReconstructorGPU::updateMesh()
 		baseMesh.vertex(i).z = tmesh(idx);
 	}
 #else
-	/*
-	for(int i=0;i<baseMesh.faceCount();i++) {
-		const PhGUtils::QuadMesh::face_t& f = baseMesh.face(i);
+	for(int i=0, validfaces=0;i<frontFaces.size();i++) {
+		const PhGUtils::QuadMesh::face_t& f = baseMesh.face(frontFaces[i]);
 		int4 vidx = make_int4(f.x, f.y, f.z, f.w)*3;		
 		float3 v0 = make_float3(tmesh(vidx.x), tmesh(vidx.x+1), tmesh(vidx.x+2));
 		float3 v1 = make_float3(tmesh(vidx.y), tmesh(vidx.y+1), tmesh(vidx.y+2));
 		float3 v2 = make_float3(tmesh(vidx.z), tmesh(vidx.z+1), tmesh(vidx.z+2));
 		float3 v3 = make_float3(tmesh(vidx.w), tmesh(vidx.w+1), tmesh(vidx.w+2));
 		// fill the vertex array
-		h_meshverts[i*4+0] = v0;
-		h_meshverts[i*4+1] = v1;
-		h_meshverts[i*4+2] = v2;
-		h_meshverts[i*4+3] = v3;
+		h_meshverts[validfaces] = v0;
+		h_meshverts[validfaces+1] = v1;
+		h_meshverts[validfaces+2] = v2;
+		h_meshverts[validfaces+3] = v3;
+		validfaces+=4;
 	}
-	*/
 	
+	/*
 	updateMesh_kernel<<<(int)ceil(baseMesh.faceCount()/1024.0), 1024>>>(d_mesh, d_meshverts, d_meshtopo, baseMesh.faceCount());
 	checkCudaState();
 	cudaMemcpy(&h_meshverts[0], d_meshverts, sizeof(float3)*baseMesh.faceCount()*4, cudaMemcpyDeviceToHost);
 	checkCudaState();
+	*/
 #endif
 	
 
