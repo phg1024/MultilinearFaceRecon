@@ -384,7 +384,7 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	w_boundary = 1e-8;
 	w_chin = 2.5e-6;
 	//w_chin = 1e-8;
-	w_outer = 1e2;
+	w_outer = 1e-6;//1e2;
 	w_fp = 2.5;
 
 	w_history = 0.0001;
@@ -461,7 +461,7 @@ __host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Poi
 		float w_depth = exp(-fabs(dz) / (sigma_depth*50.0));
 
 		// set the landmark weights
-		h_w_landmarks[i] = (i<64 || i>74)?isValid*w_depth:isValid*w_boundary*w_depth;
+		h_w_landmarks[i] = isValid*w_depth;//(i<64 || i>74)?isValid*w_depth:isValid*w_boundary*w_depth;
 		validCount += isValid;
 	}
 
