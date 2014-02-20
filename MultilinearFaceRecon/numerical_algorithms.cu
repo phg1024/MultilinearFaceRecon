@@ -381,7 +381,7 @@ namespace NumericalAlgorithms {
 		int iters = 0;
 		PhGUtils::Timer t;
 		// while not converged
-		while( cublasSnrm2(m, deltaX, 1) > DIFF_THRES && cublasSnrm2(n, r, 1) > R_THRES && iters < itmax ) {
+		while( cublasSnrm2(m, deltaX, 1) > DIFF_THRES && cublasSnrm2(nicpc+nfpts+m, r, 1) > R_THRES && iters < itmax ) {
 			//// compute jacobian with GPU
 			//t.tic();
 			jacobian_ICP<<<grid, block, 0, mystream>>>(m, x, J, 0, 1, d_icpc, nicpc, d_tplt, w_ICP);
@@ -404,14 +404,14 @@ namespace NumericalAlgorithms {
 
 			//// compute JtJ
 			//t.tic();
-			cublasSsyrk('U', 'N', m, n, 1.0, J, m, 0, JtJ, m);
+			cublasSsyrk('U', 'N', m, nicpc+nfpts+m, 1.0, J, m, 0, JtJ, m);
 			//cudaThreadSynchronize();
 			//t.toc("JtJ");
 			//writeback(JtJ, m, m, "d_JtJ.txt");
 
 			//// compute Jtr
 			//t.tic();
-			cublasSgemv('N', m, n, 1.0, J, m, r, 1, 0, deltaX, 1);
+			cublasSgemv('N', m, nicpc+nfpts+m, 1.0, J, m, r, 1, 0, deltaX, 1);
 			//cudaThreadSynchronize();
 			//t.toc("Jtr");
 			//writeback(deltaX, 7, 1, "d_Jtr.txt");
@@ -477,7 +477,7 @@ namespace NumericalAlgorithms {
 		cudaStream_t& mystream
 		) 
 	{	
-		int frac = 4;
+		int frac = 8;
 		// setup parameters
 		float delta, R_THRES, DIFF_THRES;
 		if( opts == NULL ) {
@@ -492,13 +492,17 @@ namespace NumericalAlgorithms {
 		cudaMemcpy(deltaX, x, sizeof(float)*m, cudaMemcpyDeviceToDevice);
 		checkCudaState();
 
+		int nicpcDfrac = nicpc/frac;
+		int nr = nicpcDfrac+nfpts;
+		float inv_nr = 1.0 / nr;
+
 		//cout << nicpc << endl;
 		// compute initial residue with GPU
 		dim3 block(1024, 1, 1);
 		dim3 grid((int)(ceil(nicpc/(float)block.x)), 1, 1);
-		cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, frac, d_icpc, nicpc/frac, d_tplt, w_ICP);
+		cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, frac, d_icpc, nicpcDfrac, d_tplt, w_ICP);
 		checkCudaState();
-		cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc/frac, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+		cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpcDfrac, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
 		checkCudaState();
 		cost_History<<<1, 16>>>(x, r, nicpc+nfpts, d_meanRT, w_history);
 		checkCudaState();
@@ -508,25 +512,25 @@ namespace NumericalAlgorithms {
 		//writeback(d_w_mask, nfpts, 1, "d_w_mask.txt");
 		//cout << "w_ICP = " << w_ICP << endl;
 		//cout << "w_fp_scale = " << w_fp_scale << endl;
-
+		
 		float dstep = (delta - 0.1) / itmax;
 		int iters = 0;
 		PhGUtils::Timer t;
 		// while not converged
-		while( cublasSnrm2(m, deltaX, 1) > DIFF_THRES && cublasSnrm2(n, r, 1) > R_THRES && iters < itmax ) {
+		while( cublasSnrm2(m, deltaX, 1) > DIFF_THRES && cublasSnrm2(nr+m, r, 1)*inv_nr > R_THRES && iters < itmax ) {
 			//// compute jacobian with GPU
 			//t.tic();
-			jacobian_ICP<<<grid, block, 0, mystream>>>(m, x, J, 0, frac, d_icpc, nicpc/frac, d_tplt, w_ICP);
+			jacobian_ICP<<<grid, block, 0, mystream>>>(m, x, J, 0, frac, d_icpc, nicpcDfrac, d_tplt, w_ICP);
 			//cudaThreadSynchronize();
 			//t.toc("jacobian ICP");
 			checkCudaState();
 			//t.tic();
-			jacobian_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(m, x, J, nicpc/frac, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+			jacobian_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(m, x, J, nicpcDfrac, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
 			//cudaThreadSynchronize();
 			//t.toc("jacobian feature points");
 			checkCudaState();
 
-			jacobian_History<<<1, 16, 0, mystream>>>(m, x, J, nicpc/frac+nfpts, d_meanRT, w_history);
+			jacobian_History<<<1, 16, 0, mystream>>>(m, x, J, nr, d_meanRT, w_history);
 
 			//writeback(J, nicpc+nfpts, m, "d_J.txt");
 
@@ -536,14 +540,14 @@ namespace NumericalAlgorithms {
 
 			//// compute JtJ
 			//t.tic();
-			cublasSsyrk('U', 'N', m, n, 1.0, J, m, 0, JtJ, m);
+			cublasSsyrk('U', 'N', m, nr+m, 1.0, J, m, 0, JtJ, m);
 			//cudaThreadSynchronize();
 			//t.toc("JtJ");
 			//writeback(JtJ, m, m, "d_JtJ.txt");
 
 			//// compute Jtr
 			//t.tic();
-			cublasSgemv('N', m, n, 1.0, J, m, r, 1, 0, deltaX, 1);
+			cublasSgemv('N', m, nr+m, 1.0, J, m, r, 1, 0, deltaX, 1);
 			//cudaThreadSynchronize();
 			//t.toc("Jtr");
 			//writeback(deltaX, 7, 1, "d_Jtr.txt");
@@ -575,17 +579,17 @@ namespace NumericalAlgorithms {
 
 			//// update residue
 			//t.tic();
-			cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, frac, d_icpc, nicpc/frac, d_tplt, w_ICP);
+			cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, frac, d_icpc, nicpcDfrac, d_tplt, w_ICP);
 			//cudaThreadSynchronize();
 			//t.toc("cost ICP");
 			checkCudaState();
 			//t.tic();
-			cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc/frac, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+			cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpcDfrac, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
 			//cudaThreadSynchronize();
 			//t.toc("cost feature point");
 			checkCudaState();
 	
-			cost_History<<<1, 16, 0, mystream>>>(x, r, nicpc/frac+nfpts, d_meanRT, w_history);
+			cost_History<<<1, 16, 0, mystream>>>(x, r, nr, d_meanRT, w_history);
 			checkCudaState();
 
 			//::system("pause");

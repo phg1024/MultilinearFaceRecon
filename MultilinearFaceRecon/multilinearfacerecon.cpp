@@ -145,14 +145,14 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 
 void MultilinearFaceRecon::reconstructionWithBatchInput() {
 #if DOUG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\images\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10000;
 	const int imageCount = 250;
 #elif PEIHONG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Peihong\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
@@ -252,21 +252,21 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 {
 #if DOUG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\images\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10000;
-	const int imageCount = 64;
+	const int imageCount = 250;
 #elif PEIHONG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Peihong\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10001;
-	const int imageCount = 90;
+	const int imageCount = 250;
 #else
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Yilong\\test_images\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test_images\\";
 	const string imageName = "00";
 	const string colorPostfix = ".png";
 	const string depthPostfix = "_depth.png";
@@ -368,21 +368,21 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 {
 #if DOUG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\images\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10000;
 	const int imageCount = 250;
 #elif PEIHONG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Peihong\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10001;
 	const int imageCount = 250;
 #else
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Yilong\\test_images\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test_images\\";
 	const string imageName = "00";
 	const string colorPostfix = ".png";
 	const string depthPostfix = "_depth.png";

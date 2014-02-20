@@ -1,6 +1,7 @@
 #ifndef RANDTREE_H
 #define RANDTREE_H
 
+#define NOMINMAX
 #include <Windows.h>
 
 #include "opencv2/ml/ml.hpp"

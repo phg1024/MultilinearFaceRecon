@@ -63,6 +63,7 @@ MultilinearReconstructorGPU::~MultilinearReconstructorGPU() {
 
 __host__ void MultilinearReconstructorGPU::setPose(const float* params) {
 	for(int i=0;i<7;i++) h_RTparams[i] = params[i];
+	PhGUtils::printArray(params, 7);
 	checkCudaErrors(cudaMemcpy(d_RTparams, params, sizeof(float)*7, cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(d_meanRT, params, sizeof(float)*7, cudaMemcpyHostToDevice));
 }
@@ -382,12 +383,12 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	w_prior_exp = 7.5e-4;
 
 	w_boundary = 1e-8;
-	w_chin = 2.5e-6;
+	w_chin = 2.5e-7;
 	//w_chin = 1e-8;
-	w_outer = 1e-6;//1e2;
+	w_outer = 5e-8;//1e2;
 	w_fp = 2.5;
 
-	w_history = 0.0001;
+	w_history = 0.0005;
 	w_ICP = 1.0;
 
 	historyWeights[0] = 0.02;
@@ -402,7 +403,7 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	historyWeights[9] = 10.24;
 
 	for(int i=0;i<78;i++) {
-		if( i < 42 || i > 74 ) h_w_mask[i] = 1.0;
+		if( i < 42 || i > 74 ) h_w_mask[i] = w_fp;
 		else {
 			if( i > 63 ) h_w_mask[i] = w_outer * w_fp;
 			else h_w_mask[i] = w_chin * w_fp;
@@ -461,7 +462,7 @@ __host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Poi
 		float w_depth = exp(-fabs(dz) / (sigma_depth*50.0));
 
 		// set the landmark weights
-		h_w_landmarks[i] = isValid*w_depth;//(i<64 || i>74)?isValid*w_depth:isValid*w_boundary*w_depth;
+		h_w_landmarks[i] = isValid*w_depth;//(i<64 || i>74)?isValid*w_depth:1.0;
 		validCount += isValid;
 	}
 
@@ -1378,7 +1379,7 @@ __global__ void collectICPConstraints_kernel(
 
 __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int maxIters) {
 	const float DIST_THRES_MAX = 0.010;
-	const float DIST_THRES_MIN = 0.001;
+	const float DIST_THRES_MIN = 0.0025;
 	float DIST_THRES = DIST_THRES_MAX + (DIST_THRES_MIN - DIST_THRES_MAX) * iters / (float)maxIters;
 	//PhGUtils::message("Collecting ICP constraints...");
 	
@@ -1463,9 +1464,9 @@ __host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale,
 	cudaMemcpy(NumericalAlgorithms::x, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToDevice);
 	checkCudaState();
 	int itmax = 32;
-	float opts[] = {0.5, 1e-3, 1e-4};
+	float opts[] = {0.5, 2.5e-6, 1e-4};
 	// gauss-newton algorithm to estimate a new set of parameters
-	iters = NumericalAlgorithms::GaussNewton(
+	iters = NumericalAlgorithms::GaussNewton_fp(
 		nparams, nfpts+nicpc, itmax, opts,
 		d_fptsIdx, d_q, d_q2d, nfpts, d_w_landmarks, d_w_mask, w_fp_scale,
 		d_icpc, nicpc, w_ICP,

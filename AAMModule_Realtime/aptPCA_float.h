@@ -8,6 +8,7 @@
 using namespace Eigen;
 using Eigen::MatrixXf;
 
+#define NOMINMAX
 #include<windows.h>
 #include<stdio.h>
 #include<process.h>
