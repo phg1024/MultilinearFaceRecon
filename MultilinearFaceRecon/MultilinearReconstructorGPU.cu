@@ -383,12 +383,12 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	w_prior_exp = 7.5e-4;
 
 	w_boundary = 1e-8;
-	w_chin = 1e-7;
+	w_chin = 2.5e-6;
 	//w_chin = 1e-8;
-	w_outer = 0.5e-9;//1e2;
+	w_outer = 0.25e-8;//1e2;
 	w_fp = 2.5;
 
-	w_history = 0.0001;
+	w_history = 0.00001;
 	w_ICP = 1.5;
 
 	historyWeights[0] = 0.02;
@@ -513,7 +513,7 @@ __host__ void MultilinearReconstructorGPU::setBaseMesh(const PhGUtils::QuadMesh&
 		const PhGUtils::QuadMesh::face_t& f = baseMesh.face(i);
 		topo[i] = make_int4(f.x, f.y, f.z, f.w);
 		const PhGUtils::QuadMesh::vert_t& v0 = baseMesh.vertex(f.x);
-		if( v0.z < -0.25 ) isBackFace[i] = true;
+		if( v0.z < -0.75 ) isBackFace[i] = true;
 		else isBackFace[i] = false;
 		//h_meshtopo[i*6+0] = f.x; h_meshtopo[i*6+1] = f.y; h_meshtopo[i*6+2] = f.z;
 		//h_meshtopo[i*6+3] = f.y; h_meshtopo[i*6+4] = f.z; h_meshtopo[i*6+5] = f.w;
@@ -771,7 +771,8 @@ __global__ void copySolutionToB(double *d_Atb, float *d_b, int ndims)
 	int tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if( tid >= ndims ) return;
 
-	d_b[tid] = 0.5 * (d_Atb[tid] + d_b[tid]);
+	const float alpha = 1.0;
+	d_b[tid] = alpha * d_Atb[tid] + (1.0 - alpha) * d_b[tid];
 }
 
 __host__ bool MultilinearReconstructorGPU::fitIdentityWeights() {
@@ -981,15 +982,17 @@ __host__ bool MultilinearReconstructorGPU::fitExpressionWeights() {
 	//writeback(d_A, nicpc*3, ndims_wexp, "d_Aexp0.txt");
 	checkCudaState();
 	//cout << w_fp_scale << endl;
+	const float w_fp = 5.0;
 	fitExpression_FeaturePointsTerm<<<1, 128>>>(d_fptsIdx, d_q, nfpts, npts_mesh, ndims_wexp, nicpc*ndims_wexp*3, nicpc*3,
 											  d_tm0RT, d_A, d_b,											  
-											  T, d_w_landmarks, w_fp_scale);
+											  T, d_w_landmarks, w_fp_scale*w_fp);
 	checkCudaState();
 	//writeback(d_A, (nicpc+nfpts)*3, ndims_wexp, "d_Aexp1.txt");
 	checkCudaState();
+	const float w_p = 2.5;
 	fitExpression_PriorTerm<<<1, 64>>>(d_A, d_b, d_sigma_wexp, d_mu_wexp_weighted,
 									  ndims_wexp, (nicpc+nfpts)*ndims_wexp*3, (nicpc+nfpts)*3, 
-									  w_fp_scale);
+									  w_fp_scale*w_p);
 	checkCudaState();
 	//writeback(d_A, (nicpc+nfpts)*3+ndims_wexp, ndims_wexp, "d_Aexp2.txt");
 	//checkCudaState();
@@ -1051,7 +1054,7 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	int iters = 0;
 	float E0 = 1, E = 0;
 	bool converged = false;
-	const int MaxIterations = 8;
+	const int MaxIterations = 16;
 
 	constraintCount.clear();
 	int rigidIters;
@@ -1389,7 +1392,7 @@ __global__ void collectICPConstraints_kernel(
 
 __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int maxIters) {
 	const float DIST_THRES_MAX = 0.010;
-	const float DIST_THRES_MIN = 0.0025;
+	const float DIST_THRES_MIN = 0.001;
 	float DIST_THRES = DIST_THRES_MAX + (DIST_THRES_MIN - DIST_THRES_MAX) * iters / (float)maxIters;
 	//PhGUtils::message("Collecting ICP constraints...");
 	
@@ -1474,7 +1477,7 @@ __host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale,
 	cudaMemcpy(NumericalAlgorithms::x, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToDevice);
 	checkCudaState();
 	int itmax = 32;
-	float opts[] = {0.5, 2.5e-7, 1e-4};
+	float opts[] = {0.5, 1.25e-7, 7.5e-5};
 	// gauss-newton algorithm to estimate a new set of parameters
 	iters = NumericalAlgorithms::GaussNewton_fp(
 		nparams, nfpts+nicpc, itmax, opts,
