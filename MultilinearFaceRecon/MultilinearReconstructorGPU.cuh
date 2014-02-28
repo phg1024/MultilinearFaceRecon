@@ -132,6 +132,7 @@ private:
 	// template tensor: d_tplt = core x_1 Wid x_2 Wexp
 	float *d_tplt;
 	float *d_mesh;
+	float *d_rawdistmap, *d_distmap;
 
 	vector<int> landmarkIdx;
 

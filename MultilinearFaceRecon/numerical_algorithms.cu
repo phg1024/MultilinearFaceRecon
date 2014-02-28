@@ -73,6 +73,9 @@ namespace NumericalAlgorithms {
 
 		const float3& q = icpc.q;
 		float3 pq = q - p;
+		const float w_rigid = fabsf(icpc.weight)>1e-2?0.01:1.0;
+		w_ICP *= w_rigid;
+
 		costfunc[tid+offset] = dot(pq, pq) * w_ICP;
 	}
 
@@ -91,6 +94,7 @@ namespace NumericalAlgorithms {
 
 		mat3 R = mat3::rotation(rx, ry, rz);
 		float3 T = make_float3(tx, ty, tz);
+
 		mat3 Jx, Jy, Jz;
 		mat3::jacobian(rx, ry, rz, Jx, Jy, Jz);
 
@@ -105,6 +109,9 @@ namespace NumericalAlgorithms {
 		float3 v2 = make_float3(d_tplt[vidx.z], d_tplt[vidx.z+1], d_tplt[vidx.z+2]);
 
 		const float3& q = icpc.q;
+
+		const float w_rigid = fabsf(icpc.weight)>1e-2?0.01:1.0;
+		w_ICP *= w_rigid;
 
 		float3 p = v0 * bc.x + v1 * bc.y + v2 * bc.z;
 
@@ -555,10 +562,10 @@ namespace NumericalAlgorithms {
 			//// compute deltaX
 			
 			//t.tic();
-#if 0
+#if 1
 			culaDeviceSpotrf('U', m, JtJ, m);
 			culaDeviceSpotrs('U', m, 1, JtJ, m, deltaX, m);
-			t.toc("JtJ\\Jtr");
+			//t.toc("JtJ\\Jtr");
 #else
 			cudaMemcpy(h_JtJ, JtJ, sizeof(float)*m*m, cudaMemcpyDeviceToHost);
 			cudaMemcpy(h_Jtr, deltaX, sizeof(float)*m, cudaMemcpyDeviceToHost);
