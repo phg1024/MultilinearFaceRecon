@@ -152,9 +152,9 @@ private:
 	// raw color / depth data, need to perform conversion before using them
 	unsigned char *d_colordata, *d_depthdata;	// image data on device
 
-	d_ICPConstraint* d_icpc;
-	int* d_nicpc;
-	int nicpc;
+	d_ICPConstraint *d_icpc, *d_icpc_rigid;
+	int *d_nicpc, *d_nicpc_rigid;
+	int nicpc, nicpc_rigid;
 	static const int MAX_ICPC_COUNT = 65536;
 	float *d_targetLocations;
 

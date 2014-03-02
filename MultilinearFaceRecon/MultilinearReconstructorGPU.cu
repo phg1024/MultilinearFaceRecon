@@ -376,6 +376,9 @@ __host__ void MultilinearReconstructorGPU::init() {
 
 	checkCudaErrors(cudaMalloc((void**) &d_icpc, sizeof(d_ICPConstraint)*MAX_ICPC_COUNT));
 	checkCudaErrors(cudaMalloc((void**) &d_nicpc, sizeof(int)));
+	checkCudaErrors(cudaMalloc((void**) &d_icpc_rigid, sizeof(d_ICPConstraint)*MAX_ICPC_COUNT));
+	checkCudaErrors(cudaMalloc((void**) &d_nicpc_rigid, sizeof(int)));
+
 
 	h_error = new float[MAX_ICPC_COUNT];
 	checkCudaErrors(cudaMalloc((void**) &d_error, sizeof(float)*MAX_ICPC_COUNT));
@@ -395,17 +398,29 @@ __host__ void MultilinearReconstructorGPU::init() {
 }
 
 __host__ void MultilinearReconstructorGPU::initializeWeights() {
-	w_prior_id = 1e-4;
-	w_prior_exp = 7.5e-4;
+	// read the weights from a setting file
+	string fweights = "../Data/weights.txt";
+	ifstream fin(fweights);
+	if( !fin ){
+		PhGUtils::fail("failed to load weights file. using default weights");
+		w_prior_id = 1e-3;
+		w_prior_exp = 7.5e-4;
 
-	w_boundary = 1e-8;
-	w_chin = 2.5e-6;
-	//w_chin = 1e-8;
-	w_outer = 2.5e-10;//1e2;
-	w_fp = 1.5;
+		w_boundary = 1e-8;
+		w_chin = 5e-6;
+		w_outer = 2.5e-10;
+		w_fp = 0.25;
 
-	w_history = 0.01;
-	w_ICP = 2.5;
+		w_history = 0.01;
+		w_ICP = 1.0;		
+	}
+	else {
+		fin >> w_prior_id >> w_prior_exp
+			>> w_boundary >> w_chin >> w_outer
+			>> w_fp >> w_ICP >> w_history;
+	}
+	fin.close();
+
 
 	historyWeights[0] = 0.02;
 	historyWeights[1] = 0.04;
@@ -419,7 +434,7 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	historyWeights[9] = 10.24;
 
 	for(int i=0;i<78;i++) {
-		if( i < 42 || i > 74 ) h_w_mask[i] = w_fp;
+		if( i < 42 || i > 74 ) h_w_mask[i] = w_fp * 15.0;
 		else {
 			if( i > 63 ) h_w_mask[i] = w_outer * w_fp;
 			else h_w_mask[i] = w_chin * w_fp;
@@ -478,7 +493,7 @@ __host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Poi
 		float w_depth = exp(-fabs(dz) / (sigma_depth*50.0));
 
 		// set the landmark weights
-		h_w_landmarks[i] = (i<64 || i>74)?isValid*w_depth:isValid*1e-3;
+		h_w_landmarks[i] = (i<64 || i>74)?isValid*w_depth:isValid*1e-1;
 		validCount += isValid;
 	}
 
@@ -1300,8 +1315,9 @@ __host__ void MultilinearReconstructorGPU::renderMesh()
 	checkCudaErrors(cudaMemcpy(d_depthMap, &depthMap[0], sizeof(float)*640*480, cudaMemcpyHostToDevice));
 }
 
-__global__ void clearICPConstraints(int* nicpc) {
+__global__ void clearICPConstraints(int* nicpc, int *nicpc_rigid) {
 	*nicpc = 0;
+	*nicpc_rigid = 0;
 }
 
 //@note	need to upload the topology of the template mesh for constraint collection
@@ -1315,6 +1331,8 @@ __global__ void collectICPConstraints_kernel(
 						unsigned char*		depthdata,			// capture data
 						d_ICPConstraint*	icpc,				// ICP constraints
 						int*				nicpc,
+						d_ICPConstraint*    icpc_rigid,
+						int*				nicpc_rigid,
 						float thres
 	) {
 	float DIST_THRES = thres;
@@ -1326,7 +1344,7 @@ __global__ void collectICPConstraints_kernel(
 
 	int tid = y * 640 + x;
 
-	if( tid & 0x1 ) return;
+	//if( tid & 0x1 ) return;
 
 	int u = x, v = y;
 	int idx = (v * 640 + u)*4;
@@ -1344,7 +1362,7 @@ __global__ void collectICPConstraints_kernel(
 		float3 q = color2world_fast(u, v, d);
 
 		// take a small window
-		const int wSize = 3;
+		const int wSize = 5;
 		//int checkedFaces[9];
 		//int checkedCount = 0;
 		float closestDist = FLT_MAX;
@@ -1421,19 +1439,26 @@ __global__ void collectICPConstraints_kernel(
 			int slot = atomicAdd(nicpc, 1);
 			__threadfence();
 			icpc[slot] = cc;
+
+			const float cutoff = 1e-3;
+			if( cc.weight < cutoff ) {
+				int slot_rigid = atomicAdd(nicpc_rigid, 1);
+				__threadfence();
+				icpc_rigid[slot_rigid] = cc;
+			}
 		}
 	}
 }
 
 __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int maxIters) {
 	const float DIST_THRES_MAX = 0.010;
-	const float DIST_THRES_MIN = 0.0025;
+	const float DIST_THRES_MIN = 0.001;
 	float DIST_THRES = DIST_THRES_MAX + (DIST_THRES_MIN - DIST_THRES_MAX) * iters / (float)maxIters;
 	//PhGUtils::message("Collecting ICP constraints...");
 	
 	//writeback(d_depthMap, 480, 640, "d_depthmap.txt");
 
-	clearICPConstraints<<<1, 1, 0, mystream>>>(d_nicpc);
+	clearICPConstraints<<<1, 1, 0, mystream>>>(d_nicpc, d_nicpc_rigid);
 	checkCudaState();
 	PhGUtils::Timer ticpc;
 	//ticpc.tic();
@@ -1448,6 +1473,8 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 																d_depthdata,
 																d_icpc,
 																d_nicpc,
+																d_icpc_rigid,
+																d_nicpc_rigid,
 																DIST_THRES);
 
 	cudaThreadSynchronize();
@@ -1459,6 +1486,10 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 	cudaMemcpy(&icpcCount, d_nicpc, sizeof(int), cudaMemcpyDeviceToHost);
 	checkCudaState();
 	//cout << "ICPC = " << icpcCount << endl;
+
+	cudaMemcpy(&nicpc_rigid, d_nicpc_rigid, sizeof(int), cudaMemcpyDeviceToHost);
+	checkCudaState();
+	//cout << "ICPC_rigid = " << nicpc_rigid << endl;
 
 #if OUTPUT_ICPC
 	vector<d_ICPConstraint> icpc(640*480);
@@ -1513,15 +1544,27 @@ __host__ vector<float> MultilinearReconstructorGPU::computeWeightedMeanPose() {
 __host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale, int& iters) {
 	int nparams = fitScale?7:6;
 
+	d_ICPConstraint *icpc_ptr;
+	int icpccount;
+
+	if( fitScale ) {
+		icpc_ptr = d_icpc;
+		icpccount = nicpc;
+	}
+	else {
+		icpc_ptr = d_icpc_rigid;
+		icpccount = nicpc_rigid;
+	}
+
 	cudaMemcpy(NumericalAlgorithms::x, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToDevice);
 	checkCudaState();
-	int itmax = 32;
-	float opts[] = {0.5, 1.25e-7, 7.5e-5};
+	int itmax = 128;
+	float opts[] = {0.25, 1e-3, 1e-4};
 	// gauss-newton algorithm to estimate a new set of parameters
-	iters = NumericalAlgorithms::GaussNewton_fp(
-		nparams, nfpts+nicpc, itmax, opts,
+	iters = NumericalAlgorithms::lm(
+		nparams, nfpts+nicpc_rigid, itmax, opts,
 		d_fptsIdx, d_q, d_q2d, nfpts, d_w_landmarks, d_w_mask, w_fp_scale,
-		d_icpc, nicpc, w_ICP,
+		icpc_ptr, icpccount, w_ICP,
 		d_meanRT, w_history,
 		d_tplt,
 		mystream

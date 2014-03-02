@@ -25,4 +25,14 @@ namespace NumericalAlgorithms {
 		float *d_tplt,												// template mesh
 		cudaStream_t& mystream
 		);
+
+	__host__ int lm(int m, int n, int itmax, float *opts,
+		int *d_fptsIdx, float *d_q, float *d_q2d, int nfpts,		// feature points
+		float *d_w_landmarks, float *d_w_mask, float w_fp_scale,	// weights for feature points
+		d_ICPConstraint * d_icpc, int nicpc, float w_ICP,			// ICP terms
+		float *d_meanRT,  float w_history,							// history term
+		float *d_tplt,												// template mesh
+		cudaStream_t& mystream
+		);
+
 }
