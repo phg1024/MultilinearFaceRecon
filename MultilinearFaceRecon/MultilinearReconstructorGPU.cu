@@ -400,7 +400,6 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 
 	w_boundary = 1e-8;
 	w_chin = 2.5e-6;
-	//w_chin = 1e-8;
 	w_outer = 2.5e-10;//1e2;
 	w_fp = 1.5;
 
