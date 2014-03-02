@@ -8,6 +8,7 @@
 #define DOUG 1
 #define PEIHONG 0
 #define YILONG 0
+#define YILONG2 0
 
 MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	: QMainWindow(parent)
@@ -158,13 +159,20 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10001;
 	const int imageCount = 250;
-#else
+#elif YILONG
 	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Yilong\\test_images\\";
 	const string imageName = "00";
 	const string colorPostfix = ".png";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 2670;
 	const int imageCount = 120;
+#elif YILONG2
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test\\";
+	const string imageName = "000";
+	const string colorPostfix = ".png";
+	const string depthPostfix = "_depth.png";
+	const int startIdx = 590;
+	const int imageCount = 181;
 #endif
 
 	const int endIdx = startIdx + imageCount;
@@ -265,13 +273,20 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10001;
 	const int imageCount = 250;
-#else
+#elif YILONG
 	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Yilong\\test_images\\";
 	const string imageName = "00";
 	const string colorPostfix = ".png";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 2670;
 	const int imageCount = 120;
+#elif YILONG2
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test\\";
+	const string imageName = "000";
+	const string colorPostfix = ".png";
+	const string depthPostfix = "_depth.png";
+	const int startIdx = 590;
+	const int imageCount = 181;
 #endif
 
 	const int endIdx = startIdx + imageCount;
@@ -381,13 +396,20 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10001;
 	const int imageCount = 250;
-#else
+#elif YILONG
 	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Yilong\\test_images\\";
 	const string imageName = "00";
 	const string colorPostfix = ".png";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 2670;
 	const int imageCount = 120;
+#elif YILONG2
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test\\";
+	const string imageName = "000";
+	const string colorPostfix = ".png";
+	const string depthPostfix = "_depth.png";
+	const int startIdx = 590;
+	const int imageCount = 181;
 #endif
 
 	const int endIdx = startIdx + imageCount;

@@ -13,7 +13,7 @@
 #include "mkl.h"
 
 namespace NumericalAlgorithms {
-	float *x0, *x, *deltaX, *r, *J, *JtJ;
+	float *x0, *x, *deltaX, *r0, *r, *J0, *J, *JtJ;
 	float *h_JtJ, *h_Jtr;
 
 	void initialize(int nparams, int nconstraints) {
@@ -21,7 +21,9 @@ namespace NumericalAlgorithms {
 		checkCudaErrors(cudaMalloc((void**)&x, sizeof(float)*nparams));
 		checkCudaErrors(cudaMalloc((void**)&deltaX, sizeof(float)*nparams));
 
+		checkCudaErrors(cudaMalloc((void**)&r0, sizeof(float)*nconstraints));
 		checkCudaErrors(cudaMalloc((void**)&r, sizeof(float)*nconstraints));
+		checkCudaErrors(cudaMalloc((void**)&J0, sizeof(float)*nconstraints*nparams));
 		checkCudaErrors(cudaMalloc((void**)&J, sizeof(float)*nconstraints*nparams));
 		checkCudaErrors(cudaMalloc((void**)&JtJ, sizeof(float)*nparams*nparams));
 
@@ -33,7 +35,9 @@ namespace NumericalAlgorithms {
 		checkCudaErrors(cudaFree(x0));
 		checkCudaErrors(cudaFree(x));
 		checkCudaErrors(cudaFree(deltaX));
+		checkCudaErrors(cudaFree(r0));
 		checkCudaErrors(cudaFree(r));
+		checkCudaErrors(cudaFree(J0));
 		checkCudaErrors(cudaFree(J));
 		checkCudaErrors(cudaFree(JtJ));
 
@@ -73,8 +77,9 @@ namespace NumericalAlgorithms {
 
 		const float3& q = icpc.q;
 		float3 pq = q - p;
-		const float w_rigid = fabsf(icpc.weight)>1e-2?0.01:1.0;
-		w_ICP *= w_rigid;
+		
+		//const float w_rigid = fabsf(icpc.weight)>5e-2?0.1:1.0;
+		//w_ICP *= w_rigid;
 
 		costfunc[tid+offset] = dot(pq, pq) * w_ICP;
 	}
@@ -110,8 +115,8 @@ namespace NumericalAlgorithms {
 
 		const float3& q = icpc.q;
 
-		const float w_rigid = fabsf(icpc.weight)>1e-2?0.01:1.0;
-		w_ICP *= w_rigid;
+		//const float w_rigid = fabsf(icpc.weight)>5e-2?0.1:1.0;
+		//w_ICP *= w_rigid;
 
 		float3 p = v0 * bc.x + v1 * bc.y + v2 * bc.z;
 
@@ -181,7 +186,8 @@ namespace NumericalAlgorithms {
 		float3 T = make_float3(tx, ty, tz);
 
 		int voffset = tid * 3;
-		float wpt = d_w_landmarks[tid] * w_fp_scale * d_w_mask[tid];
+		//float wpt = d_w_landmarks[tid] * w_fp_scale * d_w_mask[tid];
+		float wpt = w_fp_scale * d_w_mask[tid];
 
 		int vidx = d_fptsIdx[tid] * 3;
 		float3 p = make_float3(d_tplt[vidx], d_tplt[vidx+1], d_tplt[vidx+2]);
@@ -189,6 +195,8 @@ namespace NumericalAlgorithms {
 		p = R * p + T;
 
 		if( tid < 42 || tid > 74 ) {
+			wpt *= d_w_landmarks[tid];
+
 			float3 q = make_float3(d_q[voffset], d_q[voffset+1], d_q[voffset+2]);
 			float3 pq = p-q;
 			costfunc[tid+offset] = dot(p-q, p-q)*wpt;
@@ -221,13 +229,16 @@ namespace NumericalAlgorithms {
 		mat3::jacobian(rx, ry, rz, Jx, Jy, Jz);
 
 		int voffset = tid * 3;
-		float wpt = d_w_landmarks[tid] * w_fp_scale * d_w_mask[tid];
+		//float wpt = d_w_landmarks[tid] * w_fp_scale * d_w_mask[tid];
+		float wpt = w_fp_scale * d_w_mask[tid];
 
 		int vidx = d_fptsIdx[tid] * 3;
 		int jidx = (tid+offset)*m;
 		float3 p = make_float3(d_tplt[vidx], d_tplt[vidx+1], d_tplt[vidx+2]);
 
 		if( tid < 42 || tid > 74 ) {
+			wpt *= d_w_landmarks[tid];
+
 			float3 q = make_float3(d_q[voffset], d_q[voffset+1], d_q[voffset+2]);
 
 			// R * p
@@ -520,7 +531,7 @@ namespace NumericalAlgorithms {
 		//cout << "w_ICP = " << w_ICP << endl;
 		//cout << "w_fp_scale = " << w_fp_scale << endl;
 		
-		float dstep = (delta - 0.05) / itmax;
+		//float dstep = (delta - 0.05) / itmax;
 		int iters = 0;
 		PhGUtils::Timer t;
 		// while not converged
@@ -598,6 +609,173 @@ namespace NumericalAlgorithms {
 	
 			cost_History<<<1, 16, 0, mystream>>>(x, r, nr, d_meanRT, w_history);
 			checkCudaState();
+
+			//::system("pause");
+			iters++;
+			//delta -= dstep;
+		}
+
+		//::system("pause");
+		checkCudaState();
+		return iters;
+	}
+
+	__global__ void addDiagonal(float *A, int n, float lambda) {
+		int tid = blockIdx.x;
+		if( tid >= n ) return;
+		A[tid*n+tid] = A[tid*n+tid] * (1+lambda);
+	}
+
+	__host__ int lm(int m, int n, int itmax, float *opts,
+		int *d_fptsIdx, float *d_q, float *d_q2d, int nfpts,		// feature points
+		float *d_w_landmarks, float *d_w_mask, float w_fp_scale,	// weights for feature points
+		d_ICPConstraint * d_icpc, int nicpc, float w_ICP,			// ICP terms
+		float *d_meanRT, float w_history,							// history term
+		float *d_tplt,												// template mesh
+		cudaStream_t& mystream
+		) {
+// setup parameters
+		float delta, R_THRES, DIFF_THRES;
+		if( opts == NULL ) {
+			// use default values
+			delta = 1.0;	// step size, default to use standard Newton-Ralphson
+			R_THRES = 1e-6;	DIFF_THRES = 1e-6;
+		}
+		else {
+			delta = opts[0]; R_THRES = opts[1]; DIFF_THRES = opts[2];
+		}
+
+		cudaMemcpy(deltaX, x, sizeof(float)*m, cudaMemcpyDeviceToDevice);
+		checkCudaState();
+
+		//cout << nicpc << endl;
+		// compute initial residue with GPU
+		dim3 block(1024, 1, 1);
+		dim3 grid((int)(ceil(nicpc/(float)block.x)), 1, 1);
+		cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, 1, d_icpc, nicpc, d_tplt, w_ICP);
+		checkCudaState();
+		cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+		checkCudaState();
+		cost_History<<<1, 16>>>(x, r, nicpc+nfpts, d_meanRT, w_history);
+		checkCudaState();
+		//writeback(r, nicpc+nfpts, 1, "d_r.txt");
+
+		//writeback(d_w_landmarks, nfpts, 1, "d_w_landmarks.txt");
+		//writeback(d_w_mask, nfpts, 1, "d_w_mask.txt");
+		//cout << "w_ICP = " << w_ICP << endl;
+		//cout << "w_fp_scale = " << w_fp_scale << endl;
+
+		float lambda = delta;
+		float rnorm0, rnorm;
+		rnorm = cublasSnrm2(nicpc+nfpts+m, r, 1);
+
+		float dstep = (delta - 0.1) / itmax;
+		int iters = 0;
+		PhGUtils::Timer t;
+		// while not converged
+		while( cublasSnrm2(m, deltaX, 1) > DIFF_THRES && rnorm > R_THRES && iters < itmax ) {
+			//// compute jacobian with GPU
+			//t.tic();
+			jacobian_ICP<<<grid, block, 0, mystream>>>(m, x, J, 0, 1, d_icpc, nicpc, d_tplt, w_ICP);
+			//cudaThreadSynchronize();
+			//t.toc("jacobian ICP");
+			checkCudaState();
+			//t.tic();
+			jacobian_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(m, x, J, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+			//cudaThreadSynchronize();
+			//t.toc("jacobian feature points");
+			checkCudaState();
+
+			jacobian_History<<<1, 16, 0, mystream>>>(m, x, J, nicpc+nfpts, d_meanRT, w_history);
+
+			//writeback(J, nicpc+nfpts, m, "d_J.txt");
+
+			//// store old values			
+			//cudaMemcpy(x0, x, sizeof(float)*m, cudaMemcpyDeviceToDevice);
+			checkCudaState();
+
+			//// compute JtJ
+			//t.tic();
+			cublasSsyrk('U', 'N', m, nicpc+nfpts+m, 1.0, J, m, 0, JtJ, m);
+			//cudaThreadSynchronize();
+			//t.toc("JtJ");
+			//writeback(JtJ, m, m, "d_JtJ.txt");
+
+			//// update JtJ with its diagonal
+			addDiagonal<<<1, 16>>>(JtJ, m, lambda);
+
+			//// compute Jtr
+			//t.tic();
+			cublasSgemv('N', m, nicpc+nfpts+m, 1.0, J, m, r, 1, 0, deltaX, 1);
+			//cudaThreadSynchronize();
+			//t.toc("Jtr");
+			//writeback(deltaX, 7, 1, "d_Jtr.txt");
+
+			///// store old values
+			rnorm0 = rnorm;
+			cudaMemcpy(x0, x, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
+			cudaMemcpy(r0, r, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
+			cudaMemcpy(J0, J, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
+
+			//// compute deltaX
+			
+			//t.tic();
+#if 0
+			culaDeviceSpotrf('U', m, JtJ, m);
+			culaDeviceSpotrs('U', m, 1, JtJ, m, deltaX, m);
+			t.toc("JtJ\\Jtr");
+#else
+			cudaMemcpy(h_JtJ, JtJ, sizeof(float)*m*m, cudaMemcpyDeviceToHost);
+			cudaMemcpy(h_Jtr, deltaX, sizeof(float)*m, cudaMemcpyDeviceToHost);
+
+			LAPACKE_spotrf( LAPACK_COL_MAJOR, 'U', m, h_JtJ, m );
+			LAPACKE_spotrs( LAPACK_COL_MAJOR, 'U', m, 1, h_JtJ, m, h_Jtr, m );
+
+			cudaMemcpy(deltaX, h_Jtr, sizeof(float)*m, cudaMemcpyHostToDevice);
+			//t.toc("h_JtJ\\h_Jtr");
+#endif
+			//cudaThreadSynchronize();
+			//writeback(deltaX, 7, 1, "d_deltaX.txt");
+
+			//// update x
+			//t.tic();
+			cublasSaxpy(m, -delta, deltaX, 1, x, 1);
+			//t.toc("x <- x + dx");
+
+			//// update residue
+			//t.tic();
+			cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, 1, d_icpc, nicpc, d_tplt, w_ICP);
+			//cudaThreadSynchronize();
+			//t.toc("cost ICP");
+			checkCudaState();
+			//t.tic();
+			cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+			//cudaThreadSynchronize();
+			//t.toc("cost feature point");
+			checkCudaState();
+	
+			cost_History<<<1, 16, 0, mystream>>>(x, r, nicpc+nfpts, d_meanRT, w_history);
+			checkCudaState();
+
+			// compute the new error
+			rnorm = cublasSnrm2(nicpc+nfpts+m, r, 1);
+
+			if( rnorm > rnorm0 ) {
+				//cout << "reject" << endl;
+				// reject update
+				lambda = lambda * 10.0;
+
+				// restore state
+				cudaMemcpy(x0, x, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
+				cudaMemcpy(r0, r, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
+				cudaMemcpy(J0, J, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
+				rnorm = rnorm0;
+			}
+			else {
+				// accept update
+				//cout << "accept" << endl;
+				lambda = lambda / 10.0;
+			}
 
 			//::system("pause");
 			iters++;
