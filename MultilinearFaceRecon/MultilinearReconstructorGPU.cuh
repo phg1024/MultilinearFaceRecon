@@ -180,7 +180,7 @@ private:
 
 	// weights again
 	float *d_w_mask, *h_w_mask;
-	float w_fp_scale, w_ICP;
+	float w_ICP;				// weight for the ICP term (all constraints)
 	float w_chin, w_outer;
 
 	float w_fp, w_history;

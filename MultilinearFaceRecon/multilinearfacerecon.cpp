@@ -5,8 +5,8 @@
 #include "Utils/Timer.h"
 #include "Kinect/KinectUtils.h"
 
-#define DOUG 1
-#define PEIHONG 0
+#define DOUG 0
+#define PEIHONG 1
 #define YILONG 0
 #define YILONG2 0
 
@@ -271,8 +271,8 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
-	const int startIdx = 10001;
-	const int imageCount = 250;
+	const int startIdx = 10000;
+	const int imageCount = 200;
 #elif YILONG
 	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Yilong\\test_images\\";
 	const string imageName = "00";
@@ -359,14 +359,16 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 
 			viewer->bindRGBDTargetGPU(colordata, depthdata);
 			viewer->bindTargetLandmarksGPU(lms);
-			viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE_AND_IDENTITY);
+			//viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE_AND_IDENTITY);
+			viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE);
 		}
 		else{
 			viewer->bindRGBDTargetGPU(colordata, depthdata);
 			viewer->bindTargetLandmarksGPU(lms);
 			validFrames++;
 			tRecon.tic();
-			viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE_AND_EXPRESSION);
+			viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE);
+			//viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE_AND_EXPRESSION);
 			tRecon.toc();
 		}
 
@@ -796,7 +798,7 @@ void MultilinearFaceRecon::toggleKinectInput_Record()
 
 		PhGUtils::message("Wring out recorded images ...");
 		// write recorded data
-		const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
+		const string path = "C:\\Users\\PhG\\Desktop\\Data\\Peihong\\";
 		const string imageName = "Peihong_";
 		const int startIdx = 10000;
 		const int imageCount = recordData.size();

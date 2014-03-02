@@ -628,13 +628,13 @@ namespace NumericalAlgorithms {
 
 	__host__ int lm(int m, int n, int itmax, float *opts,
 		int *d_fptsIdx, float *d_q, float *d_q2d, int nfpts,		// feature points
-		float *d_w_landmarks, float *d_w_mask, float w_fp_scale,	// weights for feature points
+		float *d_w_landmarks, float *d_w_mask, float w_fp,			// weights for feature points
 		d_ICPConstraint * d_icpc, int nicpc, float w_ICP,			// ICP terms
 		float *d_meanRT, float w_history,							// history term
 		float *d_tplt,												// template mesh
 		cudaStream_t& mystream
 		) {
-// setup parameters
+		// setup parameters
 		float delta, R_THRES, DIFF_THRES;
 		if( opts == NULL ) {
 			// use default values
@@ -649,12 +649,13 @@ namespace NumericalAlgorithms {
 		checkCudaState();
 
 		//cout << nicpc << endl;
+		const float w_ICP_scale = 1.0 / max(nicpc, 1);
 		// compute initial residue with GPU
 		dim3 block(1024, 1, 1);
 		dim3 grid((int)(ceil(nicpc/(float)block.x)), 1, 1);
-		cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, 1, d_icpc, nicpc, d_tplt, w_ICP);
+		cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, 1, d_icpc, nicpc, d_tplt, w_ICP*w_ICP_scale);
 		checkCudaState();
-		cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+		cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp);
 		checkCudaState();
 		cost_History<<<1, 16>>>(x, r, nicpc+nfpts, d_meanRT, w_history);
 		checkCudaState();
@@ -669,6 +670,9 @@ namespace NumericalAlgorithms {
 		float rnorm0, rnorm;
 		rnorm = cublasSnrm2(nicpc+nfpts+m, r, 1);
 
+		vector<float> errLog;
+		errLog.push_back(rnorm);
+
 		float dstep = (delta - 0.1) / itmax;
 		int iters = 0;
 		PhGUtils::Timer t;
@@ -676,12 +680,12 @@ namespace NumericalAlgorithms {
 		while( cublasSnrm2(m, deltaX, 1) > DIFF_THRES && rnorm > R_THRES && iters < itmax ) {
 			//// compute jacobian with GPU
 			//t.tic();
-			jacobian_ICP<<<grid, block, 0, mystream>>>(m, x, J, 0, 1, d_icpc, nicpc, d_tplt, w_ICP);
+			jacobian_ICP<<<grid, block, 0, mystream>>>(m, x, J, 0, 1, d_icpc, nicpc, d_tplt, w_ICP*w_ICP_scale);
 			//cudaThreadSynchronize();
 			//t.toc("jacobian ICP");
 			checkCudaState();
 			//t.tic();
-			jacobian_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(m, x, J, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+			jacobian_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(m, x, J, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp);
 			//cudaThreadSynchronize();
 			//t.toc("jacobian feature points");
 			checkCudaState();
@@ -744,12 +748,12 @@ namespace NumericalAlgorithms {
 
 			//// update residue
 			//t.tic();
-			cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, 1, d_icpc, nicpc, d_tplt, w_ICP);
+			cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, 1, d_icpc, nicpc, d_tplt, w_ICP*w_ICP_scale);
 			//cudaThreadSynchronize();
 			//t.toc("cost ICP");
 			checkCudaState();
 			//t.tic();
-			cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+			cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp);
 			//cudaThreadSynchronize();
 			//t.toc("cost feature point");
 			checkCudaState();
@@ -760,7 +764,7 @@ namespace NumericalAlgorithms {
 			// compute the new error
 			rnorm = cublasSnrm2(nicpc+nfpts+m, r, 1);
 
-			if( rnorm > rnorm0 ) {
+			if( rnorm >= rnorm0 ) {
 				//cout << "reject" << endl;
 				// reject update
 				lambda = lambda * 10.0;
@@ -777,11 +781,15 @@ namespace NumericalAlgorithms {
 				lambda = lambda / 10.0;
 			}
 
+			errLog.push_back(rnorm);
 			//::system("pause");
 			iters++;
 			delta -= dstep;
 		}
 
+		//ofstream fout("errLog.txt");
+		//PhGUtils::printVector(errLog, fout);
+		//fout.close();
 		//::system("pause");
 		checkCudaState();
 		return iters;

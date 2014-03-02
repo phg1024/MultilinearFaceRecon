@@ -400,7 +400,7 @@ __host__ void MultilinearReconstructorGPU::init() {
 __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	// read the weights from a setting file
 	string fweights = "../Data/weights.txt";
-	ifstream fin(fweights);
+	ifstream fin(fweights, ios::in);
 	if( !fin ){
 		PhGUtils::fail("failed to load weights file. using default weights");
 		w_prior_id = 1e-3;
@@ -434,10 +434,10 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	historyWeights[9] = 10.24;
 
 	for(int i=0;i<78;i++) {
-		if( i < 42 || i > 74 ) h_w_mask[i] = w_fp * 15.0;
+		if( i < 42 || i > 74 ) h_w_mask[i] = w_fp;
 		else {
-			if( i > 63 ) h_w_mask[i] = w_outer * w_fp;
-			else h_w_mask[i] = w_chin * w_fp;
+			if( i > 63 ) h_w_mask[i] = w_outer;
+			else h_w_mask[i] = w_chin;
 		}
 	}
 	//checkCudaErrors(cudaMemcpy(d_w_mask, w_mask, sizeof(float)*78, cudaMemcpyHostToDevice));
@@ -490,10 +490,10 @@ __host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Poi
 		meanZ += p.z * isValid;
 
 		float dz = p.z - mu_depth;
-		float w_depth = exp(-fabs(dz) / (sigma_depth*50.0));
+		float w_depth = exp(-fabs(dz) / (sigma_depth*100.0));
 
 		// set the landmark weights
-		h_w_landmarks[i] = (i<64 || i>74)?isValid*w_depth:isValid*1e-1;
+		h_w_landmarks[i] = (i<64 || i>74)?isValid*w_depth:1.0;
 		validCount += isValid;
 	}
 
@@ -824,14 +824,14 @@ __host__ bool MultilinearReconstructorGPU::fitIdentityWeights() {
 	checkCudaState();
 	fitIdentity_FeaturePointsTerm<<<1, 128>>>(d_fptsIdx, d_q, nfpts, ndims_wid, nicpc*ndims_wid*3, nicpc*3,
 											  d_tm1RT, d_A, d_b,											  
-											  T, d_w_landmarks, w_fp_scale);
+											  T, d_w_landmarks, w_fp);
 	checkCudaState();
 	//writeback(d_A, (nicpc+nfpts)*3, ndims_wid, "d_A1.txt");
 	//writeback(d_b, (nicpc+nfpts)*3, 1, "d_b1.txt");
 	checkCudaState();
 	fitIdentity_PriorTerm<<<1, 64>>>(d_A, d_b, d_sigma_wid, d_mu_wid_weighted,
 									  ndims_wid, (nicpc+nfpts)*ndims_wid*3, (nicpc+nfpts)*3, 
-									  w_fp_scale*0.5);
+									  w_prior_id);
 	checkCudaState();
 	//writeback(d_A, (nicpc+nfpts)*3+ndims_wid, ndims_wid, "d_A2.txt");
 	//writeback(d_b, (nicpc+nfpts)*3+ndims_wid, 1, "d_b2.txt");
@@ -1032,14 +1032,14 @@ __host__ bool MultilinearReconstructorGPU::fitExpressionWeights() {
 	const float w_fp = 5.0;
 	fitExpression_FeaturePointsTerm<<<1, 128>>>(d_fptsIdx, d_q, nfpts, npts_mesh, ndims_wexp, nicpc*ndims_wexp*3, nicpc*3,
 											  d_tm0RT, d_A, d_b,											  
-											  T, d_w_landmarks, w_fp_scale*w_fp);
+											  T, d_w_landmarks, w_fp);
 	checkCudaState();
 	//writeback(d_A, (nicpc+nfpts)*3, ndims_wexp, "d_Aexp1.txt");
 	checkCudaState();
 	const float w_p = 2.5;
 	fitExpression_PriorTerm<<<1, 64>>>(d_A, d_b, d_sigma_wexp, d_mu_wexp_weighted,
 									  ndims_wexp, (nicpc+nfpts)*ndims_wexp*3, (nicpc+nfpts)*3, 
-									  w_fp_scale*w_p);
+									  w_prior_exp);
 	checkCudaState();
 	//writeback(d_A, (nicpc+nfpts)*3+ndims_wexp, ndims_wexp, "d_Aexp2.txt");
 	//checkCudaState();
@@ -1518,9 +1518,6 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 	::system("pause");
 #endif
 
-	// update scaling factor
-	w_fp_scale = icpcCount / 1000.0;
-
 	return icpcCount;
 }
 
@@ -1558,19 +1555,19 @@ __host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale,
 
 	cudaMemcpy(NumericalAlgorithms::x, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToDevice);
 	checkCudaState();
-	int itmax = 128;
-	float opts[] = {0.25, 1e-3, 1e-4};
+	int itmax = 32;
+	float opts[] = {0.125, 1e-6, 1e-4};
 	// gauss-newton algorithm to estimate a new set of parameters
 	iters = NumericalAlgorithms::lm(
 		nparams, nfpts+nicpc_rigid, itmax, opts,
-		d_fptsIdx, d_q, d_q2d, nfpts, d_w_landmarks, d_w_mask, w_fp_scale,
+		d_fptsIdx, d_q, d_q2d, nfpts, d_w_landmarks, d_w_mask, w_fp,
 		icpc_ptr, icpccount, w_ICP,
 		d_meanRT, w_history,
 		d_tplt,
 		mystream
 		);
 	cudaThreadSynchronize();
-	//PhGUtils::message("rigid transformation estimated in " + PhGUtils::toString(iters) + " iterations.");
+	PhGUtils::message("rigid transformation estimated in " + PhGUtils::toString(iters) + " iterations.");
 	// update the parameters and check if convergence is obtained
 	cudaMemcpy(d_RTparams, NumericalAlgorithms::x, sizeof(float)*nparams, cudaMemcpyDeviceToDevice);
 	checkCudaState();
@@ -1667,9 +1664,9 @@ __host__ float MultilinearReconstructorGPU::computeError() {
 	checkCudaState();
 	//cout << d_error << endl;
 	//cout << d_w_error << endl;
-	computeError_ICP<<<dim3((int)(ceil(nicpc/1024.0)), 1, 1), dim3(1024, 1, 1), 0, mystream>>>(d_RTparams, d_error, d_w_error, 0, d_icpc, nicpc, w_ICP, d_tplt);
+	computeError_ICP<<<dim3((int)(ceil(nicpc/1024.0)), 1, 1), dim3(1024, 1, 1), 0, mystream>>>(d_RTparams, d_error, d_w_error, 0, d_icpc, nicpc, w_ICP / nicpc, d_tplt);
 	checkCudaState();
-	computeError_FeaturePoints<<<dim3(1, 1, 1), dim3(nfpts, 1, 1), 0, mystream>>>(d_RTparams, d_error, d_w_error, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp_scale);
+	computeError_FeaturePoints<<<dim3(1, 1, 1), dim3(nfpts, 1, 1), 0, mystream>>>(d_RTparams, d_error, d_w_error, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp);
 	checkCudaState();
 
 	cudaMemcpy(h_error, d_error, sizeof(float)*(nicpc+nfpts), cudaMemcpyDeviceToHost);
