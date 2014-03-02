@@ -52,7 +52,7 @@ MultilinearReconstructorGPU::MultilinearReconstructorGPU():
 
 	// process the loaded data
 	preprocess();
-
+	
 	cudaDeviceSynchronize();
 }
 
@@ -74,6 +74,12 @@ __host__ void MultilinearReconstructorGPU::setIdentityWeights(const Tensor1<floa
 	// update tensor tm0
 	cublasSgemv('N', ndims_wexp * ndims_pts, ndims_wid, 1.0, d_tu0, ndims_wexp * ndims_pts, d_Wid, 1, 0, d_tm0, 1);
 
+	// update distance map
+	cublasSgemv('N', npts_mesh, ndims_wid, 1.0, d_rawdistmap, npts_mesh, d_Wid, 1, 0, d_distmap, 1);
+	checkCudaState();
+	writeback(d_distmap, npts_mesh, "d_distmap.txt");
+	writeback(d_rawdistmap, ndims_wid, npts_mesh, "d_rawdistmap.txt");
+
 	// and the template mesh
 	cublasSgemv('T', ndims_wid, ndims_pts, 1.0, d_tm1, ndims_wid, d_Wid, 1, 0.0, d_tplt, 1);
 }
@@ -91,6 +97,9 @@ __host__ void MultilinearReconstructorGPU::setExpressionWeights(const Tensor1<fl
 
 __host__ void MultilinearReconstructorGPU::preprocess() {
 	PhGUtils::message("preprocessing the input data...");
+
+	// process distance map
+	cublasSgemv('N', npts_mesh, ndims_wid, 1.0, d_rawdistmap, ndims_pts, d_mu_wid0, 1, 0, d_distmap, 1);
 
 	// process the identity prior
 
@@ -207,9 +216,16 @@ __host__ void MultilinearReconstructorGPU::init() {
 	checkCudaErrors(cudaMalloc((void **) &d_tm1, sizeof(float)*core_dim[0]*core_dim[2]));
 	checkCudaErrors(cudaMalloc((void **) &d_tm1RT, sizeof(float)*core_dim[0]*core_dim[2]));
 	checkCudaErrors(cudaMalloc((void **) &d_tplt, sizeof(float)*core_dim[2]));
-	checkCudaErrors(cudaMalloc((void **) &d_mesh, sizeof(float)*core_dim[2]));
+	checkCudaErrors(cudaMalloc((void **) &d_mesh, sizeof(float)*core_dim[2]));	
 	checkCudaErrors(cudaMemset(d_mesh, 0, sizeof(float)*core_dim[2]));
+
+	Tensor2<float> distmap;
+	distmap.read("../Data/blendshape/distmap.bin");
+	checkCudaErrors(cudaMalloc((void **) &d_rawdistmap, sizeof(float)*npts_mesh*core_dim[0]));
+	checkCudaErrors(cudaMemcpy(d_rawdistmap, distmap.rawptr(), sizeof(float)*npts_mesh*core_dim[0], cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMalloc((void **) &d_distmap, sizeof(float)*npts_mesh));
 	showCUDAMemoryUsage();
+	writeback(d_rawdistmap, core_dim[0], npts_mesh, "d_rawdistmap.txt");
 
 	// read the prior
 	PhGUtils::message("Loading prior data ...");
@@ -379,17 +395,17 @@ __host__ void MultilinearReconstructorGPU::init() {
 }
 
 __host__ void MultilinearReconstructorGPU::initializeWeights() {
-	w_prior_id = 1e-3;
+	w_prior_id = 1e-4;
 	w_prior_exp = 7.5e-4;
 
 	w_boundary = 1e-8;
-	w_chin = 1e-7;
+	w_chin = 2.5e-6;
 	//w_chin = 1e-8;
-	w_outer = 0.5e-9;//1e2;
-	w_fp = 2.5;
+	w_outer = 2.5e-10;//1e2;
+	w_fp = 1.5;
 
-	w_history = 0.0001;
-	w_ICP = 1.5;
+	w_history = 0.01;
+	w_ICP = 2.5;
 
 	historyWeights[0] = 0.02;
 	historyWeights[1] = 0.04;
@@ -462,7 +478,7 @@ __host__ void MultilinearReconstructorGPU::bindTarget(const vector<PhGUtils::Poi
 		float w_depth = exp(-fabs(dz) / (sigma_depth*50.0));
 
 		// set the landmark weights
-		h_w_landmarks[i] = isValid*w_depth;//(i<64 || i>74)?isValid*w_depth:1.0;
+		h_w_landmarks[i] = (i<64 || i>74)?isValid*w_depth:isValid*1e-3;
 		validCount += isValid;
 	}
 
@@ -513,7 +529,7 @@ __host__ void MultilinearReconstructorGPU::setBaseMesh(const PhGUtils::QuadMesh&
 		const PhGUtils::QuadMesh::face_t& f = baseMesh.face(i);
 		topo[i] = make_int4(f.x, f.y, f.z, f.w);
 		const PhGUtils::QuadMesh::vert_t& v0 = baseMesh.vertex(f.x);
-		if( v0.z < -0.25 ) isBackFace[i] = true;
+		if( v0.z < -0.75 ) isBackFace[i] = true;
 		else isBackFace[i] = false;
 		//h_meshtopo[i*6+0] = f.x; h_meshtopo[i*6+1] = f.y; h_meshtopo[i*6+2] = f.z;
 		//h_meshtopo[i*6+3] = f.y; h_meshtopo[i*6+4] = f.z; h_meshtopo[i*6+5] = f.w;
@@ -746,6 +762,9 @@ __global__ void fitIdentity_FeaturePointsTerm(int *d_fptsIdx, float *d_q, int nf
 
 	int boffset = tid * 3 + boff;
 	int qoffset = tid * 3;
+
+	if( d_q[qoffset+2] == 0 ) wpt = 0;
+
 	d_b[boffset  ] = (d_q[qoffset  ] - T.x) * wpt;
 	d_b[boffset+1] = (d_q[qoffset+1] - T.y) * wpt;
 	d_b[boffset+2] = (d_q[qoffset+2] - T.z) * wpt;
@@ -771,7 +790,8 @@ __global__ void copySolutionToB(double *d_Atb, float *d_b, int ndims)
 	int tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if( tid >= ndims ) return;
 
-	d_b[tid] = 0.5 * (d_Atb[tid] + d_b[tid]);
+	const float alpha = 1.0;
+	d_b[tid] = alpha * d_Atb[tid] + (1.0 - alpha) * d_b[tid];
 }
 
 __host__ bool MultilinearReconstructorGPU::fitIdentityWeights() {
@@ -878,6 +898,13 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndIdentity() {
 		cublasSgemv('T', ndims_wid, ndims_pts, 1.0, d_tm1, ndims_wid, d_Wid, 1, 0.0, d_tplt, 1);
 		//writeback(d_tplt, npts_mesh, 3, "d_tplt.txt");
 
+		// update distance map
+		cublasSgemv('N', npts_mesh, ndims_wid, 1.0, d_rawdistmap, npts_mesh, d_Wid, 1, 0, d_distmap, 1);
+		checkCudaState();
+		//writeback(d_distmap, npts_mesh, "d_distmap.txt");
+		//writeback(d_rawdistmap, ndims_wid, npts_mesh, "d_rawdistmap.txt");
+		//::system("pause");
+
 		E = computeError();
 		PhGUtils::debug("iters", iters, "Error", E, "Error diff", fabs(E-E0));
 
@@ -893,6 +920,9 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndIdentity() {
 		
 	// update tm0, for the following steps
 	cublasSgemv('N', ndims_wexp * ndims_pts, ndims_wid, 1.0, d_tu0, ndims_wexp * ndims_pts, d_Wid, 1, 0, d_tm0, 1);
+
+	// update distance map
+	cublasSgemv('N', npts_mesh, ndims_wid, 1.0, d_rawdistmap, npts_mesh, d_Wid, 1, 0, d_distmap, 1);
 }
 
 __global__ void fitExpression_ICPCTerm(d_ICPConstraint *d_icpc, int nicpc, int npts, int ndims, int off, int boff,
@@ -948,6 +978,9 @@ __global__ void fitExpression_FeaturePointsTerm(int *d_fptsIdx, float *d_q, int 
 
 	int boffset = tid * 3 + boff;
 	int qoffset = tid * 3;
+
+	if( d_q[qoffset+2] == 0 ) wpt = 0;
+
 	d_b[boffset  ] = (d_q[qoffset  ] - T.x) * wpt;
 	d_b[boffset+1] = (d_q[qoffset+1] - T.y) * wpt;
 	d_b[boffset+2] = (d_q[qoffset+2] - T.z) * wpt;
@@ -981,15 +1014,17 @@ __host__ bool MultilinearReconstructorGPU::fitExpressionWeights() {
 	//writeback(d_A, nicpc*3, ndims_wexp, "d_Aexp0.txt");
 	checkCudaState();
 	//cout << w_fp_scale << endl;
+	const float w_fp = 5.0;
 	fitExpression_FeaturePointsTerm<<<1, 128>>>(d_fptsIdx, d_q, nfpts, npts_mesh, ndims_wexp, nicpc*ndims_wexp*3, nicpc*3,
 											  d_tm0RT, d_A, d_b,											  
-											  T, d_w_landmarks, w_fp_scale);
+											  T, d_w_landmarks, w_fp_scale*w_fp);
 	checkCudaState();
 	//writeback(d_A, (nicpc+nfpts)*3, ndims_wexp, "d_Aexp1.txt");
 	checkCudaState();
+	const float w_p = 2.5;
 	fitExpression_PriorTerm<<<1, 64>>>(d_A, d_b, d_sigma_wexp, d_mu_wexp_weighted,
 									  ndims_wexp, (nicpc+nfpts)*ndims_wexp*3, (nicpc+nfpts)*3, 
-									  w_fp_scale);
+									  w_fp_scale*w_p);
 	checkCudaState();
 	//writeback(d_A, (nicpc+nfpts)*3+ndims_wexp, ndims_wexp, "d_Aexp2.txt");
 	//checkCudaState();
@@ -1051,7 +1086,7 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	int iters = 0;
 	float E0 = 1, E = 0;
 	bool converged = false;
-	const int MaxIterations = 8;
+	const int MaxIterations = 16;
 
 	constraintCount.clear();
 	int rigidIters;
@@ -1273,6 +1308,7 @@ __global__ void clearICPConstraints(int* nicpc) {
 __global__ void collectICPConstraints_kernel(
 						float*				mesh,
 						int4*				meshtopo,
+						float*				d_distmap,
 						unsigned char*		indexMap,			// synthesized data
 						float*				depthMap,			// synthesized data
 						unsigned char*		colordata,			// capture data
@@ -1380,6 +1416,8 @@ __global__ void collectICPConstraints_kernel(
 			float3 v2 = make_float3(mesh[vidx.z], mesh[vidx.z+1], mesh[vidx.z+2]);
 			
 			cc.bcoords = compute_barycentric_coordinates( closestHit, v0, v1, v2 );
+			cc.weight = mean(cc.bcoords * make_float3(d_distmap[cc.v.x], d_distmap[cc.v.y], d_distmap[cc.v.z]));
+
 			int slot = atomicAdd(nicpc, 1);
 			__threadfence();
 			icpc[slot] = cc;
@@ -1403,6 +1441,7 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 	dim3 grid(640/block.x, 480/block.y, 1);
 	collectICPConstraints_kernel<<<grid, block, 0, mystream>>>( d_mesh,
 																d_meshtopo,
+																d_distmap,
 																d_indexMap,
 																d_depthMap,
 																d_colordata,
@@ -1440,9 +1479,12 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 			 << p.z << ' '
 			 << bc.x << ' '
 			 << bc.y << ' '
-			 << bc.z << endl;
+			 << bc.z << ' '
+			 << icpc[i].weight
+			 << endl;
 	}
 	fout.close();
+	::system("pause");
 #endif
 
 	// update scaling factor
@@ -1474,7 +1516,7 @@ __host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale,
 	cudaMemcpy(NumericalAlgorithms::x, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToDevice);
 	checkCudaState();
 	int itmax = 32;
-	float opts[] = {0.5, 2.5e-7, 1e-4};
+	float opts[] = {0.5, 1.25e-7, 7.5e-5};
 	// gauss-newton algorithm to estimate a new set of parameters
 	iters = NumericalAlgorithms::GaussNewton_fp(
 		nparams, nfpts+nicpc, itmax, opts,

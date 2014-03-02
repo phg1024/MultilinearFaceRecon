@@ -4,6 +4,11 @@
 #include <helper_math.h>
 #include <helper_functions.h>
 
+__device__ __forceinline__ float mean(float3 v) {
+	const float fac = 1.0 / 3.0;
+	return (v.x + v.y + v.z) * fac;
+}
+
 __device__ __forceinline__ void rotate_point(const mat3& R, float &x, float &y, float &z) {
 	float x0 = x, y0 = y, z0 = z;
 	x = R(0) * x0 + R(1) * y0 + R(2) * z0;

@@ -356,7 +356,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 		}
 
 		QApplication::processEvents();
-		//::system("pause");
+		::system("pause");
 #endif	
 	}
 	tCombined.toc();
