@@ -148,11 +148,14 @@ private:
 
 	// weights of the feature points
 	float *h_w_landmarks, *d_w_landmarks;
+	float *h_w_landmarks_exp, *d_w_landmarks_exp;	// for expression fitting
+	float *h_w_landmarks_rigid, *d_w_landmarks_rigid;
 
 	// raw color / depth data, need to perform conversion before using them
 	unsigned char *d_colordata, *d_depthdata;	// image data on device
 
 	d_ICPConstraint *d_icpc, *d_icpc_rigid;
+	int *d_icpc_rigid_idx;			// indices of icpc for pose estimation
 	int *d_nicpc, *d_nicpc_rigid;
 	int nicpc, nicpc_rigid;
 	static const int MAX_ICPC_COUNT = 65536;
@@ -199,6 +202,7 @@ private:
 	vector<float3> h_meshverts;		// converted triangle mesh vertices
 	int validfaces;
 	vector<int> frontFaces;
+	int *d_frontFaces;
 	vector<bool> isBackFace;
 	vector<float3> h_faceidx;		// converted triangle mesh face indices
 	PhGUtils::Matrix4x4f mProj, mMv;

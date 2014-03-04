@@ -132,7 +132,7 @@ __device__ __forceinline__ float point_to_triangle_distance(float3 p0, float3 p1
 	}
 	else
 	{
-		float3 x1x0 = x0 - x1, x2x0 = x0 - x1, x2x1 = x1 - x2;
+		float3 x1x0 = x0 - x1, x2x0 = x0 - x2, x2x1 = x1 - x2;
 		float L_x2x0 = length(x2x0);
 		float t = dot(x1x0, x2x0) / (L_x2x0 * L_x2x0);
 
@@ -147,15 +147,15 @@ __device__ __forceinline__ float point_to_triangle_distance(float3 p0, float3 p1
 }
 
 __device__ __forceinline__ float3 compute_barycentric_coordinates(float3 p, float3 q1, float3 q2, float3 q3) {
-	float3 e23 = q3 - q2, e21 = q1 - q2, e31 = q1 - q3;
-	float3 d2 = p - q2, d3 = p - q3;
+	float3 e23 = q3 - q2, e21 = q1 - q2;
+	float3 d1 = q1 - p, d2 = q2 - p, d3 = q3 - p;
 	float3 oriN = cross(e23, e21);
 	float3 n = normalize(oriN);
 
 	float invBTN = 1.0 / dot(oriN, n);
 	float3 bcoord;
-	bcoord.x = dot(cross(e23, d2), n) * invBTN;
-	bcoord.y = dot(cross(e31, d3), n) * invBTN;
+	bcoord.x = dot(cross(d2, d3), n) * invBTN;
+	bcoord.y = dot(cross(d3, d1), n) * invBTN;
 	bcoord.z = 1 - bcoord.x - bcoord.y;
 
 	return bcoord;

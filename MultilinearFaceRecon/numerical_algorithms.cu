@@ -529,13 +529,17 @@ namespace NumericalAlgorithms {
 		//writeback(d_w_landmarks, nfpts, 1, "d_w_landmarks.txt");
 		//writeback(d_w_mask, nfpts, 1, "d_w_mask.txt");
 		//cout << "w_ICP = " << w_ICP << endl;
+				
 		//cout << "w_fp_scale = " << w_fp_scale << endl;
+
+		float rnorm = cublasSnrm2(nr+m, r, 1)*inv_nr;
+		//cout << "||r|| = " << rnorm << endl;
 		
-		//float dstep = (delta - 0.05) / itmax;
+		float dstep = (delta - 0.05) / itmax;
 		int iters = 0;
 		PhGUtils::Timer t;
 		// while not converged
-		while( cublasSnrm2(m, deltaX, 1) > DIFF_THRES && cublasSnrm2(nr+m, r, 1)*inv_nr > R_THRES && iters < itmax ) {
+		while( cublasSnrm2(m, deltaX, 1) > DIFF_THRES && rnorm > R_THRES && iters < itmax ) {
 			//// compute jacobian with GPU
 			//t.tic();
 			jacobian_ICP<<<grid, block, 0, mystream>>>(m, x, J, 0, frac, d_icpc, nicpcDfrac, d_tplt, w_ICP);
@@ -610,9 +614,12 @@ namespace NumericalAlgorithms {
 			cost_History<<<1, 16, 0, mystream>>>(x, r, nr, d_meanRT, w_history);
 			checkCudaState();
 
+			rnorm = cublasSnrm2(nr+m, r, 1)*inv_nr;
+			//cout << "||r|| = " << rnorm << endl;
+
 			//::system("pause");
 			iters++;
-			//delta -= dstep;
+			delta -= dstep;
 		}
 
 		//::system("pause");
@@ -673,7 +680,10 @@ namespace NumericalAlgorithms {
 		vector<float> errLog;
 		errLog.push_back(rnorm);
 
-		float dstep = (delta - 0.1) / itmax;
+		float dstep = (delta - 0.05) / itmax;
+		float wfpstep = 0.0;
+
+		float wfp_currentstep = 1.0;
 		int iters = 0;
 		PhGUtils::Timer t;
 		// while not converged
@@ -685,7 +695,7 @@ namespace NumericalAlgorithms {
 			//t.toc("jacobian ICP");
 			checkCudaState();
 			//t.tic();
-			jacobian_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(m, x, J, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp);
+			jacobian_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(m, x, J, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp * wfp_currentstep);
 			//cudaThreadSynchronize();
 			//t.toc("jacobian feature points");
 			checkCudaState();
@@ -753,7 +763,7 @@ namespace NumericalAlgorithms {
 			//t.toc("cost ICP");
 			checkCudaState();
 			//t.tic();
-			cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp);
+			cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp * wfp_currentstep);
 			//cudaThreadSynchronize();
 			//t.toc("cost feature point");
 			checkCudaState();
@@ -767,7 +777,7 @@ namespace NumericalAlgorithms {
 			if( rnorm >= rnorm0 ) {
 				//cout << "reject" << endl;
 				// reject update
-				lambda = lambda * 10.0;
+				lambda = lambda * 2.0;
 
 				// restore state
 				cudaMemcpy(x0, x, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
@@ -778,13 +788,14 @@ namespace NumericalAlgorithms {
 			else {
 				// accept update
 				//cout << "accept" << endl;
-				lambda = lambda / 10.0;
+				lambda = lambda / 2.0;
 			}
 
 			errLog.push_back(rnorm);
 			//::system("pause");
 			iters++;
 			delta -= dstep;
+			wfp_currentstep -= wfpstep;
 		}
 
 		//ofstream fout("errLog.txt");
