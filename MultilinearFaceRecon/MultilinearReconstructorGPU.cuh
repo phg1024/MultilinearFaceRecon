@@ -26,7 +26,13 @@
 #include <cublas.h>
 
 #include <QGLWidget>
+#include <QGLShaderProgram>
+#define USE_QT_FBO 0
+#if USE_QT_FBO
 #include <QGLFramebufferObject>
+#else
+#include "OpenGL/fbo.h"
+#endif
 
 #include "Elements_GPU.h"
 
@@ -198,17 +204,27 @@ private:
 	PhGUtils::QuadMesh baseMesh;
 	int4 *d_meshtopo;
 	vector<unsigned int> h_meshtopo;
-	float3 *d_meshverts;
+	//float3 *d_meshverts;
 	vector<float3> h_meshverts;		// converted triangle mesh vertices
 	int validfaces;
 	vector<int> frontFaces;
 	int *d_frontFaces;
 	vector<bool> isBackFace;
 	vector<float3> h_faceidx;		// converted triangle mesh face indices
+	GLuint meshvbo, faceidxvbo, vao;
+	cudaGraphicsResource_t vBuf;
+
 	PhGUtils::Matrix4x4f mProj, mMv;
 
 	shared_ptr<QGLWidget> dummyWgt;
+	shared_ptr<QGLShaderProgram> shader;
+#if USE_QT_FBO
 	shared_ptr<QGLFramebufferObject> fbo;
+#else
+	shared_ptr<PhGUtils::FBO> fbo;
+#endif
+	cudaGraphicsResource_t cTex, dTex;		// color texture and depth texture
+	cudaArray *cArray, *dArray;				// arrays to hold the mapped resources
 
 	vector<float> depthMap;						// synthesized depth map
 	vector<unsigned char> indexMap;				// synthesized face index map
@@ -225,6 +241,8 @@ private:
 		tRigid, tTrans0, tExpr, tUpdate0, tError;
 	vector<int> constraintCount;
 	double totalCons;
+	vector<int> constraintCount_rigid;
+	double totalCons_rigid;
 	vector<int> rigidIterations;
 	double totalRigidIters;
 };

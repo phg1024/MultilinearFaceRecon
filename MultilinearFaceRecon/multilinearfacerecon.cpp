@@ -265,7 +265,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10000;
-	const int imageCount = 64;
+	const int imageCount = 300;
 #elif PEIHONG
 	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Peihong\\";
 	const string imageName = "Peihong_";
@@ -281,7 +281,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 	const int startIdx = 2670;
 	const int imageCount = 120;
 #elif YILONG2
-	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test\\";
+	const string path = "C:\\Users\\phg\\Desktop\\Data\\Yilong\\test\\";
 	const string imageName = "000";
 	const string colorPostfix = ".png";
 	const string depthPostfix = "_depth.png";
@@ -373,7 +373,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 		}
 
 		QApplication::processEvents();
-		::system("pause");
+		//::system("pause");
 #endif	
 	}
 	tCombined.toc();

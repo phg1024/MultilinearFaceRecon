@@ -85,10 +85,11 @@ __device__ __forceinline__ float point_to_triangle_distance(float3 p0, float3 p1
 	float dist = 0;
 
 	float3 d = p1 - p0;
-	float3 e12 = p2 - p1, e13 = p3 - p1, e21 = -e12, e23 = p3 - p2, e31 = -e13, e32 = -e23;
+	float3 e12 = p2 - p1, e13 = p3 - p1, /*e21 = -e12, */ e23 = p3 - p2;//, e31 = -e13, e32 = -e23;
 	float3 e12n = normalize(e12), e13n = normalize(e13), e21n = -e12n, e23n = normalize(e23), e31n = -e13n, e32n = -e23n;
 
-	float3 n = normalize(cross(e12, e13));
+	float3 oriN = cross(e12, e13);
+	float3 n = normalize(oriN);
 
 	float dDOTn = dot(d, n);
 	float dnorm = length(d);

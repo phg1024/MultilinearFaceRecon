@@ -659,7 +659,7 @@ namespace NumericalAlgorithms {
 		const float w_ICP_scale = 1.0 / max(nicpc, 1);
 		// compute initial residue with GPU
 		dim3 block(1024, 1, 1);
-		dim3 grid((int)(ceil(nicpc/(float)block.x)), 1, 1);
+		dim3 grid((int)ceil(nicpc/1024.0), 1, 1);
 		cost_ICP<<<grid, block, 0, mystream>>>(x, r, 0, 1, d_icpc, nicpc, d_tplt, w_ICP*w_ICP_scale);
 		checkCudaState();
 		cost_FeaturePoints<<<dim3(1, 1, 1), dim3(128, 1, 1), 0, mystream>>>(x, r, nicpc, d_fptsIdx, d_q, d_q2d, nfpts, d_tplt, d_w_landmarks, d_w_mask, w_fp);
