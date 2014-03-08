@@ -35,6 +35,7 @@ namespace NumericalAlgorithms {
 		checkCudaErrors(cudaFree(x0));
 		checkCudaErrors(cudaFree(x));
 		checkCudaErrors(cudaFree(deltaX));
+
 		checkCudaErrors(cudaFree(r0));
 		checkCudaErrors(cudaFree(r));
 		checkCudaErrors(cudaFree(J0));
@@ -676,6 +677,7 @@ namespace NumericalAlgorithms {
 		float lambda = delta;
 		float rnorm0, rnorm;
 		rnorm = cublasSnrm2(nicpc+nfpts+m, r, 1);
+		checkCudaState();
 
 		vector<float> errLog;
 		errLog.push_back(rnorm);
@@ -688,6 +690,7 @@ namespace NumericalAlgorithms {
 		PhGUtils::Timer t;
 		// while not converged
 		while( cublasSnrm2(m, deltaX, 1) > DIFF_THRES && rnorm > R_THRES && iters < itmax ) {
+			checkCudaState();
 			//// compute jacobian with GPU
 			//t.tic();
 			jacobian_ICP<<<grid, block, 0, mystream>>>(m, x, J, 0, 1, d_icpc, nicpc, d_tplt, w_ICP*w_ICP_scale);
@@ -701,35 +704,37 @@ namespace NumericalAlgorithms {
 			checkCudaState();
 
 			jacobian_History<<<1, 16, 0, mystream>>>(m, x, J, nicpc+nfpts, d_meanRT, w_history);
-
 			//writeback(J, nicpc+nfpts, m, "d_J.txt");
-
-			//// store old values			
-			//cudaMemcpy(x0, x, sizeof(float)*m, cudaMemcpyDeviceToDevice);
 			checkCudaState();
 
 			//// compute JtJ
 			//t.tic();
 			cublasSsyrk('U', 'N', m, nicpc+nfpts+m, 1.0, J, m, 0, JtJ, m);
+			checkCudaState();
 			//cudaThreadSynchronize();
 			//t.toc("JtJ");
 			//writeback(JtJ, m, m, "d_JtJ.txt");
 
 			//// update JtJ with its diagonal
 			addDiagonal<<<1, 16>>>(JtJ, m, lambda);
+			checkCudaState();
 
 			//// compute Jtr
 			//t.tic();
 			cublasSgemv('N', m, nicpc+nfpts+m, 1.0, J, m, r, 1, 0, deltaX, 1);
+			checkCudaState();
 			//cudaThreadSynchronize();
 			//t.toc("Jtr");
 			//writeback(deltaX, 7, 1, "d_Jtr.txt");
 
 			///// store old values
 			rnorm0 = rnorm;
-			cudaMemcpy(x0, x, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
+			cudaMemcpy(x0, x, sizeof(float)*m, cudaMemcpyDeviceToDevice);
+			checkCudaState();
 			cudaMemcpy(r0, r, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
+			checkCudaState();
 			cudaMemcpy(J0, J, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
+			checkCudaState();
 
 			//// compute deltaX
 			
@@ -740,12 +745,15 @@ namespace NumericalAlgorithms {
 			t.toc("JtJ\\Jtr");
 #else
 			cudaMemcpy(h_JtJ, JtJ, sizeof(float)*m*m, cudaMemcpyDeviceToHost);
+			checkCudaState();
 			cudaMemcpy(h_Jtr, deltaX, sizeof(float)*m, cudaMemcpyDeviceToHost);
+			checkCudaState();
 
 			LAPACKE_spotrf( LAPACK_COL_MAJOR, 'U', m, h_JtJ, m );
 			LAPACKE_spotrs( LAPACK_COL_MAJOR, 'U', m, 1, h_JtJ, m, h_Jtr, m );
 
 			cudaMemcpy(deltaX, h_Jtr, sizeof(float)*m, cudaMemcpyHostToDevice);
+			checkCudaState();
 			//t.toc("h_JtJ\\h_Jtr");
 #endif
 			//cudaThreadSynchronize();
@@ -754,6 +762,7 @@ namespace NumericalAlgorithms {
 			//// update x
 			//t.tic();
 			cublasSaxpy(m, -delta, deltaX, 1, x, 1);
+			checkCudaState();
 			//t.toc("x <- x + dx");
 
 			//// update residue
@@ -780,7 +789,7 @@ namespace NumericalAlgorithms {
 				lambda = lambda * 2.0;
 
 				// restore state
-				cudaMemcpy(x0, x, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
+				cudaMemcpy(x0, x, sizeof(float)*m, cudaMemcpyDeviceToDevice);
 				cudaMemcpy(r0, r, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
 				cudaMemcpy(J0, J, sizeof(float)*nicpc+nfpts+m, cudaMemcpyDeviceToDevice);
 				rnorm = rnorm0;
@@ -802,7 +811,7 @@ namespace NumericalAlgorithms {
 		//PhGUtils::printVector(errLog, fout);
 		//fout.close();
 		//::system("pause");
-		checkCudaState();
+		//checkCudaState();
 		return iters;
 	}
 }

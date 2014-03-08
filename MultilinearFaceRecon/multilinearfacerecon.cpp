@@ -5,10 +5,10 @@
 #include "Utils/Timer.h"
 #include "Kinect/KinectUtils.h"
 
-#define DOUG 1
+#define DOUG 0
 #define PEIHONG 0
 #define YILONG 0
-#define YILONG2 0
+#define YILONG2 1
 
 MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	: QMainWindow(parent)
@@ -265,14 +265,14 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10000;
-	const int imageCount = 300;
+	const int imageCount = 919;
 #elif PEIHONG
 	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Peihong\\";
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10000;
-	const int imageCount = 200;
+	const int imageCount = 445;
 #elif YILONG
 	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Yilong\\test_images\\";
 	const string imageName = "00";
@@ -286,7 +286,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 	const string colorPostfix = ".png";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 590;
-	const int imageCount = 181;
+	const int imageCount = 180;
 #endif
 
 	const int endIdx = startIdx + imageCount;
@@ -299,7 +299,8 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 	frameIdx = 0;
 
 	tCombined.tic();
-	for(int imgidx=1;imgidx<=imageCount;imgidx++) {
+	for(int imgidx=0;imgidx<=imageCount;imgidx++) {
+		PhGUtils::message("Processing frame " + PhGUtils::toString(imgidx) + "...");
 		// process each image and perform reconstruction
 		string colorImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + colorPostfix;
 		string depthImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + depthPostfix;
@@ -325,9 +326,51 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 		QApplication::processEvents();		
 		::system("pause");
 #else
-		
+
+#define TRACK_ONLY 0
+#if TRACK_ONLY
 		vector<float> f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
 		colorView->bindLandmarks(f);
+
+		const string fpPostFix = ".txt";
+		// write the tracked feature points to files and 
+		string fpFileName = path + imageName + PhGUtils::toString(startIdx+imgidx) + fpPostFix;
+		ofstream fpfile(fpFileName);
+		fpfile << f.size() / 2 << endl;
+		int stride = f.size()/2;
+		for(int i=0;i<f.size()/2;i++) {
+			fpfile << f[i] << ' ' << f[i+stride] << endl;
+		}
+		fpfile.close();
+		continue;
+#else
+#define USE_REALTIME_TRACKING 1
+#if USE_REALTIME_TRACKING
+		vector<float> f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
+		colorView->bindLandmarks(f);
+#else
+		vector<float> f;
+
+		const string fpPostFix = ".txt";
+		// write the tracked feature points to files and 
+		string fpFileName = path + imageName + PhGUtils::toString(startIdx+imgidx) + fpPostFix;
+		ifstream fpfile(fpFileName);
+
+		// load feature points from file
+		int npoints;
+		fpfile >> npoints;
+		f.resize(npoints*2);
+
+		for(int i=0;i<npoints;i++) {
+			fpfile >> f[i] >> f[i+npoints];
+		}
+
+		fpfile.close();
+
+		colorView->bindLandmarks(f);
+#endif
+#endif
+
 
 		// do not update the mesh if the landmarks are unknown
 		if( f.empty() ) continue;
@@ -348,7 +391,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 		}
 
-		if( imgidx == 1 ) {
+		if( imgidx == 0 ) {
 			viewer->bindRGBDTarget(colordata, depthdata);
 			viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
 			// fit the pose first, then fit the identity and pose together

@@ -15,6 +15,7 @@
 #define KERNEL_DEBUG 0
 #define OUTPUT_ICPC 0
 #define FAST_RENDER 1
+#define USE_HALF_CONSTRAINTS 0
 
 texture<float4, cudaTextureType2D, cudaReadModeElementType> cTexRef;
 
@@ -45,7 +46,7 @@ MultilinearReconstructorGPU::MultilinearReconstructorGPU():
 	initRenderer();
 
 	// should be large enough
-	NumericalAlgorithms::initialize(50, 16384);
+	NumericalAlgorithms::initialize(50, MAX_ICPC_COUNT);
 	
 	// initialize members
 	init();
@@ -75,15 +76,18 @@ __host__ void MultilinearReconstructorGPU::setIdentityWeights(const Tensor1<floa
 	checkCudaErrors(cudaMemcpy(d_Wid, t.rawptr(), sizeof(float)*ndims_wid, cudaMemcpyHostToDevice));
 	// update tensor tm0
 	cublasSgemv('N', ndims_wexp * ndims_pts, ndims_wid, 1.0, d_tu0, ndims_wexp * ndims_pts, d_Wid, 1, 0, d_tm0, 1);
+	checkCudaState();
 
 	// update distance map
 	cublasSgemv('N', npts_mesh, ndims_wid, 1.0, d_rawdistmap, npts_mesh, d_Wid, 1, 0, d_distmap, 1);
 	checkCudaState();
-	writeback(d_distmap, npts_mesh, "d_distmap.txt");
-	writeback(d_rawdistmap, ndims_wid, npts_mesh, "d_rawdistmap.txt");
+
+	//writeback(d_distmap, npts_mesh, "d_distmap.txt");
+	//writeback(d_rawdistmap, ndims_wid, npts_mesh, "d_rawdistmap.txt");
 
 	// and the template mesh
 	cublasSgemv('T', ndims_wid, ndims_pts, 1.0, d_tm1, ndims_wid, d_Wid, 1, 0.0, d_tplt, 1);
+	checkCudaState();
 }
 
 __host__ void MultilinearReconstructorGPU::setExpressionWeights(const Tensor1<float>& t) {
@@ -92,19 +96,24 @@ __host__ void MultilinearReconstructorGPU::setExpressionWeights(const Tensor1<fl
 	checkCudaErrors(cudaMemcpy(d_Wexp, t.rawptr(), sizeof(float)*ndims_wexp, cudaMemcpyHostToDevice));
 	// update tensor tm1
 	cublasSgemv('N', ndims_wid * ndims_pts, ndims_wexp, 1.0, d_tu1, ndims_wid * ndims_pts, d_Wexp, 1, 0, d_tm1, 1);
+	checkCudaState();
 
 	// and the template mesh
 	cublasSgemv('T', ndims_wid, ndims_pts, 1.0, d_tm1, ndims_wid, d_Wid, 1, 0.0, d_tplt, 1);
+	checkCudaState();
 }
 
 __host__ void MultilinearReconstructorGPU::preprocess() {
 	PhGUtils::message("preprocessing the input data...");
 
 	// process distance map
-	cublasSgemv('N', npts_mesh, ndims_wid, 1.0, d_rawdistmap, ndims_pts, d_mu_wid0, 1, 0, d_distmap, 1);
+	PhGUtils::message("preprocessing the distance map...");
+	cublasSgemv('N', npts_mesh, ndims_wid, 1.0, d_rawdistmap, npts_mesh, d_mu_wid0, 1, 0, d_distmap, 1);
+	checkCudaState();
+	PhGUtils::message("done.");
 
 	// process the identity prior
-
+	PhGUtils::message("preprocessing the identity prior...");
 	// invert sigma_wid
 	int* ipiv;
 	checkCudaErrors(cudaMalloc((void**) &ipiv, sizeof(int)*ndims_wid));
@@ -114,18 +123,22 @@ __host__ void MultilinearReconstructorGPU::preprocess() {
 
 	// multiply inv_sigma_wid to mu_wid
 	cublasSgemv('N', ndims_wid, ndims_wid, 1.0, d_sigma_wid, ndims_wid, d_mu_wid, 1, 0.0, d_mu_wid_weighted, 1); 
-	
+	checkCudaState();
+
 	// scale inv_sigma_wid by w_prior_id
 	cublasSscal(ndims_wid*ndims_wid, w_prior_id, d_sigma_wid, 1);
+	checkCudaState();
 
 	// scale mu_wid by w_prior_id
 	cublasSscal(ndims_wid, w_prior_id, d_mu_wid_weighted, 1);
+	checkCudaState();
 
 	// copy back the inverted matrix to check correctness
 	writeback(d_sigma_wid, ndims_wid*ndims_wid, "invswid.txt");
+	PhGUtils::message("done.");
 
 	// process the expression prior
-
+	PhGUtils::message("preprocessing the expression prior...");
 	// invert sigma_wexp
 	checkCudaErrors(cudaMalloc((void**) &ipiv, sizeof(int)*ndims_wexp));
 	culaDeviceSgetrf(ndims_wexp, ndims_wexp, d_sigma_wexp, ndims_wexp, ipiv);
@@ -134,28 +147,34 @@ __host__ void MultilinearReconstructorGPU::preprocess() {
 
 	// multiply inv_sigma_wexp to mu_wexp
 	cublasSgemv('N', ndims_wexp, ndims_wexp, 1.0, d_sigma_wexp, ndims_wexp, d_mu_wexp, 1, 0, d_mu_wexp_weighted, 1);
+	checkCudaState();
 
 	// scale inv_sigma_wexp by w_prior_exp
 	cublasSscal(ndims_wexp*ndims_wexp, w_prior_exp, d_sigma_wexp, 1);
-
+	checkCudaState();
+	
 	// scale mu_wexp by w_prior_exp
 	cublasSscal(ndims_wexp, w_prior_exp, d_mu_wexp_weighted, 1); 
+	checkCudaState();
 
 	writeback(d_sigma_wexp, ndims_wexp*ndims_wexp, "invswexp.txt");
 	PhGUtils::message("done.");
 
 	// initialize Wid and Wexp
+	PhGUtils::message("initialize Wid and Wexp ...");
 	checkCudaErrors(cudaMemcpy(d_Wid, d_mu_wid0, sizeof(float)*ndims_wid, cudaMemcpyDeviceToDevice));
 	checkCudaErrors(cudaMemcpy(d_Wexp, d_mu_wexp0, sizeof(float)*ndims_wexp, cudaMemcpyDeviceToDevice));
+	PhGUtils::message("done.");
 
 	// initialize tm0, tm1
-
+	PhGUtils::message("initialize tm0 and tm1 ...");
 	// tm0 = tu0 * Wid, use cublas
 	// tu0: ndims_wid * (ndims_wexp * ndims_pts) matrix, each row corresponds to an identity
 	//		inside each row, the vertices are arranged by expression
 	//		That is, a row in tu0 can be see as a row-major matrix where each row corresponds to an expression
 	// tm0: a row-major matrix where each row corresponds to an expression
 	cublasSgemv('N', ndims_wexp * ndims_pts, ndims_wid, 1.0, d_tu0, ndims_wexp * ndims_pts, d_Wid, 1, 0, d_tm0, 1);
+	checkCudaState();
 	writeback(d_tm0, ndims_wexp, ndims_pts, "tm0.txt");
 
 	// tm1 = tu1 * Wexp, use cublas
@@ -164,12 +183,17 @@ __host__ void MultilinearReconstructorGPU::preprocess() {
 	//		That is, a row in tu1 can be see as a column-major matrix where each column corresponds to an identity
 	// tm1: a column-major matrix where each column corresponds to an identity
 	cublasSgemv('N', ndims_wid * ndims_pts, ndims_wexp, 1.0, d_tu1, ndims_wid * ndims_pts, d_Wexp, 1, 0, d_tm1, 1);
+	checkCudaState();
 	writeback(d_tm1, ndims_pts, ndims_wid, "tm1.txt");
+	PhGUtils::message("done.");
 
 	// create template mesh
+	PhGUtils::message("creating template mesh on GPU ...");
 	// tplt = tm1 * Wid, use cublas
 	cublasSgemv('T', ndims_wid, ndims_pts, 1.0, d_tm1, ndims_wid, d_Wid, 1, 0.0, d_tplt, 1);
+	checkCudaState();
 	writeback(d_tplt, ndims_pts/3, 3, "tplt.txt");
+	PhGUtils::message("done.");
 }
 
 __host__ void MultilinearReconstructorGPU::init() {
@@ -357,6 +381,7 @@ __host__ void MultilinearReconstructorGPU::init() {
 	checkCudaErrors(cudaMalloc((void **) &d_meanRT, sizeof(float)*7));
 
 	int maxParams = max(ndims_wid, ndims_wexp);
+	cout << "maxParams = " << maxParams << endl;
 	checkCudaErrors(cudaMalloc((void **) &d_A, sizeof(double)*(maxParams + ndims_fpts + ndims_pts) * maxParams));
 	checkCudaErrors(cudaMalloc((void **) &d_b, sizeof(double)*(ndims_pts + ndims_fpts + maxParams)));
 
@@ -407,7 +432,11 @@ __host__ void MultilinearReconstructorGPU::init() {
 
 __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	// read the weights from a setting file
-	string fweights = "../Data/weights.txt";
+#if USE_HALF_CONSTRAINTS
+	string fweights = "../Data/weights_half.txt";
+#else
+	string fweights = "../Data/weights_all.txt";
+#endif
 	ifstream fin(fweights, ios::in);
 	if( !fin ){
 		PhGUtils::fail("failed to load weights file. using default weights");
@@ -1138,17 +1167,19 @@ __host__ bool MultilinearReconstructorGPU::fitExpressionWeights() {
 	//writeback(d_AtA, ndims_wexp, ndims_wexp, "d_AtA.txt");
 	cublasDgemv('N', ndims_wexp, (nicpc+nfpts)*3+ndims_wexp, 1.0, d_A, ndims_wexp, d_b, 1, 0.0, d_Atb, 1);
 	//writeback(d_Atb, ndims_wexp, 1, "d_Atb.txt");
+	checkCudaState();
 
 	culaDeviceDpotrf('U', ndims_wexp, d_AtA, ndims_wexp);
 	culaDeviceDpotrs('U', ndims_wexp, 1, d_AtA, ndims_wexp, d_Atb, ndims_wexp);
+	checkCudaState();
 
 	copySolutionToB<<<1, 64>>>(d_Atb, d_Wexp, ndims_wexp);
 	//writeback(d_Wexp, ndims_wexp, 1, "d_wexp.txt");
 	checkCudaState();
 #endif
 
-	// full update
-	cudaMemcpy(&brhs[0], d_b, sizeof(float)*ndims_wexp, cudaMemcpyDeviceToHost);
+	// copy back the new values
+	cudaMemcpy(&brhs[0], d_Wexp, sizeof(float)*ndims_wexp, cudaMemcpyDeviceToHost);
 	checkCudaState();
 
 	float diff = 0;
@@ -1464,7 +1495,9 @@ __global__ void collectICPConstraints_kernel(
 	int tid = y * 640 + x;
 
 	// use only half of all available constraints
+#if USE_HALF_CONSTRINTS
 	if( tid & 0x1 ) return;
+#endif
 
 	int u = x, v = y;
 	int idx = (v * 640 + u)*4;
@@ -1504,7 +1537,7 @@ __global__ void collectICPConstraints_kernel(
 					//int fidx = decodeIndex(indexMap[poffset], indexMap[poffset+1], indexMap[poffset+2]);
 					int fidx = decodeIndex(texVal.x*255, texVal.y*255, texVal.z*255);
 
-					fidx = clamp(fidx, 0, 11399);
+					//fidx = clamp(fidx, 0, 11399);
 					
 					//bool checked = false;
 					//// see if this face is already checked
@@ -1567,7 +1600,7 @@ __global__ void collectICPConstraints_kernel(
 			__threadfence();
 			icpc[slot] = cc;
 
-			const float cutoff = 1e-2;
+			const float cutoff = 5e-3;//1e-2;
 			if( cc.weight < cutoff ) {
 				int slot_rigid = atomicAdd(nicpc_rigid, 1);
 				__threadfence();
@@ -1618,10 +1651,11 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 	//writeback(d_depthMap, 480, 640, "d_depthmap.txt");
 
 	clearICPConstraints<<<1, 1, 0, mystream>>>(d_nicpc, d_nicpc_rigid);
+	cudaThreadSynchronize();
 	checkCudaState();
 	PhGUtils::Timer ticpc;
 	//ticpc.tic();
-	dim3 block(8, 8, 1);
+	dim3 block(16, 16, 1);
 	dim3 grid(640/block.x, 480/block.y, 1);
 	collectICPConstraints_kernel<<<grid, block, 0, mystream>>>( d_mesh,
 																d_meshtopo,

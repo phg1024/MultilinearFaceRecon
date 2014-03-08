@@ -164,7 +164,7 @@ private:
 	int *d_icpc_rigid_idx;			// indices of icpc for pose estimation
 	int *d_nicpc, *d_nicpc_rigid;
 	int nicpc, nicpc_rigid;
-	static const int MAX_ICPC_COUNT = 65536;
+	static const int MAX_ICPC_COUNT = 32768;
 	float *d_targetLocations;
 
 	float *d_RTparams;
