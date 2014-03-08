@@ -3421,9 +3421,15 @@ extern "C" void setData_AAM_combination(float *s_vec,float *t_vec,float *s_mean,
 
 	
 	
-
+	cout << "mask table size = " << t_width << ' ' << t_height << endl;
 	CUDA_CALL( cudaMalloc(&data->cu_MaskTabel, t_width*t_height * sizeof(float)) );
 	CUDA_CALL(cudaMemcpy(data->cu_MaskTabel,maskTabel,t_width*t_height*sizeof(float),cudaMemcpyHostToDevice));
+	for(int i=0,idx=0;i<t_height;i++) {
+		for(int j=0;j<t_width;j++) {
+			cout << maskTabel[idx++] << ' ';
+		}
+		cout << endl;
+	}
 
 	CUDA_CALL( cudaMalloc(&data->cu_gradientX, MAXIMUMPOINTDIM_combination * sizeof(float)) );
 	CUDA_CALL( cudaMalloc(&data->cu_gradientY, MAXIMUMPOINTDIM_combination * sizeof(float)) );
@@ -4015,8 +4021,12 @@ __global__ void getJacobians_RT_combination_transpose(float *gradientX,float *gr
 			currentLocalShape_shared[threadId]=currentLocalShape[threadId];
 			currentLocalShape_shared[threadId+ptsNum]=currentLocalShape[threadId+ptsNum];
 		}
+				
 
-		fowardIndex_shared[threadId]=fowardIndex[offset];
+		if(offset>=t_width*t_height)
+			fowardIndex_shared[threadId]=-1;
+		else
+			fowardIndex_shared[threadId]=fowardIndex[offset];
 
 		int totalDim=t_width*t_height;
 		if (fowardIndex_shared[threadId]!=-1)
@@ -6408,7 +6418,8 @@ extern "C" int iterate_combination_new(int width,int height,int currentFrame,int
 		
 
 		cu_getCurrentTexture_combination(data->cu_currentTemplate,data->cu_parameters+data->s_dim,data->cu_t_vec,data->t_dim,data->pix_num);
-			//continue;
+		checkCudaState();	
+		//continue;
 		
 		//normalize and devide
 		//normalize
@@ -6432,8 +6443,10 @@ extern "C" int iterate_combination_new(int width,int height,int currentFrame,int
 		cu_PAWarping_float_shared_transpose<<<data->t_width*data->t_height/512+1,512>>>(data->cu_warp_tabel_transpose,data->cu_triangle_indexTabel_transpose,data->cu_currentShape,data->ptsNum,
 			data->cu_gradientX,data->cu_gradientY,data->cu_inputImg,width,height,
 			data->cu_WarpedGradientX,data->cu_WarpedGradientY,data->cu_fullCurrentTexture,data->t_width,data->t_height,data->cu_MaskTabel,data->cu_currentTexture);
-
-
+		checkCudaState();
+		// @fixme: something's wrong with the kernel call above, most likely memory corruption.
+		// CONFIRMED. data->cu_MaskTabel is corrupted. All zeros when the program crashes. Need to figure out the cause.
+		writeback(data->cu_MaskTabel, 92, 92, "d_masktable.txt");
 
 		CUBLAS_CALL(cublasSdot_v2(data->blas_handle_,data->pix_num,data->cu_currentTexture,incx,data->cu_allOnesForImg,incy,&sum));
 		sum/=data->pix_num;

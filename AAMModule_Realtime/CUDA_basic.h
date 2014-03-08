@@ -16,6 +16,83 @@
 using namespace std;
 using namespace thrust;
 
+template <typename T>
+void printArray(T* A, int N, ostream& os = cout)
+{
+	for(int i=0;i<N;i++)
+		os << A[i] << ' ';
+	os << endl;
+}
+
+template <typename T>
+void print2DArray(T** A, int rows, int cols, ostream& os = cout)
+{
+	for(int i=0;i<rows;i++)
+	{
+		for(int j=0;j<cols;j++)
+		{
+			os << A[i][j] << ' ';
+		}
+		os << endl;
+	}
+}
+
+template <typename T>
+void print2DArray(T* A, int rows, int cols, ostream& os = cout)
+{
+	for(int i=0, idx=0;i<rows;i++)
+	{
+		for(int j=0;j<cols;j++)
+		{
+			os << A[idx++] << ' ';
+		}
+		os << endl;
+	}
+}
+
+template <typename T> 
+__host__ inline void writeback(T* ptr, int size, const string& filename) {
+	vector<T> v(size);
+	cudaMemcpy(&(v[0]), ptr, sizeof(T)*size, cudaMemcpyDeviceToHost);
+	ofstream fout(filename);
+	if( !fout ) {
+		cerr << "failed to write file " << filename << endl;
+		return;
+	}
+	printArray(&(v[0]), size, fout);
+	fout.close();
+}
+
+template <typename T> 
+__host__ inline void writeback(T* ptr, int rows, int cols, const string& filename) {
+	vector<T> v(rows*cols);
+	cudaMemcpy(&(v[0]), ptr, sizeof(T)*rows*cols, cudaMemcpyDeviceToHost);
+	ofstream fout(filename);
+	if( !fout ) {
+		cerr << "failed to write file " << filename << endl;
+		return;
+	}
+	print2DArray<T>(&v[0], rows, cols, fout);
+	fout.close();
+}
+
+#define CHECKCUDASTATE_DEBUG
+
+__host__ inline void checkCudaState_impl(const char* file = __FILE__ , int line = __LINE__ ) {
+	cudaThreadSynchronize();
+	cudaError_t err = cudaGetLastError();
+	if (err != cudaSuccess)  {
+		fprintf(stderr, "CUDA error at %s: line# %d\t%s\n",file, line, cudaGetErrorString(err));
+		::system("pause");
+		//exit(-1);
+	}
+}
+
+#ifdef CHECKCUDASTATE_DEBUG
+#define checkCudaState() checkCudaState_impl(__FILE__, __LINE__)
+#else
+#define checkCudaState()
+#endif
 
 #ifdef _DEBUG
 #define CUDA_CALL( call ) do { \
@@ -92,9 +169,42 @@ using namespace thrust;
                         "%s\nerror %d: %s\nterminating!\n", \
                         __FILE__, __LINE__, #call, \
                         err, cudaGetErrorString( err ) ); \
+				::system("pause"); \
                 exit( ~0 ); \
             } \
         }
+
+static const char *cublasGetErrorString(cublasStatus_t error)
+{
+	switch (error)
+	{
+	case CUBLAS_STATUS_SUCCESS:
+		return "CUBLAS_STATUS_SUCCESS";
+
+	case CUBLAS_STATUS_NOT_INITIALIZED:
+		return "CUBLAS_STATUS_NOT_INITIALIZED";
+
+	case CUBLAS_STATUS_ALLOC_FAILED:
+		return "CUBLAS_STATUS_ALLOC_FAILED";
+
+	case CUBLAS_STATUS_INVALID_VALUE:
+		return "CUBLAS_STATUS_INVALID_VALUE";
+
+	case CUBLAS_STATUS_ARCH_MISMATCH:
+		return "CUBLAS_STATUS_ARCH_MISMATCH";
+
+	case CUBLAS_STATUS_MAPPING_ERROR:
+		return "CUBLAS_STATUS_MAPPING_ERROR";
+
+	case CUBLAS_STATUS_EXECUTION_FAILED:
+		return "CUBLAS_STATUS_EXECUTION_FAILED";
+
+	case CUBLAS_STATUS_INTERNAL_ERROR:
+		return "CUBLAS_STATUS_INTERNAL_ERROR";
+	}
+
+	return "<unknown>";
+}
 
 #define CUBLAS_CALL( call ) \
 		{ \
@@ -103,10 +213,11 @@ using namespace thrust;
 		if( err != CUBLAS_STATUS_SUCCESS ) \
 			{ \
 			fprintf( stderr, "error in CUBLAS call in file '%s', line: %d\n" \
-			"%s\nerror %d: %s\nterminating!\n", \
+			"%s\nerror %s: %s\nterminating!\n", \
 			__FILE__, __LINE__, #call, \
-			err ); \
-			exit( ~0 ); \
+			cublasGetErrorString(err) ); \
+			::system("pause"); \
+			exit(~0); \
 			} \
 		}
 
@@ -135,6 +246,7 @@ using namespace thrust;
 			"%s\nerror %d: %s, %s\nterminating!\n", \
 			err_type, __FILE__, __LINE__, #call, \
 			err, culaGetStatusString( err ), err_string); \
+			::system("pause"); \
 			exit( ~0 ); \
 			} \
 		}
