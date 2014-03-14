@@ -76,7 +76,9 @@ __host__ inline void writeback(T* ptr, int rows, int cols, const string& filenam
 	fout.close();
 }
 
+#ifdef _DEBUG
 #define CHECKCUDASTATE_DEBUG
+#endif
 
 __host__ inline void checkCudaState_impl(const char* file = __FILE__ , int line = __LINE__ ) {
 	cudaThreadSynchronize();
