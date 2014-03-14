@@ -1,6 +1,8 @@
 #pragma once
 
 #include "MultilinearReconstructor.h"
+#include "MultilinearReconstructorGPU.cuh"
+
 #include "AAMWrapper.h"
 #include "Utils/Timer.h"
 #include "Utils/utility.hpp"
@@ -34,7 +36,7 @@ public:
 	}
 
 	const Tensor1<float>& getMesh() const {
-		return recon.currentMesh();
+		return reconGPU.currentMesh();
 	}
 
 	const PhGUtils::QuadMesh& getQuadMesh() const {
@@ -43,19 +45,18 @@ public:
 
 private:
 	bool loadLandmarks();
-	void bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms );
-	void bindRGBDImage(const vector<unsigned char>& colordata, const vector<unsigned char>& depthdata);
 	void fit();
 
 private:
 	vector<int> landmarks;
 	vector<pair<PhGUtils::Point3f, int>> labeledLandmarks;
 
-	MultilinearReconstructor recon;
+	MultilinearReconstructorGPU reconGPU;
+	MultilinearReconstructor recon;	
 
 	int trackedFrames, frameIdx;
 	vector<PhGUtils::Point3f> lms;		// landmarks got from AAM tracking
-	AAMWrapper aam;
+	AAMWrapper* aam;
 
 	PhGUtils::Timer tAAM, tRecon, tSetup, tOther, tTotal;
 	PhGUtils::QuadMesh mesh;

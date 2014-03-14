@@ -5,10 +5,10 @@
 #include "Utils/Timer.h"
 #include "Kinect/KinectUtils.h"
 
-#define DOUG 0
+#define DOUG 1
 #define PEIHONG 0
 #define YILONG 0
-#define YILONG2 1
+#define YILONG2 0
 
 MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	: QMainWindow(parent)
@@ -265,7 +265,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10000;
-	const int imageCount = 919;
+	const int imageCount = 250;
 #elif PEIHONG
 	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Peihong\\";
 	const string imageName = "Peihong_";
@@ -384,10 +384,24 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 			int idx = (v*w+u)*4;
 			float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
 
-			// pass 2D features plus depth to the recon			
+			// get median filtered depth
+			const int mfilterSize = 3;
+			int neighbors[] = {-1, 0, 1};
+			vector<float> depths;
+			depths.reserve(16);
+			for(int nu=0;nu<mfilterSize;nu++) {
+				for(int nv=0;nv<mfilterSize;nv++) {
+					int idx = ((v+neighbors[nv])*w+(u+neighbors[nu]))*4;		
+					float d = (depthdata[idx]<<16|depthdata[idx+1]<<8|depthdata[idx+2]);
+					depths.push_back(d);
+				}
+			}
+			std::sort(depths.begin(), depths.end());
+
 			lms[i].x = u;
 			lms[i].y = v;
-			lms[i].z = d;
+			lms[i].z = depths[mfilterSize*mfilterSize/2];
+
 			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 		}
 
@@ -414,7 +428,6 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 			viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE_AND_EXPRESSION);
 			tRecon.toc();
 		}
-
 		QApplication::processEvents();
 		//::system("pause");
 #endif	

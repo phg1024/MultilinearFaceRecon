@@ -12,11 +12,11 @@
 void testPoseTracker() {
 	PoseTracker ptracker;
 
-#if 0
-	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao_\\images\\";
+#if 1
+	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const int startIdx = 10000;
-	const int imageCount = 890;
+	const int imageCount = 250;
 	const int endIdx = startIdx + imageCount;
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
@@ -36,7 +36,7 @@ void testPoseTracker() {
 	ofstream outfile("pose.txt");
 	int frameCount = 0;
 
-	for(int imgidx=1;imgidx<=imageCount;imgidx++) {
+	for(int imgidx=0;imgidx<=imageCount;imgidx++) {
 		// process each image and perform reconstruction
 		string colorImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + colorPostfix;
 		string depthImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + depthPostfix;
@@ -68,8 +68,7 @@ int main(int argc, char *argv[])
 	QApplication a(argc, argv);
 
 	glutInit(&argc, argv);
-
-#if 0
+#if 1
 	testPoseTracker();
 #else
 	MultilinearFaceRecon w;

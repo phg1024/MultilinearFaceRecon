@@ -22,6 +22,8 @@
 #include "Utils/cudautils.h"
 #include "Utils/Timer.h"
 
+#include "MRSetting.h"
+
 #include <cula.h>
 #include <cublas.h>
 
@@ -55,6 +57,14 @@ public:
 	void setIdentityWeights(const Tensor1<float>& t);
 	void setExpressionWeights(const Tensor1<float>& t);
 
+	const float* getPose() const { return h_RTparams; }
+	const Tensor1<float>& expressionWeights() const { return Wexp; }
+	const Tensor1<float>& identityWeights() const { return Wid; }
+
+	float reconstructionError() const {
+		return E;
+	}
+
 	// bind 3D landmarks
 	void bindTarget(const vector<PhGUtils::Point3f>& tgt);
 	void bindRGBDTarget(const vector<unsigned char>& colordata,
@@ -68,7 +78,7 @@ public:
 	void fitAll();
 
 	void setBaseMesh(const PhGUtils::QuadMesh& m);
-	const Tensor1<float>& currentMesh() { return tmesh; }
+	const Tensor1<float>& currentMesh() const { return tmesh; }
 
 protected:
 	void init();
@@ -106,8 +116,9 @@ private:
 	// fitted face
 	Tensor1<float> tmesh;
 
-	float h_RTparams[7]; /* sx, ry, rz, tx, ty, tz, scale */
-	
+	float h_RTparams[7]; /* rx, ry, rz, tx, ty, tz, scale */
+	Tensor1<float> Wid, Wexp;
+
 	bool useHistory;
 	static const int historyLength = 10;
 	float historyWeights[historyLength];
@@ -121,6 +132,7 @@ private:
 	static const int INITFRAMES = 5;
 	int frameCounter;
 
+	float E;
 private:
 	// computation stream
 	cudaStream_t mystream;
@@ -233,6 +245,7 @@ private:
 	unsigned char* d_indexMap;
 	float* d_depthMap;
 
+	// stats
 public:
 	void printStats();
 
@@ -245,4 +258,8 @@ private:
 	double totalCons_rigid;
 	vector<int> rigidIterations;
 	double totalRigidIters;
+
+
+private:
+	MRSetting settings;
 };

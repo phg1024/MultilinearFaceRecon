@@ -16,7 +16,7 @@ namespace NumericalAlgorithms {
 	float *x0, *x, *deltaX, *r0, *r, *J0, *J, *JtJ;
 	float *h_JtJ, *h_Jtr;
 
-	void initialize(int nparams, int nconstraints) {
+	void initialize(int nparams, int nconstraints) {		
 		checkCudaErrors(cudaMalloc((void**)&x0, sizeof(float)*nparams));
 		checkCudaErrors(cudaMalloc((void**)&x, sizeof(float)*nparams));
 		checkCudaErrors(cudaMalloc((void**)&deltaX, sizeof(float)*nparams));

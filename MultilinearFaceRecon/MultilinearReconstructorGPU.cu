@@ -43,14 +43,18 @@ MultilinearReconstructorGPU::MultilinearReconstructorGPU():
 	meanX = meanY = meanZ = 0;
 
 	// initialize offscreen renderer
+	PhGUtils::message("initializing offscreen renderer ...");
 	initRenderer();
 
 	// should be large enough
+	PhGUtils::message("initializing numerical solver ...");
 	NumericalAlgorithms::initialize(50, MAX_ICPC_COUNT);
 	
 	// initialize members
+	PhGUtils::message("initializing GPU reconstructor ...");
 	init();
 
+	PhGUtils::message("initializing weights for GPU reconstructor ...");
 	initializeWeights();
 
 	// process the loaded data
@@ -267,6 +271,7 @@ __host__ void MultilinearReconstructorGPU::init() {
 	mu_wid0.resize(ndims_wid);
 	mu_wid.resize(ndims_wid);
 	sigma_wid.resize(ndims_wid*ndims_wid);
+	Wid.resize(ndims_wid);
 
 	fwid.read(reinterpret_cast<char*>(&(mu_wid0[0])), sizeof(float)*ndims_wid);
 	fwid.read(reinterpret_cast<char*>(&(mu_wid[0])), sizeof(float)*ndims_wid);
@@ -307,6 +312,7 @@ __host__ void MultilinearReconstructorGPU::init() {
 	mu_wexp0.resize(ndims_wexp);
 	mu_wexp.resize(ndims_wexp);
 	sigma_wexp.resize(ndims_wexp*ndims_wexp);
+	Wexp.resize(ndims_wexp);
 
 	fwexp.read(reinterpret_cast<char*>(&(mu_wexp0[0])), sizeof(float)*ndims_wexp);
 	fwexp.read(reinterpret_cast<char*>(&(mu_wexp[0])), sizeof(float)*ndims_wexp);
@@ -382,8 +388,8 @@ __host__ void MultilinearReconstructorGPU::init() {
 
 	int maxParams = max(ndims_wid, ndims_wexp);
 	cout << "maxParams = " << maxParams << endl;
-	checkCudaErrors(cudaMalloc((void **) &d_A, sizeof(double)*(maxParams + ndims_fpts + ndims_pts) * maxParams));
-	checkCudaErrors(cudaMalloc((void **) &d_b, sizeof(double)*(ndims_pts + ndims_fpts + maxParams)));
+	checkCudaErrors(cudaMalloc((void **) &d_A, sizeof(double)*(maxParams + ndims_fpts + MAX_ICPC_COUNT*3) * maxParams));
+	checkCudaErrors(cudaMalloc((void **) &d_b, sizeof(double)*(MAX_ICPC_COUNT*3 + ndims_fpts + maxParams)));
 
 	checkCudaErrors(cudaMalloc((void **) &d_AtA, sizeof(double)*maxParams*maxParams));
 	checkCudaErrors(cudaMalloc((void **) &d_Atb, sizeof(double)*maxParams));
@@ -430,6 +436,11 @@ __host__ void MultilinearReconstructorGPU::init() {
 	showCUDAMemoryUsage();
 }
 
+template <typename T>
+T getParameterOrDefault(const tuple<bool, T>& t, T defaultVal) {
+	return get<0>(t)?get<1>(t):defaultVal;
+}
+
 __host__ void MultilinearReconstructorGPU::initializeWeights() {
 	// read the weights from a setting file
 #if USE_HALF_CONSTRAINTS
@@ -452,9 +463,16 @@ __host__ void MultilinearReconstructorGPU::initializeWeights() {
 		w_ICP = 1.0;		
 	}
 	else {
-		fin >> w_prior_id >> w_prior_exp
-			>> w_boundary >> w_chin >> w_outer
-			>> w_fp >> w_ICP >> w_history;
+		settings.load(fweights);
+		
+		w_prior_id = getParameterOrDefault<float>(settings.getParam<float>("Identity Prior Weight"), 0.025);
+		w_prior_exp = getParameterOrDefault<float>(settings.getParam<float>("Expression Prior Weight"), 0.03);
+		w_boundary = getParameterOrDefault<float>(settings.getParam<float>("Boundary Weight"), 1e-8);
+		w_chin = getParameterOrDefault<float>(settings.getParam<float>("Chin Region Weight"), 2.5e-7);
+		w_outer = getParameterOrDefault<float>(settings.getParam<float>("Outer Region Weight"), 1.25e-7);
+		w_fp = getParameterOrDefault<float>(settings.getParam<float>("Feature Point Weight"), 1.25);
+		w_ICP = getParameterOrDefault<float>(settings.getParam<float>("ICP Weight"), 3000.0);
+		w_history = getParameterOrDefault<float>(settings.getParam<float>("History Weight"), 0.01);
 	}
 	fin.close();
 
@@ -665,6 +683,8 @@ __host__ void MultilinearReconstructorGPU::initRenderer() {
 	dummyWgt = shared_ptr<QGLWidget>(new QGLWidget());
 	dummyWgt->hide();
 	dummyWgt->makeCurrent();
+	
+	//glewInit();
 
 	// initialize the shader
 	shader = shared_ptr<QGLShaderProgram>(new QGLShaderProgram);
@@ -751,7 +771,7 @@ __host__ void MultilinearReconstructorGPU::fitPose() {
 	float errorDiffThreshold_ICP = errorThreshold * 1e-4;
 
 	int iters = 0;
-	float E0 = 0, E;
+	float E0 = 0;
 	bool converged = false;
 	const int MaxIterations = 128;
 
@@ -984,13 +1004,15 @@ __host__ bool MultilinearReconstructorGPU::fitIdentityWeights() {
 
 __host__ void MultilinearReconstructorGPU::fitPoseAndIdentity() {
 	cc = 1e-4;
-	float errorThreshold_ICP = 1e-5;
-	float errorDiffThreshold_ICP = errorThreshold * 1e-4;
 
 	int iters = 0;
-	float E0 = 0, E;
+	float E0 = 0;
 	bool converged = false;
-	const int MaxIterations = 16;
+
+	const int MaxIterations = getParameterOrDefault(settings.getParam<int>("Identity Max Iteration"), 16);
+	const float errorThreshold_ICP = getParameterOrDefault<float>(settings.getParam<float>("Identity Error Threshold"), 1e-5);
+	const float errorDiffThreshold_ICP = errorThreshold * getParameterOrDefault<float>(settings.getParam<float>("Identity Error Diff Threshold"), 1e-4);
+
 	int rigidIters;
 
 	while( !converged && iters++<MaxIterations ) {
@@ -1036,6 +1058,15 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndIdentity() {
 
 	// update distance map
 	cublasSgemv('N', npts_mesh, ndims_wid, 1.0, d_rawdistmap, npts_mesh, d_Wid, 1, 0, d_distmap, 1);
+
+	// copy back the weights and pose
+	cudaMemcpy(h_RTparams, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToHost);
+	checkCudaState();
+
+	cudaMemcpy(Wid.rawptr(), d_Wid, sizeof(float)*ndims_wid, cudaMemcpyDeviceToHost);
+	checkCudaState();
+
+	PhGUtils::printArray(h_RTparams, 7);
 }
 
 __global__ void fitExpression_ICPCTerm(d_ICPConstraint *d_icpc, int nicpc, int npts, int ndims, int off, int boff,
@@ -1118,6 +1149,7 @@ __global__ void fitExpression_PriorTerm(double *d_A, double *d_b, float *d_sigma
 __host__ bool MultilinearReconstructorGPU::fitExpressionWeights() {
 	float3 T = make_float3(h_RTparams[3], h_RTparams[4], h_RTparams[5]);
 	const int threads = 1024;
+
 	checkCudaState();
 	// assemble the matrix and right hand side
 	fitExpression_ICPCTerm<<<(int)(ceil(nicpc/(float)threads)),threads>>>(d_icpc, nicpc, npts_mesh, ndims_wexp, 0, 0,
@@ -1194,13 +1226,14 @@ __host__ bool MultilinearReconstructorGPU::fitExpressionWeights() {
 
 __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	cc = 1e-4;
-	float errorThreshold_ICP = 2.0e-5;
-	float errorDiffThreshold_ICP = 1e-3;
 
 	int iters = 0;
-	float E0 = 1, E = 0;
+	float E0 = 1;
 	bool converged = false;
-	const int MaxIterations = 8;
+	const int MaxIterations = getParameterOrDefault(settings.getParam<int>("Expression Max Iteration"), 8);;
+	const float errorThreshold_ICP = getParameterOrDefault<float>(settings.getParam<float>("Expression Error Threshold"), 2e-5);
+	const float errorDiffThreshold_ICP = errorThreshold * getParameterOrDefault<float>(settings.getParam<float>("Expression Error Diff Threshold"), 1e-3);
+
 
 	constraintCount.clear();
 	int rigidIters;
@@ -1265,11 +1298,6 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	fout.close();
 	*/
 
-	/*
-	for(int i=0;i<7;i++)
-		cout << h_RTparams[i] << '\t';
-	cout << endl;
-	*/
 	double avgcons = PhGUtils::average(constraintCount);
 	double avgcons_rigid = PhGUtils::average(constraintCount_rigid);
 	double avgiters = PhGUtils::average(rigidIterations);
@@ -1287,6 +1315,15 @@ __host__ void MultilinearReconstructorGPU::fitPoseAndExpression() {
 	// use the latest parameters
 	transformMesh();
 	updateMesh();
+
+	// copy back the weights and pose
+	cudaMemcpy(h_RTparams, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToHost);
+	checkCudaState();
+
+	cudaMemcpy(Wexp.rawptr(), d_Wexp, sizeof(float)*ndims_wexp, cudaMemcpyDeviceToHost);
+	checkCudaState();
+
+	PhGUtils::printArray(h_RTparams, 7);
 }
 
 __host__ void MultilinearReconstructorGPU::fitAll() {
@@ -1634,7 +1671,10 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 	// for debug
 	float4 *memPtr;
 	size_t sz;
-	cudaGraphicsResourceGetMappedPointer((void **)&memPtr, &sz, cTex); 	checkCudaState();	writeback(memPtr, 480, 640, "buffer.txt");	*/
+	cudaGraphicsResourceGetMappedPointer((void **)&memPtr, &sz, cTex); 
+	checkCudaState();
+	writeback(memPtr, 480, 640, "buffer.txt");
+	*/
 
 	//PhGUtils::message("binding texture to CUDA...");
 	// bind the array to textures
@@ -1684,7 +1724,9 @@ __host__ int MultilinearReconstructorGPU::collectICPConstraints(int iters, int m
 	checkCudaState();
 	//cout << "ICPC_rigid = " << nicpc_rigid << endl;
 
-	collectICPConstraints_rigid_kernel<<<(int)ceil(nicpc_rigid/1024.0), 1024>>>(d_icpc, d_icpc_rigid, d_icpc_rigid_idx, nicpc_rigid);
+	collectICPConstraints_rigid_kernel<<<(int)ceil(nicpc_rigid/1024.0), 1024, 0, mystream>>>(d_icpc, d_icpc_rigid, d_icpc_rigid_idx, nicpc_rigid);
+	checkCudaState();
+
 
 #if OUTPUT_ICPC
 	vector<d_ICPConstraint> icpc(640*480);
@@ -1756,7 +1798,12 @@ __host__ bool MultilinearReconstructorGPU::fitRigidTransformation(bool fitScale,
 	cudaMemcpy(NumericalAlgorithms::x, d_RTparams, sizeof(float)*7, cudaMemcpyDeviceToDevice);
 	checkCudaState();
 	int itmax = 128;
-	float opts[] = {0.25, 5e-6, 5e-3};
+
+	float initialStep = getParameterOrDefault<float>(settings.getParam<float>("Pose Estimation Step"), 0.25);
+	float error_pose = getParameterOrDefault<float>(settings.getParam<float>("Pose Estimation Error Threshold"), 5e-6);
+	float error_diff_pose = getParameterOrDefault<float>(settings.getParam<float>("Pose Estimation Error Diff Threshold"), 5e-3);
+
+	float opts[] = {initialStep, error_pose, error_diff_pose};
 	// gauss-newton algorithm to estimate a new set of parameters
 	iters = NumericalAlgorithms::lm(
 		nparams, nfpts+icpccount, itmax, opts,

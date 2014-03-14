@@ -12,7 +12,9 @@ PoseTracker::PoseTracker(void)
 	PhGUtils::OBJLoader loader;
 	loader.load("../Data/shape_0.obj");
 	mesh.initWithLoader( loader );
+
 	recon.setBaseMesh(mesh);
+	reconGPU.setBaseMesh(mesh);
 
 	loadLandmarks();
 
@@ -21,11 +23,14 @@ PoseTracker::PoseTracker(void)
 
 	frameIdx = 0;
 	trackedFrames = 0;
+
+	aam = new AAMWrapper;
 }
 
 
 PoseTracker::~PoseTracker(void)
 {
+	delete aam;
 }
 
 bool PoseTracker::loadLandmarks()
@@ -49,21 +54,6 @@ bool PoseTracker::loadLandmarks()
 	}
 }
 
-void PoseTracker::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms )
-{
-	for(int i=0;i<landmarks.size();i++) {
-		int vidx = landmarks[i];
-		labeledLandmarks[i] = (make_pair(lms[i], vidx));
-	}
-	recon.bindTarget(labeledLandmarks, MultilinearReconstructor::TargetType_2D);
-}
-
-void PoseTracker::bindRGBDImage(const vector<unsigned char>& colordata, const vector<unsigned char>& depthdata)
-{
-	recon.bindRGBDTarget(colordata, depthdata);
-}
-
-
 bool PoseTracker::reconstructionWithSingleFrame(
 	const unsigned char* colordata,
 	const unsigned char* depthdata,
@@ -78,7 +68,7 @@ bool PoseTracker::reconstructionWithSingleFrame(
 	// AAM tracking
 	tAAM.tic();
 	trackedFrames++;
-	fpts = aam.track(&(colordata[0]), &(depthdata[0]), w, h);
+	fpts = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
 	tAAM.toc();
 
 	if( fpts.empty() ) {
@@ -89,6 +79,7 @@ bool PoseTracker::reconstructionWithSingleFrame(
 	}
 	else {
 		// tracking succeeded
+		cout << "AAM tracking succeeded." << endl;
 
 		tOther.tic();
 		// get the 3D landmarks and feed to recon manager
@@ -116,7 +107,6 @@ bool PoseTracker::reconstructionWithSingleFrame(
 			lms[i].z = depths[mfilterSize*mfilterSize/2];
 		}
 
-		bindTargetLandmarks(lms);
 		tOther.toc();
 
 		
@@ -124,20 +114,43 @@ bool PoseTracker::reconstructionWithSingleFrame(
 			tSetup.tic();
 			vector<unsigned char> colorimg(colordata, colordata+640*480*4);
 			vector<unsigned char> depthimg(depthdata, depthdata+640*480*4);
-			bindRGBDImage(colorimg, depthimg);
+
+			for(int i=0;i<landmarks.size();i++) {
+				int vidx = landmarks[i];
+				labeledLandmarks[i] = (make_pair(lms[i], vidx));
+			}
+			recon.bindTarget(labeledLandmarks, MultilinearReconstructor::TargetType_2D);
+
+			recon.bindRGBDTarget(colorimg, depthimg);			
 			// fit the pose first, then fit the identity and pose together
 			recon.fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
-			recon.fitICP(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+
+			// rigid transformation parameters
+			reconGPU.setPose( recon.getPose() );
+			// identity weights
+			reconGPU.setIdentityWeights( recon.identityWeights() );
+			// expression weights
+			reconGPU.setExpressionWeights( recon.expressionWeights() );
+
+			// transfer the result to GPU
+			reconGPU.bindTarget(lms);
+			reconGPU.bindRGBDTarget(colorimg, depthimg);
+
+			reconGPU.fit(MultilinearReconstructorGPU::FIT_POSE_AND_IDENTITY);
 			tSetup.toc();
 		}
 		else{
 			tRecon.tic();
-			recon.fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+			vector<unsigned char> colorimg(colordata, colordata+640*480*4);
+			vector<unsigned char> depthimg(depthdata, depthdata+640*480*4);
+			reconGPU.bindTarget(lms);
+			reconGPU.bindRGBDTarget(colorimg, depthimg);
+			reconGPU.fit(MultilinearReconstructorGPU::FIT_POSE_AND_EXPRESSION);
 			tRecon.toc();
 		}		
 
 		tOther.tic();
-		pose.assign(recon.getPose(), recon.getPose()+7);
+		pose.assign(reconGPU.getPose(), reconGPU.getPose()+7);
 		tOther.toc();
 
 		tTotal.toc();
@@ -147,16 +160,17 @@ bool PoseTracker::reconstructionWithSingleFrame(
 
 void PoseTracker::reset()
 {
-	aam.reset();
+	aam->reset();
 	recon.reset();
 }
 
 float PoseTracker::facialFeatureTrackingError() const {
-	return aam.getTrackingError();
+	return aam->getTrackingError();
 }
 
 float PoseTracker::poseEstimationError() const
 {
-	return recon.reconstructionError();
+	return reconGPU.reconstructionError();
 }
+
 
