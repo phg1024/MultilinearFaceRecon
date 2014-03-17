@@ -68,11 +68,19 @@ int main(int argc, char *argv[])
 	QApplication a(argc, argv);
 
 	glutInit(&argc, argv);
-#if 1
-	testPoseTracker();
-#else
-	MultilinearFaceRecon w;
-	w.show();
-#endif
-	return a.exec();
+
+	int runType = 0;
+	cout << "Please choose a run type:" << endl;
+	cout << "\t" << "0. test pose tracker." << endl;
+	cout << "\t" << "1. realtime tracking." << endl;
+	cin >> runType;
+	switch( runType ) {
+	case 0:
+		testPoseTracker();
+		return a.exec();
+	default:
+		MultilinearFaceRecon w;
+		w.show();
+		return a.exec();
+	}	
 }

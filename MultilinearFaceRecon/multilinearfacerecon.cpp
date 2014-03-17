@@ -402,7 +402,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 			lms[i].y = v;
 			lms[i].z = depths[mfilterSize*mfilterSize/2];
 
-			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
+			//PhGUtils::debug("u", u, "v", v, "d", lms[i].z);
 		}
 
 		if( imgidx == 0 ) {

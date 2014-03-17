@@ -76,6 +76,8 @@ __host__ void MultilinearReconstructorGPU::setPose(const float* params) {
 }
 
 __host__ void MultilinearReconstructorGPU::setIdentityWeights(const Tensor1<float>& t) {
+	t.print("Wid");
+
 	// copy to GPU
 	checkCudaErrors(cudaMemcpy(d_Wid, t.rawptr(), sizeof(float)*ndims_wid, cudaMemcpyHostToDevice));
 	// update tensor tm0
@@ -95,7 +97,7 @@ __host__ void MultilinearReconstructorGPU::setIdentityWeights(const Tensor1<floa
 }
 
 __host__ void MultilinearReconstructorGPU::setExpressionWeights(const Tensor1<float>& t) {
-	t.print();
+	t.print("Wexp");
 	// copy to GPU
 	checkCudaErrors(cudaMemcpy(d_Wexp, t.rawptr(), sizeof(float)*ndims_wexp, cudaMemcpyHostToDevice));
 	// update tensor tm1

@@ -1,7 +1,6 @@
 <MRSettings>
 <param name="Identity Prior Weight" type="float">0.025</param>
 <param name="Expression Prior Weight" type="float">0.03</param>
-<param name="Boundary Weight" type="float">1e-8</param>
 <param name="Chin Region Weight" type="float">2.5e-7</param>
 <param name="Outer Region Weight" type="float">1.25e-7</param>
 <param name="Feature Point Weight" type="float">1.25</param>

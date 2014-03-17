@@ -18,8 +18,8 @@ PoseTracker::PoseTracker(void)
 
 	loadLandmarks();
 
-	lms.resize(128);
-	labeledLandmarks.resize(128);
+	lms.resize(landmarks.size());
+	labeledLandmarks.resize(landmarks.size());
 
 	frameIdx = 0;
 	trackedFrames = 0;
@@ -83,7 +83,7 @@ bool PoseTracker::reconstructionWithSingleFrame(
 
 		tOther.tic();
 		// get the 3D landmarks and feed to recon manager
-		int mfilterSize = 3;
+		const int mfilterSize = 3;
 		int neighbors[] = {-1, 0, 1};
 		int npts = fpts.size()/2;
 		for(int i=0;i<npts;i++) {
@@ -105,6 +105,8 @@ bool PoseTracker::reconstructionWithSingleFrame(
 			lms[i].x = u;
 			lms[i].y = v;
 			lms[i].z = depths[mfilterSize*mfilterSize/2];
+
+			//PhGUtils::debug("u", u, "v", v, "d", lms[i].z);
 		}
 
 		tOther.toc();
@@ -114,6 +116,7 @@ bool PoseTracker::reconstructionWithSingleFrame(
 			tSetup.tic();
 			vector<unsigned char> colorimg(colordata, colordata+640*480*4);
 			vector<unsigned char> depthimg(depthdata, depthdata+640*480*4);
+			recon.bindRGBDTarget(colorimg, depthimg);
 
 			for(int i=0;i<landmarks.size();i++) {
 				int vidx = landmarks[i];
@@ -121,10 +124,10 @@ bool PoseTracker::reconstructionWithSingleFrame(
 			}
 			recon.bindTarget(labeledLandmarks, MultilinearReconstructor::TargetType_2D);
 
-			recon.bindRGBDTarget(colorimg, depthimg);			
 			// fit the pose first, then fit the identity and pose together
 			recon.fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 
+			// transfer the result to GPU
 			// rigid transformation parameters
 			reconGPU.setPose( recon.getPose() );
 			// identity weights
@@ -132,9 +135,9 @@ bool PoseTracker::reconstructionWithSingleFrame(
 			// expression weights
 			reconGPU.setExpressionWeights( recon.expressionWeights() );
 
-			// transfer the result to GPU
-			reconGPU.bindTarget(lms);
+			// fit the pose and identity with GPU ICP
 			reconGPU.bindRGBDTarget(colorimg, depthimg);
+			reconGPU.bindTarget(lms);			
 
 			reconGPU.fit(MultilinearReconstructorGPU::FIT_POSE_AND_IDENTITY);
 			tSetup.toc();
@@ -162,6 +165,8 @@ void PoseTracker::reset()
 {
 	aam->reset();
 	recon.reset();
+	frameIdx = 0;
+	trackedFrames = 0;
 }
 
 float PoseTracker::facialFeatureTrackingError() const {

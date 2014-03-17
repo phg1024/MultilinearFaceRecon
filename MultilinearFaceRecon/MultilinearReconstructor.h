@@ -324,7 +324,7 @@ private:
 		vector<float> meas;
 	} pws;
 
-	float RTparams[7]; /* sx, ry, rz, tx, ty, tz, scale */
+	float RTparams[7]; /* rx, ry, rz, tx, ty, tz, scale */
 	float meanRT[7];
 	
 	bool useHistory;

@@ -1195,6 +1195,12 @@ void MultilinearReconstructor::fit_withPrior() {
 		return;
 	}
 	PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
+	
+#ifdef _DEBUG
+	PhGUtils::printArray(RTparams, 7);
+	Wid.print("Wid");
+	Wexp.print("Wexp");
+#endif
 
 	timerTotal.tic();
 	int iters = 0;
@@ -1268,7 +1274,7 @@ void MultilinearReconstructor::fit_withPrior() {
 			updateTMCwithTM0C();
 			//updateTMC();
 			timerOther.toc();
-		}		
+		}
 
 		timerOther.tic();
 		// uncomment to show the transformation process
@@ -1276,7 +1282,12 @@ void MultilinearReconstructor::fit_withPrior() {
 		//Rmat.print("R");
 		//Tvec.print("T");
 		E = computeError();
-		//PhGUtils::debug("iters", iters, "Error", E);
+		PhGUtils::debug("iters", iters, "Error", E);
+
+#ifdef _DEBUG
+		PhGUtils::printArray(RTparams, 7);
+		Wid.print("Wid");
+#endif
 
 		converged |= E < errorThreshold;
 		converged |= fabs(E - E0) < errorDiffThreshold;
@@ -2209,7 +2220,7 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 	int nterms = fitScale?7:6;
 	for(int i=0, jidx=npts*nterms;i<nterms;i++) {
 		float diff = p[i] - meanRT[i];
-		if( diff == 0 ) diff = numeric_limits<float>::min();
+		//if( diff == 0 ) diff = numeric_limits<float>::min();
 		for(int j=0;j<nterms;j++) {
 			if( j == i ) {
 				J[jidx] = 2.0 * diff * w_history;
@@ -2238,24 +2249,21 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	
 	/*
 	vector<float> errs(npts + 7);
-	slevmar_chkjac(evalCost, evalJacobian, RTparams, 7, npts + 7, this, &(errs[0]));
+	slevmar_chkjac(evalCost, evalJacobian, RTparams, nparams, npts + nparams, this, &(errs[0]));
 	PhGUtils::printVector(errs);
 	::system("pause");
 	*/
-
+	
 	/*
 	float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
-	//int iters = slevmar_dif(evalCost, RTparams, &(pws.meas[0]), 7, npts+7, 128, NULL, NULL, NULL, NULL, this);
-	int iters = slevmar_der(evalCost, evalJacobian, RTparams, &(pws.meas[0]), 7, npts + 7, 128, opts, NULL, NULL, NULL, this);
+	int iters = slevmar_dif(evalCost, RTparams, &(pws.meas[0]), nparams, npts+nparams, 128, NULL, NULL, NULL, NULL, this);
+	//int iters = slevmar_der(evalCost, evalJacobian, RTparams, &(pws.meas[0]), nparams, npts + nparams, 128, opts, NULL, NULL, NULL, this);
 	*/
-		
-	
+
 	// use Gauss-Newton
 	float opts[3] = {0.1, 1e-3, 1e-4};
 	int iters = PhGUtils::GaussNewton<float>(evalCost, evalJacobian, RTparams, NULL, NULL, nparams, npts+nparams, 128, opts, this);
-	
-
-	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
+	PhGUtils::debugmessage("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// set up the matrix and translation vector
 	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
