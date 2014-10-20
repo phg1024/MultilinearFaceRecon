@@ -16,7 +16,7 @@
 
 #include "Math/DenseVector.hpp"
 #include "Math/DenseMatrix.hpp"
-#include <armadillo>
+#include "Math/denseblas.h"
 
 #include <QGLWidget>
 #include <QGLFramebufferObject>

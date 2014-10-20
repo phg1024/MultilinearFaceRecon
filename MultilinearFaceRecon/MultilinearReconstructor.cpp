@@ -23,7 +23,7 @@
 MultilinearReconstructor::MultilinearReconstructor(void)
 {	
 	culaStatus stas = culaInitialize();
-	culaCheckStatus(stas);
+	PhGUtils::culaCheckStatus(stas);
 
 	w_prior_id = 1e-3;
 	// for 25 expression dimensions
@@ -2548,7 +2548,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 		brhs(idx) = mu_wid_weighted(i);
 	}
 
-	int rtn = leastsquare<float>(Aid, brhs);
+	int rtn = PhGUtils::leastsquare<float>(Aid, brhs);
 	//debug("rtn", rtn);
 	float diff = 0;
 	//b.print("b");
@@ -2658,7 +2658,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_ICP() {
 	//cout << "least square" << endl;
 	//PhGUtils::Timer tls;
 	//tls.tic();
-	int rtn = leastsquare<double>(Aexp_ICP, brhs_ICP);
+	int rtn = PhGUtils::leastsquare<double>(Aexp_ICP, brhs_ICP);
 	//tls.toc("least square");
 	//cout << "done." << endl;
 	//debug("rtn", rtn);
@@ -2820,7 +2820,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 	}
 
 #if USE_MKL_LS
-	int rtn = leastsquare<float>(Aexp, brhs);
+	int rtn = PhGUtils::leastsquare<float>(Aexp, brhs);
 	//debug("rtn", rtn);
 
 	//b.print("b");
@@ -3543,7 +3543,7 @@ void MultilinearReconstructor::fitIdentityWeights_withPrior_Constraints() {
 
 	//cout << "least square" << endl;
 #if USE_MKL_LS
-	int rtn = leastsquare<double>(Aid_ICP, brhs_ICP);
+	int rtn = PhGUtils::leastsquare<double>(Aid_ICP, brhs_ICP);
 #else
 	int rtn = leastsquare_normalmat(Aid_ICP, brhs_ICP, AidtAid, Aidtb);
 #endif
@@ -3626,7 +3626,7 @@ void MultilinearReconstructor::fitExpressionWeights_withPrior_Constraints()
 	//cout << "matrix and rhs assembled." << endl;
 
 	//cout << "least square" << endl;
-	int rtn = leastsquare<double>(Aexp_ICP, brhs_ICP);
+	int rtn = PhGUtils::leastsquare<double>(Aexp_ICP, brhs_ICP);
 	//cout << "done." << endl;
 	//debug("rtn", rtn);
 	float diff = 0;
