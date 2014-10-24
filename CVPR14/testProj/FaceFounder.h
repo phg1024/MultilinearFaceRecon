@@ -13,26 +13,30 @@ using namespace std;
 using namespace libface;
 using namespace cv;
 
-class FaceDetector
-{
-public:
-	FaceDetector(bool isShowFace=false);
+namespace ESRAligner {
 
-	bool showFace;
-	float scale;
-	LibFace libFace;
-	Rect findFace(IplImage *img);
-	vector<Rect> findFaceFull(IplImage *img);
-	//vector<Point2f> curSTList;
+  class FaceDetector
+  {
+  public:
+    FaceDetector(bool isShowFace = false);
 
-	Rect findFaceGT(IplImage *img, Rect &gtRect);
+    bool showFace;
+    float scale;
+    LibFace libFace;
+    Rect findFace(IplImage *img);
+    vector<Rect> findFaceFull(IplImage *img);
+    //vector<Point2f> curSTList;
 
-	Mat getCurFace(Rect &,IplImage *img);
-	Point2f curST;
+    Rect findFaceGT(IplImage *img, Rect &gtRect);
 
-	void findFaceFull(IplImage *img,vector<Rect> &);
+    Mat getCurFace(Rect &, IplImage *img);
+    Point2f curST;
 
-	Rect getRect(Face &result);
+    void findFaceFull(IplImage *img, vector<Rect> &);
 
-	Rect getEnlargedRect(Face &result);
-};
+    Rect getRect(Face &result);
+
+    Rect getEnlargedRect(Face &result);
+  };
+
+}

@@ -216,6 +216,10 @@ void BlendShapeViewer::updateMeshWithReconstructor() {
 		mesh.vertex(i).y = tplt(idx++);
 		mesh.vertex(i).z = tplt(idx++);
 	}
+
+  PhGUtils::OBJWriter writer;
+  writer.save(mesh, "transformed_mesh.obj");
+
 	update();
 }
 

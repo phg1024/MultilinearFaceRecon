@@ -47,7 +47,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	//testLearnW("testW.txt");
 	//return 0;
 	
-	evaluation_cvpr14();
+	ESRAligner::evaluation_cvpr14();
 	return 0;
 //
 	int curVal;
@@ -55,12 +55,12 @@ int _tmain(int argc, _TCHAR* argv[])
 	cin>>curVal;
 
 	if(curVal==1)
-		train("model_LocalGlobal_RandLarge_WRCV_Advanced_fast.bin");
+    ESRAligner::train("model_LocalGlobal_RandLarge_WRCV_Advanced_fast.bin");
 	else if(curVal==2)
-		pridict("model_LocalGlobal_meanShape_WCV_fast.bin");
+    ESRAligner::pridict("model_LocalGlobal_meanShape_WCV_fast.bin");
 	else if(curVal==3)
 	{
-		realtimeFace("model_LocalGlobal_RandLarge_WRCV_Advanced_fast.bin");
+    ESRAligner::realtimeFace("model_LocalGlobal_RandLarge_WRCV_Advanced_fast.bin");
 	}
 	//model_LocalGlobal_RandLarge_WCV_fast model_LocalGlobal_meanShape_WCV_fast
 	//model_LocalGlobal_RandLarge_WCV_fast model_LocalGlobal_RandLarge_WRCV_fast

@@ -947,7 +947,7 @@ void MultilinearReconstructor::fit2d(FittingOption ops /*= FIT_ALL*/)
 }
 
 void MultilinearReconstructor::fit2d_withPrior() {
-	//cout << "fit with prior" << endl;
+	cout << "fit with prior" << endl;
 
 	//init();
 
@@ -1032,7 +1032,7 @@ void MultilinearReconstructor::fit2d_withPrior() {
 		timerOther.tic();
 
 		E = computeError_2D();
-		//PhGUtils::debug("iters", iters, "Error", E);
+		PhGUtils::info("iters", iters, "Error", E);
 
 		converged |= E < errorThreshold;
 		converged |= fabs(E - E0) < errorDiffThreshold;
@@ -1808,7 +1808,8 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 		*/
 		float dx = q.x - u, dy = q.y - v, dz = (q.z==0?0:(q.z - d));
 		//cout << i << "\t" << dx << ", " << dy << ", " << dz << endl;
-		hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
+    //hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
+    hx[i] = dx * dx + dy * dy;
 	}
 }
 
@@ -1962,14 +1963,15 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 	::system("pause");
 	*/
 
-	vector<float> meas(npts);
+	vector<float> meas(npts, 0.0);
 
-	//int iters = slevmar_dif(evalCost_2D, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+  
+	int iters = slevmar_dif(evalCost_2D, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
 	//float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
 	//int iters = slevmar_der(evalCost_2D, evalJacobian_2D, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
 
-	float opts[3] = {0.1, 1e-3, 1e-4};
-	int iters = PhGUtils::GaussNewton<float>(evalCost_2D, evalJacobian_2D, RTparams, NULL, NULL, 7, npts, 128, opts, this);
+  /*float opts[3] = { 0.1, 1e-3, 1e-4 };
+  int iters = PhGUtils::GaussNewton<float>(evalCost_2D, evalJacobian_2D, RTparams, NULL, NULL, 7, npts, 128, opts, this);*/
 	PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// set up the matrix and translation vector
@@ -1986,8 +1988,8 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
 
-	//cout << R << endl;
-	//cout << T << endl;
+	cout << R << endl;
+	cout << T << endl;
 	return diff / 7 < cc;
 }
 
@@ -2439,7 +2441,8 @@ void evalCost2_2D(float *p, float *hx, int m, int n, void* adata) {
 		PhGUtils::worldToColor(x + T.x, y + T.y, z + T.z, u, v, d);
 
 		float dx = q.x - u, dy = q.y - v, dz = q.z==0?0:(q.z - d);
-		hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
+    //hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
+    hx[i] = (dx * dx + dy * dy);
 	}
 
 	// regularization term
@@ -2454,7 +2457,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_2D()
 	int nparams = core.dim(0);
 	vector<float> params(Wid.rawptr(), Wid.rawptr()+nparams);
 	int npts = targets.size();
-	vector<float> meas(npts+nparams);
+	vector<float> meas(npts+nparams, 0.0);
 	int iters = slevmar_dif(evalCost2_2D, &(params[0]), &(meas[0]), nparams, npts + nparams, 128, NULL, NULL, NULL, NULL, this);
 	//cout << "finished in " << iters << " iterations." << endl;
 
@@ -2464,8 +2467,9 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_2D()
 	for(int i=0;i<nparams;i++) {
 		diff += fabs(Wid(i) - params[i]);
 		Wid(i) = params[i];		
-		//cout << params[i] << ' ';
+		cout << params[i] << ' ';
 	}
+  cout << endl;
 
 	return diff / nparams < cc;
 }
@@ -2987,10 +2991,22 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		RTparams[3] = meanX;
 		RTparams[4] = meanY;
 		RTparams[5] = meanZ;
-		RTparams[6] = fabs(targets[64].first.x - targets[74].first.x);
-
+#if 0
+    /// for 78 points model
+		RTparams[6] = fabs((targets[16].first.x + targets[20].first.x) * 0.5
+                      -(targets[24].first.x + targets[28].first.x) * 0.5);
+#else
+    /// for 68 points model
+    RTparams[6] = fabs((targets[36].first.x + targets[39].first.x) * 0.5
+      - (targets[42].first.x + targets[45].first.x) * 0.5); 
+#endif
 		// set the initial mean RT
-		for(int i=0;i<7;i++) meanRT[i] = RTparams[i];
+    cout << "initial rigid transformation params: ";
+    for (int i = 0; i < 7; i++){
+      meanRT[i] = RTparams[i];
+      cout << meanRT[i] << "\t";
+    }
+    cout << endl;
 	}
 
 	//PhGUtils::debug("valid landmarks", validCount);

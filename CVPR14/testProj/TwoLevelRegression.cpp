@@ -3,6 +3,8 @@
 
 #include "codetimer.h"
 
+namespace ESRAligner {
+
 TwoLevelRegression::TwoLevelRegression(bool _isRot)
 {
 	showRes=false;
@@ -1852,4 +1854,6 @@ void TwoLevelRegression::generateFeatureLocation(int P, Shape &refShape)
 	//		featurePairVal.row(curCol)-=featurePairMean[curCol];
 	//	}
 	//}
+}
+
 }

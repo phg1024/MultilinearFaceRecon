@@ -2,56 +2,60 @@
 #include "RF_WholeFace.h"
 #include "TwoLevelRegression.h"
 
-class LocalGlobalRegression: public TwoLevelRegression
-{
-public:
-	LocalGlobalRegression();
-	//--------------train
-	void train_CVPR14(char *nameList,char *paraSetting);
-	void train_CVPR14();
+namespace ESRAligner {
 
-	//--------------regression
-	Mat predict_Real_CVPR14(IplImage *img);
-	Mat predict_single(IplImage *img, Rect facialRect);
+  class LocalGlobalRegression : public TwoLevelRegression
+  {
+  public:
+    LocalGlobalRegression();
+    //--------------train
+    void train_CVPR14(char *nameList, char *paraSetting);
+    void train_CVPR14();
 
-	void predict_CVPR14(Mat &img, Shape &s);
-	void getUpdate(Mat &W,RF_WholeFace &forest, Shape &s);
+    //--------------regression
+    Mat predict_Real_CVPR14(IplImage *img);
+    Mat predict_single(IplImage *img, Rect facialRect);
 
-	//SL
-	void save_CVPR14(char *name);
-	void load_CVPR14(char *name);
+    void predict_CVPR14(Mat &img, Shape &s);
+    void getUpdate(Mat &W, RF_WholeFace &forest, Shape &s);
 
-	vector<ShapePair> *testShapes;
-	float evlError(vector<ShapePair> &,vector<RF_WholeFace> &,int startInd=0);
-	float getError(Shape &curShape,Shape &gtShape);
+    //SL
+    void save_CVPR14(char *name);
+    void load_CVPR14(char *name);
 
-	void updateShapes(vector<ShapePair> &shapes,RF_WholeFace &forest);
+    vector<ShapePair> *testShapes;
+    float evlError(vector<ShapePair> &, vector<RF_WholeFace> &, int startInd = 0);
+    float getError(Shape &curShape, Shape &gtShape);
 
-	vector<ShapePair> validateShapes;
+    void updateShapes(vector<ShapePair> &shapes, RF_WholeFace &forest);
 
-	vector<RF_WholeFace> forests; //should be whole face then
+    vector<ShapePair> validateShapes;
 
-	void visualizeModel();
+    vector<RF_WholeFace> forests; //should be whole face then
 
-	//evaluation
-	Mat pridict_evaluate(IplImage *img, char *GTPts=NULL);
+    void visualizeModel();
 
-	//multiface detection
-	vector<Mat> predict_real_givenRects(IplImage *img,vector<Rect> &faceRegionList);
-	
-private:
-	vector<Mat> WList;	//global weight
-	
-	int T,N,D;//level num, 2nd level tree total Num and depth of trees
-	int K;//2nd level num
+    //evaluation
+    Mat pridict_evaluate(IplImage *img, char *GTPts = NULL);
 
-	int augNum,ShapePtsNum;
+    //multiface detection
+    vector<Mat> predict_real_givenRects(IplImage *img, vector<Rect> &faceRegionList);
 
-	Mat fullLBF;
+  private:
+    vector<Mat> WList;	//global weight
 
-	//Shape refShape;
-	vector<double>candidateRadius; //0.05:0.05:0.5
-	int candidateNum;
+    int T, N, D;//level num, 2nd level tree total Num and depth of trees
+    int K;//2nd level num
 
-	float eyeDis;
-};
+    int augNum, ShapePtsNum;
+
+    Mat fullLBF;
+
+    //Shape refShape;
+    vector<double>candidateRadius; //0.05:0.05:0.5
+    int candidateNum;
+
+    float eyeDis;
+  };
+
+}

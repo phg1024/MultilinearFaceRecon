@@ -22,7 +22,10 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	viewer = new BlendShapeViewer(this);
 	this->setCentralWidget((QWidget*)viewer);
 
-	aam = new AAMWrapper;
+	//aam = new AAMWrapper;
+  tracker.reset(new tracker_t());
+  tracker->setImageWidth(640);
+  tracker->setImageHeight(480);
 
 	setupKinectManager();
 	lms.resize(78);
@@ -53,7 +56,7 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 MultilinearFaceRecon::~MultilinearFaceRecon()
 {
 	delete viewer;
-	delete aam;
+	//delete aam;
 }
 
 void MultilinearFaceRecon::setupKinectManager() {
@@ -105,7 +108,7 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 
 
 	// AAM tracking
-	fpts = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
+  fpts = tracker->track(&(colordata[0]), &(depthdata[0]));
 	if( fpts.empty() ) {
 		// tracking failed
 		cerr << "AAM tracking failed." << endl;
@@ -146,21 +149,21 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 
 void MultilinearFaceRecon::reconstructionWithBatchInput() {
 #if DOUG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\images\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10000;
 	const int imageCount = 64;
 #elif PEIHONG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Peihong\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10001;
 	const int imageCount = 250;
 #elif YILONG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Yilong\\test_images\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test_images\\";
 	const string imageName = "00";
 	const string colorPostfix = ".png";
 	const string depthPostfix = "_depth.png";
@@ -211,7 +214,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 		QApplication::processEvents();		
 		::system("pause");
 #else
-		vector<float> f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
+    vector<float> f = tracker->track(&(colordata[0]), &(depthdata[0]));
 		colorView->bindLandmarks(f);
 
 		// do not update the mesh if the landmarks are unknown
@@ -236,12 +239,14 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			//viewer->fit(MultilinearReconstructor::FIT_POSE);
 			//viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
 			//::system("pause");
-			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+			//viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+      viewer->fit2d(MultilinearReconstructor::FIT_POSE);
 		}
 		else{
 			validFrames++;
 			tRecon.tic();
-			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+			//viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+      viewer->fit2d(MultilinearReconstructor::FIT_POSE);
 			tRecon.toc();
 		}
 		//viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
@@ -260,28 +265,28 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 {
 #if DOUG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\images\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const string colorPostfix = ".jpg";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10000;
 	const int imageCount = 250;
 #elif PEIHONG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Peihong\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Peihong\\";
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 10000;
 	const int imageCount = 445;
 #elif YILONG
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Yilong\\test_images\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test_images\\";
 	const string imageName = "00";
 	const string colorPostfix = ".png";
 	const string depthPostfix = "_depth.png";
 	const int startIdx = 2670;
 	const int imageCount = 120;
 #elif YILONG2
-	const string path = "C:\\Users\\phg\\Desktop\\Data\\Yilong\\test\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test\\";
 	const string imageName = "000";
 	const string colorPostfix = ".png";
 	const string depthPostfix = "_depth.png";
@@ -329,7 +334,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 
 #define TRACK_ONLY 0
 #if TRACK_ONLY
-		vector<float> f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
+    vector<float> f = tracker->track(&(colordata[0]), &(depthdata[0]), w, h);
 		colorView->bindLandmarks(f);
 
 		const string fpPostFix = ".txt";
@@ -346,7 +351,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 #else
 #define USE_REALTIME_TRACKING 1
 #if USE_REALTIME_TRACKING
-		vector<float> f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
+    vector<float> f = tracker->track(&(colordata[0]), &(depthdata[0]));
 		colorView->bindLandmarks(f);
 #else
 		vector<float> f;
@@ -506,7 +511,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 		QApplication::processEvents();		
 		::system("pause");
 #else
-		vector<float> f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
+    vector<float> f = tracker->track(&(colordata[0]), &(depthdata[0]));
 		colorView->bindLandmarks(f);
 
 		// do not update the mesh if the landmarks are unknown
@@ -581,7 +586,7 @@ void MultilinearFaceRecon::updateKinectStreams_2D()
 	//rgbimg.save("rgb.png");
 	//depthimg.save("depth.png");
 	tAAM.tic();
-	const vector<float>& f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
+  const vector<float>& f = tracker->track(&(colordata[0]), &(depthdata[0]));
 	tAAM.toc();
 
 	tView.tic();
@@ -640,7 +645,7 @@ void MultilinearFaceRecon::updateKinectStreams()
 	*/
 
 	tAAM.tic();
-	const vector<float>& f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
+  const vector<float>& f = tracker->track(&(colordata[0]), &(depthdata[0]));
 	tAAM.toc();
 
 	tView.tic();
@@ -708,7 +713,7 @@ void MultilinearFaceRecon::updateKinectStreams_ICP()
 	*/
 
 	tAAM.tic();
-	const vector<float>& f = aam->track(&(colordata[0]), &(depthdata[0]), w, h);
+  const vector<float>& f = tracker->track(&(colordata[0]), &(depthdata[0]));
 	tAAM.toc();
 
 	tView.tic();
@@ -822,7 +827,7 @@ void MultilinearFaceRecon::toggleKinectInput_ICP() {
 void MultilinearFaceRecon::resetAAM()
 {
 	timer.stop();
-	aam->reset();
+  tracker->reset();
 	timer.start();
 }
 

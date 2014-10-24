@@ -2,64 +2,68 @@
 
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
-#include "cv.h"      
-#include "highgui.h" 
+#include "opencv/cv.h"      
+#include "opencv/highgui.h" 
 #include <iostream>
 #include "shape.h"
 using namespace cv;
 using namespace std;
 
-struct FernNode
-{
-	int ptsInd1,ptsInd2;
-	float threshold;
-	float dx1,dy1,dx2,dy2;
+namespace ESRAligner {
 
-	void save(ofstream &);
-	void load(ifstream &);
-	//Shape *ds;
-};
+  struct FernNode
+  {
+    int ptsInd1, ptsInd2;
+    float threshold;
+    float dx1, dy1, dx2, dy2;
 
-class Fern
-{
-public:
-	Fern();
-	~Fern();
-	void train(vector<Point3f> &featureOffsets,vector<Point> &indexPairInd,
-		vector<float> &threshold,vector<ShapePair> &shapes,Mat &curFeature);
+    void save(ofstream &);
+    void load(ifstream &);
+    //Shape *ds;
+  };
+
+  class Fern
+  {
+  public:
+    Fern();
+    ~Fern();
+    void train(vector<Point3f> &featureOffsets, vector<Point> &indexPairInd,
+      vector<float> &threshold, vector<ShapePair> &shapes, Mat &curFeature);
 
 
 
-	//compair at a particular fern node
-	int getBinVal(Shape &, FernNode &fernNode);
+    //compair at a particular fern node
+    int getBinVal(Shape &, FernNode &fernNode);
 
-	Shape pridict(Shape &s);
+    Shape pridict(Shape &s);
 
-	void pridict_directAdd(Shape &s);
+    void pridict_directAdd(Shape &s);
 
-	void buildFern(int F,int curInd,vector<Point3f> &featureOffsets,
-		vector<Point> &indexPairInd,vector<float> &threshold);
+    void buildFern(int F, int curInd, vector<Point3f> &featureOffsets,
+      vector<Point> &indexPairInd, vector<float> &threshold);
 
-	vector<FernNode> fernNodes;
+    vector<FernNode> fernNodes;
 
-	vector<Shape> dsList;
+    vector<Shape> dsList;
 
-	void convertDSMat();
-	Mat *dsMat;
+    void convertDSMat();
+    Mat *dsMat;
 
-	inline int findBins(Shape &shape,vector<FernNode> &);
-	int findBinsDirect(Mat &features,vector<FernNode> &);
+    inline int findBins(Shape &shape, vector<FernNode> &);
+    int findBinsDirect(Mat &features, vector<FernNode> &);
 
-	vector<vector<int>> binPool;//store the shape for each bin
+    vector<vector<int>> binPool;//store the shape for each bin
 
-	void save(ofstream &);
-	void load(ifstream &);
+    void save(ofstream &);
+    void load(ifstream &);
 
-	void saveBin(ofstream &);
-	void loadBin(ifstream &);
+    void saveBin(ofstream &);
+    void loadBin(ifstream &);
 
-	//Mat tmpMat;
+    //Mat tmpMat;
 
-	//validation
-	void visualize(char *name,Shape &s);
-};
+    //validation
+    void visualize(char *name, Shape &s);
+  };
+
+}

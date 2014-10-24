@@ -9,9 +9,13 @@
 #include "Kinect/StreamViewer.h"
 
 #include "BlendShapeViewer.h"
+#include "FaceAligner.h"
 #include "AAMWrapper.h"
+#include "ESRWrapper.h"
 
 #include "Utils/Timer.h"
+
+#define USE_AAM 0
 
 class MultilinearFaceRecon : public QMainWindow
 {
@@ -65,7 +69,8 @@ private:
 	PhGUtils::KinectManager kman;
 	int frameIdx;
 	vector<PhGUtils::Point3f> lms;		// landmarks got from AAM tracking
-	AAMWrapper* aam;
+  typedef FaceAligner<ESRWrapper> tracker_t;
+  unique_ptr<tracker_t> tracker;
 	shared_ptr<StreamViewer> colorView, depthView;
 
 	PhGUtils::Timer tAAM, tKman, tView, tRecon;

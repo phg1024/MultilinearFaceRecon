@@ -13,7 +13,7 @@ void testPoseTracker() {
 	PoseTracker ptracker;
 
 #if 1
-	const string path = "C:\\Users\\PhG\\Desktop\\Data\\Fuhao\\images\\";
+	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Fuhao\\images\\";
 	const string imageName = "DougTalkingComplete_KSeq_";
 	const int startIdx = 10000;
 	const int imageCount = 250;
@@ -69,11 +69,15 @@ int main(int argc, char *argv[])
 
 	glutInit(&argc, argv);
 
+#if 0
 	int runType = 0;
 	cout << "Please choose a run type:" << endl;
 	cout << "\t" << "0. test pose tracker." << endl;
 	cout << "\t" << "1. realtime tracking." << endl;
 	cin >> runType;
+#else
+  int runType = 1;
+#endif
 	switch( runType ) {
 	case 0:
 		testPoseTracker();
