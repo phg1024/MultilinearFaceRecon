@@ -67,6 +67,7 @@ void BlendShapeViewer::paintGL() {
 
 	glColor4f(0, 0.5, 1.0, 1.0);
 	mesh.draw();
+  //mesh.drawFrame();
 	//drawGenreatedMesh();
 
 	glColor4f(0, 0, 0, 0.25);

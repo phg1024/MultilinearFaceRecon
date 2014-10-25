@@ -5,8 +5,8 @@
 #include "Utils/Timer.h"
 #include "Kinect/KinectUtils.h"
 
-#define DOUG 1
-#define PEIHONG 0
+#define DOUG 0
+#define PEIHONG 1
 #define YILONG 0
 #define YILONG2 0
 
@@ -239,14 +239,14 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			//viewer->fit(MultilinearReconstructor::FIT_POSE);
 			//viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
 			//::system("pause");
-			//viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
-      viewer->fit2d(MultilinearReconstructor::FIT_POSE);
+			viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+      //viewer->fit2d(MultilinearReconstructor::FIT_POSE);
 		}
 		else{
 			validFrames++;
 			tRecon.tic();
-			//viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
-      viewer->fit2d(MultilinearReconstructor::FIT_POSE);
+			viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+      //viewer->fit2d(MultilinearReconstructor::FIT_POSE);
 			tRecon.toc();
 		}
 		//viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);

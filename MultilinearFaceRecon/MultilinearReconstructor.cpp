@@ -29,7 +29,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	// for 25 expression dimensions
 	//w_prior_exp = 1e-4;
 	// for 47 expression dimensions
-	w_prior_exp = 2.5e-4;
+	w_prior_exp = 1e-4;
 
 	// for outer contour and chin region, use only 2D feature point info
 	w_boundary = 1e-8;
@@ -993,6 +993,7 @@ void MultilinearReconstructor::fit2d_withPrior() {
 		}
 
 		if( fitExpression ) {
+      cout << "fitting expression weights ..." << endl;
 			timerOther.tic();
 			// apply the global transformation to tm0c
 			// because tm0c is required in fitting expression weights
@@ -1754,8 +1755,8 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 	float s, rx, ry, rz, tx, ty, tz;
 	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
 
-	auto targets = recon->targets;
-	int npts = targets.size();
+	auto targets_2d = recon->targets_2d;
+	int npts = targets_2d.size();
 	auto tmc = recon->tmc;
 
 	auto w_landmarks = recon->w_landmarks;
@@ -1779,10 +1780,11 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 		if( i >= 64 && i < 75 ) wpt = 0;
 
 		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
-		const PhGUtils::Point3f& q = targets[i].first;
+		const PhGUtils::Point3f& q = targets_2d[i].first;
 
 		// PhGUtils::Point3f pp = R * p + T;
 		PhGUtils::transformPoint( px, py, pz, R, T );
+    //cout << px << " " << py << " " << pz << endl;
 
 		// Projection to image plane
 		float u, v, d;
@@ -2415,8 +2417,8 @@ void evalCost2_2D(float *p, float *hx, int m, int n, void* adata) {
 	float s, rx, ry, rz, tx, ty, tz;
 	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
 
-	auto targets = recon->targets;
-	int npts = targets.size();
+	auto targets_2d = recon->targets_2d;
+	int npts = targets_2d.size();
 	auto tm1cRT = recon->tm1cRT;
 	auto w_landmarks = recon->w_landmarks;
 	auto w_prior_id_2D = recon->w_prior_id_2D;
@@ -2435,7 +2437,7 @@ void evalCost2_2D(float *p, float *hx, int m, int n, void* adata) {
 			y += tm1cRT(j, vidx+1) * p[j];
 			z += tm1cRT(j, vidx+2) * p[j];
 		}
-		const PhGUtils::Point3f& q = targets[i].first;
+		const PhGUtils::Point3f& q = targets_2d[i].first;
 
 		float u, v, d;
 		PhGUtils::worldToColor(x + T.x, y + T.y, z + T.z, u, v, d);
@@ -2689,8 +2691,8 @@ void evalCost3_2D(float *p, float *hx, int m, int n, void* adata) {
 	float s, rx, ry, rz, tx, ty, tz;
 	s = p[0], rx = p[1], ry = p[2], rz = p[3], tx = p[4], ty = p[5], tz = p[6];
 
-	auto targets = recon->targets;
-	int npts = targets.size();
+	auto targets_2d = recon->targets_2d;
+	int npts = targets_2d.size();
 	auto tm0cRT = recon->tm0cRT;
 	auto w_landmarks = recon->w_landmarks;
 	auto mu_wexp_orig = recon->mu_wexp_orig;
@@ -2709,13 +2711,14 @@ void evalCost3_2D(float *p, float *hx, int m, int n, void* adata) {
 			y += tm0cRT(j, vidx+1) * p[j];
 			z += tm0cRT(j, vidx+2) * p[j];
 		}
-		const PhGUtils::Point3f& q = targets[i].first;
+		const PhGUtils::Point3f& q = targets_2d[i].first;
 
 		float u, v, d;
 		PhGUtils::worldToColor(x + T.x, y + T.y, z + T.z, u, v, d);
 
 		float dx = q.x - u, dy = q.y - v, dz = q.z==0?0:(q.z - d);
-		hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
+		//hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
+    hx[i] = (dx * dx + dy * dy);
 	}
 
 	// regularization term
