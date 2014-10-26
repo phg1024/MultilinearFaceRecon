@@ -29,7 +29,7 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	// for 25 expression dimensions
 	//w_prior_exp = 1e-4;
 	// for 47 expression dimensions
-	w_prior_exp = 1e-4;
+	w_prior_exp = 2.5e-4;
 
 	// for outer contour and chin region, use only 2D feature point info
 	w_boundary = 1e-8;
@@ -37,8 +37,8 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	w_outer = 1e2;
 	w_fp = 2.5;
 
-	w_prior_exp_2D = 5e3;
-	w_prior_id_2D = 5e3;
+	w_prior_exp_2D = 1.0;
+	w_prior_id_2D = 1.0;
 	w_boundary_2D = 1.0;
 
 	w_history = 0.0001;
@@ -867,6 +867,8 @@ void MultilinearReconstructor::fit2d(FittingOption ops /*= FIT_ALL*/)
 			fitPose = true;
 			fitIdentity = false;
 			fitExpression = false;
+      fitScale = true;
+      fit2d_pose();
 			break;
 		}
 	case FIT_IDENTITY:
@@ -874,6 +876,7 @@ void MultilinearReconstructor::fit2d(FittingOption ops /*= FIT_ALL*/)
 			fitPose = false;
 			fitIdentity = true;
 			fitExpression = false;
+      fit2d_identity();
 			break;
 		}
 	case FIT_EXPRESSION:
@@ -881,6 +884,7 @@ void MultilinearReconstructor::fit2d(FittingOption ops /*= FIT_ALL*/)
 			fitPose = false;
 			fitIdentity = false;
 			fitExpression = true;
+      fit2d_expression();
 			break;
 		}
 	case FIT_POSE_AND_IDENTITY:
@@ -888,6 +892,8 @@ void MultilinearReconstructor::fit2d(FittingOption ops /*= FIT_ALL*/)
 			fitPose = true;
 			fitIdentity = true;
 			fitExpression = false;
+      fitScale = false;
+      fit2d_poseAndIdentity();
 			break;
 		}
 	case FIT_POSE_AND_EXPRESSION:
@@ -895,6 +901,8 @@ void MultilinearReconstructor::fit2d(FittingOption ops /*= FIT_ALL*/)
 			fitPose = true;
 			fitIdentity = false;
 			fitExpression = true;
+      fitScale = false;
+      fit2d_poseAndExpression();
 			break;
 		}
 	case FIT_ALL:
@@ -902,52 +910,325 @@ void MultilinearReconstructor::fit2d(FittingOption ops /*= FIT_ALL*/)
 			fitPose = true;
 			fitIdentity = true;
 			fitExpression = true;
+      fit2d_all();
 			break;
 		}
 	}
 	frameCounter++;
+}
 
-	if( usePrior ) {
-		fit2d_withPrior();
+void MultilinearReconstructor::fit2d_pose() {
+  cout << "fit with prior using 2D feature points" << endl;
 
-		if( ops == FIT_POSE_AND_IDENTITY ) {
-			updateTM0();
-		}
-		if( ops == FIT_ALL ) {
-			updateTM0();
-			updateTM1();
-		}
+  //init();
 
-		return;
-	}
-	else {
-		float w_prior_exp_tmp = w_prior_exp;
-		float w_prior_id_tmp = w_prior_id;
+  if (targets.empty())
+  {
+    PhGUtils::error("No target set!");
+    return;
+  }
+  PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
 
-		// set the prior weights to 0
-		w_prior_exp = 0;
-		w_prior_id = 0;
+  timerTotal.tic();
+  int iters = 0;
+  float E0 = 0;
+  bool converged = false;
+  //while (!converged && iters++ < MAXITERS) {
+    converged = true;
 
-		fit2d_withPrior();
+    timerRT.tic();
+    converged &= fitRigidTransformationAndScale_2D();
+    timerRT.toc();
 
-		if( ops == FIT_POSE_AND_IDENTITY ) {
-			updateTM0();
-		}
-		if( ops == FIT_ALL ) {
-			updateTM0();
-			updateTM1();
-		}
+    E = computeError_2D();
+    PhGUtils::info("iters", iters, "Error", E);
 
-		// restore the priors
-		w_prior_exp = w_prior_exp_tmp;
-		w_prior_id = w_prior_id_tmp;
+    converged |= E < errorThreshold;
+    converged |= fabs(E - E0) < errorDiffThreshold;
+    E0 = E;
+  //}
 
-		return;
-	}
+  if (useHistory) {
+    // post process, impose a moving average for pose
+    RTHistory.push_back(vector<float>(RTparams, RTparams + 7));
+    if (RTHistory.size() > historyLength) RTHistory.pop_front();
+    vector<float> meanRT = computeWeightedMeanPose();
+    // copy back the mean pose
+    for (int i = 0; i<7; i++) RTparams[i] = meanRT[i];
+  }
+
+  timerTransform.tic();
+  transformMesh();
+  timerTransform.toc();
+
+  timerTotal.toc();
+
+#if OUTPUT_STATS
+  cout << "Total iterations = " << iters << endl;
+  PhGUtils::message("Time cost for pose fitting = " + PhGUtils::toString(timerRT.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for wid fitting = " + PhGUtils::toString(timerID.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for wexp fitting = " + PhGUtils::toString(timerExp.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for tensor transformation = " + PhGUtils::toString(timerTransform.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for other computation = " + PhGUtils::toString(timerOther.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Total time cost for reconstruction = " + PhGUtils::toString(timerTotal.elapsed() * 1000) + " ms.");
+#endif
+}
+
+void MultilinearReconstructor::fit2d_identity() {
+  cout << "fit with prior using 2D feature points" << endl;
+
+  //init();
+
+  if (targets.empty())
+  {
+    PhGUtils::error("No target set!");
+    return;
+  }
+  PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
+
+  timerTotal.tic();
+
+  // apply the new global transformation to tm1c
+  // because tm1c is required in fitting identity weights
+  timerOther.tic();
+  transformTM1C();
+  timerOther.toc();
+
+  int iters = 0;
+  float E0 = 0;
+  bool converged = false;
+  while (!converged && iters++ < MAXITERS) {
+    converged = true;
+
+    timerID.tic();
+    converged &= fitIdentityWeights_withPrior_2D();
+    timerID.toc();
+
+    E = computeError_2D();
+    PhGUtils::info("iters", iters, "Error", E);
+
+    converged |= E < errorThreshold;
+    converged |= fabs(E - E0) < errorDiffThreshold;
+    E0 = E;
+    timerOther.toc();
+  }
+
+  timerTransform.tic();
+  tplt = tm1.modeProduct(Wid, 0);
+  
+  timerTransform.tic();
+  //PhGUtils::debug("R", Rmat);
+  //PhGUtils::debug("T", Tvec);
+  transformMesh();
+  timerTransform.toc();
+  //emit oneiter();
+  timerTotal.toc();
+
+#if OUTPUT_STATS
+  cout << "Total iterations = " << iters << endl;
+  PhGUtils::message("Time cost for pose fitting = " + PhGUtils::toString(timerRT.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for wid fitting = " + PhGUtils::toString(timerID.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for wexp fitting = " + PhGUtils::toString(timerExp.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for tensor transformation = " + PhGUtils::toString(timerTransform.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for other computation = " + PhGUtils::toString(timerOther.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Total time cost for reconstruction = " + PhGUtils::toString(timerTotal.elapsed() * 1000) + " ms.");
+#endif
+}
+
+void MultilinearReconstructor::fit2d_expression() {
+
+}
+
+void MultilinearReconstructor::fit2d_poseAndIdentity() {
+  if (targets.empty())
+  {
+    PhGUtils::error("No target set!");
+    return;
+  }
+  PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
+
+  timerTotal.tic();
+  int iters = 0;
+  float E0 = 0;
+  bool converged = false;
+  while (!converged && iters++ < MAXITERS) {
+    converged = true;
+
+    timerRT.tic();
+    converged &= fitRigidTransformationAndScale_2D();
+    timerRT.toc();
+
+    // apply the new global transformation to tm1c
+    // because tm1c is required in fitting identity weights
+    timerOther.tic();
+    transformTM1C();
+    timerOther.toc();
+
+    timerID.tic();
+    converged &= fitIdentityWeights_withPrior_2D();
+    timerID.toc();
+
+    timerOther.tic();
+    // update tm0c with the new identity weights
+    // now the tensor is not updated with global rigid transformation
+    tm0c = corec.modeProduct(Wid, 0);
+    //corec.modeProduct(Wid, 0, tm0c);
+    timerOther.toc();
+   
+    // compute tmc from the new tm1c or new tm0c
+    timerOther.tic();
+    updateTMC();
+    timerOther.toc();
+
+    timerOther.tic();
+
+    E = computeError_2D();
+    PhGUtils::info("iters", iters, "Error", E);
+
+    converged |= E < errorThreshold;
+    converged |= fabs(E - E0) < errorDiffThreshold;
+    E0 = E;
+    timerOther.toc();
+
+    // uncomment to show the transformation process		
+
+    /*
+    transformMesh();
+    Rmat.print("R");
+    Tvec.print("T");
+    emit oneiter();
+    QApplication::processEvents();
+    ::system("pause");
+    */
+  }
+
+  timerTransform.tic();
+  tplt = tm1.modeProduct(Wid, 0);
+  timerTransform.toc();
+
+  if (useHistory) {
+    // post process, impose a moving average for pose
+    RTHistory.push_back(vector<float>(RTparams, RTparams + 7));
+    if (RTHistory.size() > historyLength) RTHistory.pop_front();
+    vector<float> meanRT = computeWeightedMeanPose();
+    // copy back the mean pose
+    for (int i = 0; i<7; i++) RTparams[i] = meanRT[i];
+  }
+
+  timerTransform.tic();
+  //PhGUtils::debug("R", Rmat);
+  //PhGUtils::debug("T", Tvec);
+  transformMesh();
+  timerTransform.toc();
+  //emit oneiter();
+  timerTotal.toc();
+
+#if OUTPUT_STATS
+  cout << "Total iterations = " << iters << endl;
+  PhGUtils::message("Time cost for pose fitting = " + PhGUtils::toString(timerRT.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for wid fitting = " + PhGUtils::toString(timerID.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for wexp fitting = " + PhGUtils::toString(timerExp.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for tensor transformation = " + PhGUtils::toString(timerTransform.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for other computation = " + PhGUtils::toString(timerOther.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Total time cost for reconstruction = " + PhGUtils::toString(timerTotal.elapsed() * 1000) + " ms.");
+#endif
+}
+
+void MultilinearReconstructor::fit2d_poseAndExpression() {
+  if (targets.empty())
+  {
+    PhGUtils::error("No target set!");
+    return;
+  }
+  PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
+
+  timerTotal.tic();
+  int iters = 0;
+  float E0 = 0;
+  bool converged = false;
+  while (!converged && iters++ < MAXITERS) {
+    converged = true;
+
+    timerRT.tic();
+    converged &= fitRigidTransformationAndScale_2D();
+    timerRT.toc();
+
+    cout << "fitting expression weights ..." << endl;
+    timerOther.tic();
+    // apply the global transformation to tm0c
+    // because tm0c is required in fitting expression weights
+    transformTM0C();
+    timerOther.toc();
+
+    timerExp.tic();
+    converged &= fitExpressionWeights_withPrior_2D();
+    timerExp.toc();
+
+    // compute tmc from the new tm1c or new tm0c
+    timerOther.tic();
+    updateTMCwithTM0C();
+    //updateTMC();
+    timerOther.toc();
+
+
+    E = computeError_2D();
+    PhGUtils::info("iters", iters, "Error", E);
+
+    converged |= E < errorThreshold;
+    converged |= fabs(E - E0) < errorDiffThreshold;
+    E0 = E;
+    timerOther.toc();
+
+    // uncomment to show the transformation process		
+
+    /*
+    transformMesh();
+    Rmat.print("R");
+    Tvec.print("T");
+    emit oneiter();
+    QApplication::processEvents();
+    ::system("pause");
+    */
+  }
+
+  timerTransform.tic();
+  tplt = tm0.modeProduct(Wexp, 0);
+  timerTransform.toc();
+
+  if (useHistory) {
+    // post process, impose a moving average for pose
+    RTHistory.push_back(vector<float>(RTparams, RTparams + 7));
+    if (RTHistory.size() > historyLength) RTHistory.pop_front();
+    vector<float> meanRT = computeWeightedMeanPose();
+    // copy back the mean pose
+    for (int i = 0; i<7; i++) RTparams[i] = meanRT[i];
+  }
+
+  timerTransform.tic();
+  //PhGUtils::debug("R", Rmat);
+  //PhGUtils::debug("T", Tvec);
+  transformMesh();
+  timerTransform.toc();
+  //emit oneiter();
+  timerTotal.toc();
+
+#if OUTPUT_STATS
+  cout << "Total iterations = " << iters << endl;
+  PhGUtils::message("Time cost for pose fitting = " + PhGUtils::toString(timerRT.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for wid fitting = " + PhGUtils::toString(timerID.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for wexp fitting = " + PhGUtils::toString(timerExp.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for tensor transformation = " + PhGUtils::toString(timerTransform.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Time cost for other computation = " + PhGUtils::toString(timerOther.elapsed() * 1000) + " ms.");
+  PhGUtils::message("Total time cost for reconstruction = " + PhGUtils::toString(timerTotal.elapsed() * 1000) + " ms.");
+#endif
+}
+
+void MultilinearReconstructor::fit2d_all() {
+
 }
 
 void MultilinearReconstructor::fit2d_withPrior() {
-	cout << "fit with prior" << endl;
+	cout << "fit with prior using 2D feature points" << endl;
 
 	//init();
 
@@ -1771,14 +2052,6 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 		//PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
 		float wpt = w_landmarks[vidx];
 
-		// exclude the mouth region
-		if( i>41 && i < 64 ) {
-			wpt *= w_chin;
-		}
-
-		// use only 2D info for outer contour
-		if( i >= 64 && i < 75 ) wpt = 0;
-
 		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
 		const PhGUtils::Point3f& q = targets_2d[i].first;
 
@@ -1792,26 +2065,10 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 
 		//cout << i << "\t" << u << ", " << v << ", " << d << endl;
 
-		/*
-		// Back-Projection to world space
-		float qx, qy, qz;
-		PhGUtils::colorToWorld(q.x, q.y, q.z, qx, qy, qz);
-
-		if( q.z == 0 ) {
-		// no depth info, use 2d point
-		float dx = u - q.x, dy = v - q.y;
-		hx[i] = (dx * dx + dy * dy);
-		}
-		else {
-		// use 3d point
-		float dx = qx - px, dy = qy - py, dz = qz - pz;
-		hx[i] = (dx * dx + dy * dy + dz * dz);// * wpt;
-		}
-		*/
 		float dx = q.x - u, dy = q.y - v, dz = (q.z==0?0:(q.z - d));
 		//cout << i << "\t" << dx << ", " << dy << ", " << dz << endl;
     //hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
-    hx[i] = dx * dx + dy * dy;
+    hx[i] = sqrt(dx * dx + dy * dy);
 	}
 }
 
@@ -1965,10 +2222,24 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 	::system("pause");
 	*/
 
+#if 0
+  for (int i = 0, vidx = 0; i < npts; ++i) {
+    float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
+    cout << "(" << px << ", " << py << ", " << pz << ") ";
+  }
+  cout << endl;
+#endif
+
+  cout << "before" << endl;
+  cout << R << endl;
+  cout << T << endl;
+
 	vector<float> meas(npts, 0.0);
 
-  
-	int iters = slevmar_dif(evalCost_2D, RTparams, &(pws.meas[0]), 7, npts, 128, NULL, NULL, NULL, NULL, this);
+  /// ??? why does this affect the optimization so much?
+  int nparams = 7;// fitScale ? 7 : 6;
+  cout << "nparams = " << nparams << endl;
+  int iters = slevmar_dif(evalCost_2D, RTparams, &(pws.meas[0]), nparams, npts, 128, NULL, NULL, NULL, NULL, this);
 	//float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
 	//int iters = slevmar_der(evalCost_2D, evalJacobian_2D, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
 
@@ -1990,6 +2261,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
 
+  cout << "after" << endl;
 	cout << R << endl;
 	cout << T << endl;
 	return diff / 7 < cc;
@@ -2428,6 +2700,7 @@ void evalCost2_2D(float *p, float *hx, int m, int n, void* adata) {
 	const PhGUtils::Point3f& T = recon->Tvec;
 	const PhGUtils::Matrix3x3f& R = recon->Rmat;
 
+  //cout << "hx: ";
 	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
 		float wpt = w_landmarks[vidx];
 
@@ -2444,14 +2717,18 @@ void evalCost2_2D(float *p, float *hx, int m, int n, void* adata) {
 
 		float dx = q.x - u, dy = q.y - v, dz = q.z==0?0:(q.z - d);
     //hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
-    hx[i] = (dx * dx + dy * dy);
+    hx[i] = sqrt(dx*dx+dy*dy);
+    //cout << hx[i] << ", ";
 	}
 
 	// regularization term
-	for(int i=0, cidx=npts;i<m;i++, cidx++) {
-		float diff = p[i] - mu_wid_orig(i);
-		hx[cidx] = diff * diff * w_prior_id_2D;
+  int nparams = recon->mu_wid.n_elem;
+  arma::fvec wmmu(nparams);
+  for (int i = 0; i < nparams; ++i) {
+		wmmu(i) = p[i] - mu_wid_orig(i);
 	}
+  hx[n-1] = sqrt(arma::dot(wmmu, recon->sigma_wid * wmmu)) * w_prior_id_2D;
+  //cout << hx[n] << endl;
 }
 
 bool MultilinearReconstructor::fitIdentityWeights_withPrior_2D()
@@ -2459,9 +2736,9 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_2D()
 	int nparams = core.dim(0);
 	vector<float> params(Wid.rawptr(), Wid.rawptr()+nparams);
 	int npts = targets.size();
-	vector<float> meas(npts+nparams, 0.0);
-	int iters = slevmar_dif(evalCost2_2D, &(params[0]), &(meas[0]), nparams, npts + nparams, 128, NULL, NULL, NULL, NULL, this);
-	//cout << "finished in " << iters << " iterations." << endl;
+	vector<float> meas(npts+1, 0.0);
+	int iters = slevmar_dif(evalCost2_2D, &(params[0]), &(meas[0]), nparams, npts + 1, 128, NULL, NULL, NULL, NULL, this);
+	cout << "identity fitting finished in " << iters << " iterations." << endl;
 
 	//debug("rtn", rtn);
 	float diff = 0;
@@ -2469,7 +2746,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_2D()
 	for(int i=0;i<nparams;i++) {
 		diff += fabs(Wid(i) - params[i]);
 		Wid(i) = params[i];		
-		cout << params[i] << ' ';
+		//cout << params[i] << ' ';
 	}
   cout << endl;
 
@@ -2718,14 +2995,16 @@ void evalCost3_2D(float *p, float *hx, int m, int n, void* adata) {
 
 		float dx = q.x - u, dy = q.y - v, dz = q.z==0?0:(q.z - d);
 		//hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
-    hx[i] = (dx * dx + dy * dy);
+    hx[i] = sqrt(dx*dx + dy*dy);
 	}
 
 	// regularization term
-	for(int i=0, cidx=npts;i<m;i++, cidx++) {
-		float diff = p[i] - mu_wexp_orig(i);
-		hx[cidx] = diff * diff * w_prior_exp_2D;
-	}
+  int nparams = recon->mu_wexp.n_elem;
+  arma::fvec wmmu(nparams);
+  for (int i = 0; i < nparams; ++i) {
+    wmmu(i) = p[i] - mu_wexp_orig(i);
+  }
+  hx[n-1] = sqrt(arma::dot(wmmu, recon->sigma_wexp * wmmu)) * w_prior_exp_2D;
 }
 
 bool MultilinearReconstructor::fitExpressionWeights_withPrior_2D()
@@ -2734,8 +3013,8 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_2D()
 	int nparams = core.dim(1);
 	vector<float> params(Wexp.rawptr(), Wexp.rawptr() + nparams);
 	int npts = targets.size();
-	vector<float> meas(npts+nparams);
-	int iters = slevmar_dif(evalCost3_2D, &(params[0]), &(meas[0]), nparams, npts + nparams, 128, NULL, NULL, NULL, NULL, this);
+	vector<float> meas(npts+1, 0.0);
+	int iters = slevmar_dif(evalCost3_2D, &(params[0]), &(meas[0]), nparams, npts + 1, 128, NULL, NULL, NULL, NULL, this);
 
 	//cout << "finished in " << iters << " iterations." << endl;
 
@@ -2971,8 +3250,11 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 		float w_depth = exp(-dz * dz / (sigma_depth*sigma_depth*10000.0));
 
 		// set the landmark weights
+#if 0
 		w_landmarks[idx] = w_landmarks[idx+1] = w_landmarks[idx+2] = (i<64 || i>74)?isValid*w_depth:isValid*w_boundary*w_depth;
-		
+#else
+    w_landmarks[idx] = w_landmarks[idx + 1] = w_landmarks[idx + 2] = 1.0;
+#endif
 
 		validCount += isValid;
 	}
@@ -3284,8 +3566,8 @@ float MultilinearReconstructor::computeError_2D()
 		PhGUtils::worldToColor(p.x, p.y, p.z, u, v, d);
 
 		float dx, dy;
-		dx = u - targets[i].first.x;
-		dy = v - targets[i].first.y;
+		dx = u - targets_2d[i].first.x;
+		dy = v - targets_2d[i].first.y;
 		E += (dx * dx + dy * dy) * w_landmarks[vidx];
 	}
 

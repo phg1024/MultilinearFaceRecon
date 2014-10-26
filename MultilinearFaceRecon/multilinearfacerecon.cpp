@@ -239,21 +239,26 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			//viewer->fit(MultilinearReconstructor::FIT_POSE);
 			//viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
 			//::system("pause");
-			viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+      viewer->fit2d(MultilinearReconstructor::FIT_POSE);
+      //QApplication::processEvents();
+      //::system("pause");
+      viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
       //viewer->fit2d(MultilinearReconstructor::FIT_POSE);
+      QApplication::processEvents();
+      ::system("pause");
 		}
 		else{
 			validFrames++;
 			tRecon.tic();
-			viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
       //viewer->fit2d(MultilinearReconstructor::FIT_POSE);
+      viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
 			tRecon.toc();
 		}
 		//viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 		//viewer->fit(MultilinearReconstructor::FIT_POSE);
 
 		QApplication::processEvents();
-		::system("pause");
+		//::system("pause");
 #endif	
 	}
 	tCombined.toc();
@@ -261,7 +266,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() / validFrames));
 }
 
-
+#if USE_GPU_RECON
 void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 {
 #if DOUG
@@ -442,6 +447,10 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() / validFrames));
 	viewer->printStatsGPU();
 }
+#else
+void MultilinearFaceRecon::reconstructionWithBatchInput_GPU() {
+}
+#endif
 
 void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 {

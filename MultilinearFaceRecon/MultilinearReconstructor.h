@@ -94,6 +94,13 @@ public:
 	void fit2d(FittingOption ops = FIT_ALL);
 	void fit2d_withPrior();
 
+  void fit2d_all();
+  void fit2d_pose();
+  void fit2d_identity();
+  void fit2d_expression();
+  void fit2d_poseAndIdentity();
+  void fit2d_poseAndExpression();
+
 	void fitICP(FittingOption ops = FIT_ALL);
 	void fitICP_withPrior();
 
@@ -358,6 +365,7 @@ private:
 	arma::fvec mu_wid, mu_wexp;
 	// weighted version of mu_wid and mu_wexp
 	arma::fvec mu_wid_weighted, mu_wexp_weighted;
+  // actually inv(sigma_wid), inv(sigma_wexp), same for below
 	arma::fmat sigma_wid, sigma_wexp;
 	arma::fmat sigma_wid_weighted, sigma_wexp_weighted;
 

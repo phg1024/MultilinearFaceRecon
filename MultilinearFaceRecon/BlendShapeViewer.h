@@ -9,6 +9,8 @@
 #include <QtWidgets/QFileDialog>
 #include <QGLFrameBufferObject>
 
+#define USE_GPU_RECON 0
+
 class BlendShapeViewer : public GL3DCanvas
 {
 	Q_OBJECT
@@ -18,15 +20,17 @@ public:
 
 	void bindTargetMesh(const string& filename);
 	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts, MultilinearReconstructor::TargetType ttp = MultilinearReconstructor::TargetType_3D);
-	void bindTargetLandmarksGPU( const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor::TargetType ttp = MultilinearReconstructor::TargetType_2D );
 	void bindRGBDTarget(
 		const vector<unsigned char>& colordata,
 		const vector<unsigned char>& depthdata
 		);
-	void bindRGBDTargetGPU(
+#if USE_GPU_RECON
+  void bindTargetLandmarksGPU(const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor::TargetType ttp = MultilinearReconstructor::TargetType_2D);
+  void bindRGBDTargetGPU(
 		const vector<unsigned char>& colordata,
 		const vector<unsigned char>& depthdata
 		);
+#endif
 
 	enum TransferDirection{
 		CPUToGPU,
@@ -37,12 +41,16 @@ public:
 	void fit(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void fit2d(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
 	void fitICP(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
-	void fitICP_GPU(MultilinearReconstructorGPU::FittingOption ops = MultilinearReconstructorGPU::FIT_ALL);
+#if USE_GPU_RECON	
+  void fitICP_GPU(MultilinearReconstructorGPU::FittingOption ops = MultilinearReconstructorGPU::FIT_ALL);
+#endif
 
 	void generatePrior();
 
 	void printStats();
-	void printStatsGPU();
+#if USE_GPU_RECON
+  void printStatsGPU();
+#endif
 
 	const MultilinearReconstructor& getReconstructor() const {
 		return recon;
@@ -73,15 +81,19 @@ private:
 
 private slots:
 	void updateMeshWithReconstructor();	
+#if USE_GPU_RECON
 	void updateMeshWithGPUReconstructor();	
-	
+#endif
+
 private:
 	bool targetSet;
 	PhGUtils::QuadMesh mesh, targetMesh;
 
 	vector<PhGUtils::Point3f> targetLandmarks;
 	vector<int> landmarks;
+#if USE_GPU_RECON
 	MultilinearReconstructorGPU GPURecon;
+#endif
 	MultilinearReconstructor recon;
 
 	PhGUtils::Matrix4x4f mProj, mMv;

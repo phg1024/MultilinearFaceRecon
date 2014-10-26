@@ -18,7 +18,10 @@ BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	mesh.initWithLoader( loader );
 
 	recon.setBaseMesh(mesh);
+
+#if USE_GPU_RECON
 	GPURecon.setBaseMesh(mesh);
+#endif
 
 	targetSet = false;
 
@@ -192,6 +195,7 @@ void BlendShapeViewer::drawLandmarks() {
 	}
 }
 
+#if USE_GPU_RECON
 void BlendShapeViewer::updateMeshWithGPUReconstructor() {
 	//cout << "updating mesh with recon ..." << endl;
 	// set the vertices of mesh with the template mesh in the reconstructor
@@ -206,6 +210,7 @@ void BlendShapeViewer::updateMeshWithGPUReconstructor() {
 	update();
 	//::system("pause");
 }
+#endif
 
 void BlendShapeViewer::updateMeshWithReconstructor() {
 	//cout << "updating mesh with recon ..." << endl;
@@ -218,12 +223,15 @@ void BlendShapeViewer::updateMeshWithReconstructor() {
 		mesh.vertex(i).z = tplt(idx++);
 	}
 
+  /*
   PhGUtils::OBJWriter writer;
   writer.save(mesh, "transformed_mesh.obj");
+  */
 
 	update();
 }
 
+#if USE_GPU_RECON
 void BlendShapeViewer::bindTargetLandmarksGPU( const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor::TargetType ttp ) {
 	switch( ttp ) {
 	case MultilinearReconstructor::TargetType_2D:
@@ -246,6 +254,7 @@ void BlendShapeViewer::bindTargetLandmarksGPU( const vector<PhGUtils::Point3f>& 
 	GPURecon.bindTarget(lms);
 	targetSet = true;
 }
+#endif
 
 // @note	lms may have larger size than landmarks, so always use the length of landmarks
 void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor::TargetType ttp )
@@ -285,11 +294,12 @@ void BlendShapeViewer::bindRGBDTarget(const vector<unsigned char>& colordata, co
 	recon.bindRGBDTarget(colordata, depthdata);
 }
 
-
+#if USE_GPU_RECON
 void BlendShapeViewer::bindRGBDTargetGPU(const vector<unsigned char>& colordata, const vector<unsigned char>& depthdata)
 {
 	GPURecon.bindRGBDTarget(colordata, depthdata);
 }
+#endif
 
 void BlendShapeViewer::bindTargetMesh( const string& filename ) {
 	PhGUtils::OBJLoader loader;
@@ -340,10 +350,13 @@ void BlendShapeViewer::fitICP(MultilinearReconstructor::FittingOption ops /*= Mu
 	updateMeshWithReconstructor();
 }
 
+#if USE_GPU_RECON
 void BlendShapeViewer::printStatsGPU() {
 	GPURecon.printStats();
 }
+#endif
 
+#if USE_GPU_RECON
 void BlendShapeViewer::fitICP_GPU(MultilinearReconstructorGPU::FittingOption ops /*= MultilinearReconstructorGPU::FIT_ALL*/)
 {
 	PhGUtils::Timer t;
@@ -353,6 +366,7 @@ void BlendShapeViewer::fitICP_GPU(MultilinearReconstructorGPU::FittingOption ops
 
 	updateMeshWithGPUReconstructor();
 }
+#endif
 
 void BlendShapeViewer::generatePrior() {
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\FaceWarehouse_Data_0\\";
@@ -426,12 +440,14 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 			recon.expPriorWeights(w);
 			break;
 		}
+#if USE_GPU_RECON
 	case Qt::Key_G:
 		{
 			PhGUtils::message("Triggered GPU recon!");
 			GPURecon.fit(MultilinearReconstructorGPU::FIT_POSE);
 			break;
 		}
+#endif
 	case Qt::Key_I: 
 		{
 			PhGUtils::message("Please input identity prior weight:");
@@ -574,6 +590,7 @@ void BlendShapeViewer::drawMeshToFBO()
 	img.save("fbo.png");
 }
 
+#if USE_GPU_RECON
 void BlendShapeViewer::transferParameters(TransferDirection dir)
 {
 	switch(dir) {
@@ -598,6 +615,7 @@ void BlendShapeViewer::transferParameters(TransferDirection dir)
 		break;
 	}
 }
+#endif
 
 void BlendShapeViewer::printStats()
 {
