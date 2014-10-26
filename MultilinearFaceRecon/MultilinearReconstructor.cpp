@@ -2034,7 +2034,7 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
-	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
+  rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5];
 
 	auto targets_2d = recon->targets_2d;
 	int npts = targets_2d.size();
@@ -2045,12 +2045,18 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 
 	// set up rotation matrix and translation vector
 	PhGUtils::Point3f T(tx, ty, tz);
-	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz) * s;
+	PhGUtils::Matrix3x3f R = PhGUtils::rotationMatrix(rx, ry, rz);
 
 	// apply the new global transformation
 	for(int i=0, vidx=0;i<npts;i++) {
 		//PhGUtils::Point3f p(tmc(vidx), tmc(vidx+1), tmc(vidx+2));
 		float wpt = w_landmarks[vidx];
+
+    // exclude mouth region and chin region
+    if (recon->fitExpression) {
+      if (i >= 48 || (i >= 4 && i <= 12))
+        wpt = 0.0;
+    }
 
 		float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
 		const PhGUtils::Point3f& q = targets_2d[i].first;
@@ -2068,7 +2074,7 @@ void evalCost_2D(float *p, float *hx, int m, int n, void* adata) {
 		float dx = q.x - u, dy = q.y - v, dz = (q.z==0?0:(q.z - d));
 		//cout << i << "\t" << dx << ", " << dy << ", " << dz << endl;
     //hx[i] = (dx * dx + dy * dy) + dz * dz * wpt;
-    hx[i] = sqrt(dx * dx + dy * dy);
+    hx[i] = sqrt(dx * dx + dy * dy) * wpt;
 	}
 }
 
@@ -2230,25 +2236,68 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
   cout << endl;
 #endif
 
-  cout << "before" << endl;
-  cout << R << endl;
-  cout << T << endl;
+  //cout << "before" << endl;
+  //cout << R << endl;
+  //cout << T << endl;
 
 	vector<float> meas(npts, 0.0);
 
-  /// ??? why does this affect the optimization so much?
-  int nparams = 7;// fitScale ? 7 : 6;
-  cout << "nparams = " << nparams << endl;
-  int iters = slevmar_dif(evalCost_2D, RTparams, &(pws.meas[0]), nparams, npts, 128, NULL, NULL, NULL, NULL, this);
+  int nparams = 6;
+  //cout << "nparams = " << nparams << endl;
+  //cout << "before: "
+  //  << RTparams[0] << ", "
+  //  << RTparams[1] << ", "
+  //  << RTparams[2] << ", "
+  //  << RTparams[3] << ", "
+  //  << RTparams[4] << ", "
+  //  << RTparams[5] << endl;
+  float lminfo[10];
+  string lmStopReason[8] = {
+    "",
+    "stopped by small gradient J^T e",
+    "stopped by small Dp",
+    "stopped by itmax",
+    "singular matrix.Restart from current p with increased mu",
+    "no further error reduction is possible.Restart with increased mu",
+    "stopped by small ||e||_2",
+    "stopped by invalid(i.e.NaN or Inf) \"func\" values.This is a user error"
+  };
+  string infostr[10] = {
+    "||e||_2 at initial p",
+    "||e||_2",
+    "||J^T e||_inf",
+    "||Dp||_2",
+    "mu / max[J^T J]_ii",
+    "# iterations",
+    "reason for termination:",
+    "# function evaluations",
+    "# Jacobian evaluations",
+    "# linear systems solved"
+  };
+  int iters = slevmar_dif(evalCost_2D, RTparams, &(meas[0]), nparams, npts, 128, NULL, lminfo, NULL, NULL, this);
+  //for (int i = 0; i < 10; ++i) {
+  //  if (i == 6)
+  //    cout << infostr[i] << ": " << lmStopReason[(int)lminfo[i]] << endl;
+  //  else
+  //    cout << infostr[i] << ": " << lminfo[i] << endl;
+  //}
+  //cout << endl;
 	//float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
 	//int iters = slevmar_der(evalCost_2D, evalJacobian_2D, RTparams, &(meas[0]), 7, npts, 128, opts, NULL, NULL, NULL, this);
 
   /*float opts[3] = { 0.1, 1e-3, 1e-4 };
   int iters = PhGUtils::GaussNewton<float>(evalCost_2D, evalJacobian_2D, RTparams, NULL, NULL, 7, npts, 128, opts, this);*/
 	PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
+  //cout << "after: "
+  //     << RTparams[0] << ", "
+  //     << RTparams[1] << ", "
+  //     << RTparams[2] << ", "
+  //     << RTparams[3] << ", "
+  //     << RTparams[4] << ", "
+  //     << RTparams[5] << endl;
 
 	// set up the matrix and translation vector
-	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
+	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]);
 	float diff = 0;
 	for(int i=0;i<3;i++) {
 		for(int j=0;j<3;j++) {
@@ -2261,9 +2310,9 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
 	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
 
-  cout << "after" << endl;
-	cout << R << endl;
-	cout << T << endl;
+ // cout << "after" << endl;
+	//cout << R << endl;
+	//cout << T << endl;
 	return diff / 7 < cc;
 }
 
@@ -2542,7 +2591,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	PhGUtils::debugmessage("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
 
 	// set up the matrix and translation vector
-	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]) * RTparams[6];
+	Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]);
 	float diff = 0;
 	for(int i=0;i<3;i++) {
 		for(int j=0;j<3;j++) {
