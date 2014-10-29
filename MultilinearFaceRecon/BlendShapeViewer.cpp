@@ -90,6 +90,13 @@ void BlendShapeViewer::paintGL() {
 void BlendShapeViewer::setupViewingParameters() {
 	glViewport(0, 0, 640, 480);
 
+  /// obtain the projection matrix from recon
+  double f = recon.cameraFocalLength();
+  mProj = PhGUtils::Matrix4x4f(f / 320.0, 0, 0, 0,
+                               0, f / 240.0, 0, 0,
+                               0, 0, -10.001 / 9.999, -0.02 / 9.999,
+                               0, 0, -1.0, 0).transposed();
+
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	glMultMatrixf(mProj.data());

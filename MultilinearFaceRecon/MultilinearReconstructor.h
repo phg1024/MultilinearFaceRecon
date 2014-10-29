@@ -44,6 +44,10 @@ public:
 	MultilinearReconstructor(void);
 	~MultilinearReconstructor(void);
 
+  double cameraFocalLength() const {
+    return -camparams.fx;
+  }
+
 	// set the base mesh for synthesis
 	void setBaseMesh(const PhGUtils::QuadMesh& m) {
 		baseMesh = m;
@@ -99,6 +103,7 @@ public:
   void fit2d_identity();
   void fit2d_expression();
   void fit2d_poseAndIdentity();
+  void fit2d_pose_identity_camera();
   void fit2d_poseAndExpression();
 
 	void fitICP(FittingOption ops = FIT_ALL);
@@ -177,6 +182,7 @@ private:
 	bool fitRigidTransformationAndScale_2D();
 	bool fitIdentityWeights_withPrior_2D();
 	bool fitExpressionWeights_withPrior_2D();
+  bool fitCameraParameters_2D();
 
 	// reconstruction with ICP
 	friend void evalCost_ICP(float *p, float *hx, int m, int n, void* adata);
@@ -347,6 +353,10 @@ private:
 	arma::fvec T;
 	PhGUtils::Matrix3x3f Rmat;
 	PhGUtils::Point3f Tvec;
+  struct CameraParams {
+    CameraParams() :fx(-525.0), fy(525.0), cx(320.0), cy(240.0){}
+    double fx, fy, cx, cy;  /// estimated projection matrix
+  } camparams;
 
 	// computation related
 	PhGUtils::DenseMatrix<float> Aid, Aexp;

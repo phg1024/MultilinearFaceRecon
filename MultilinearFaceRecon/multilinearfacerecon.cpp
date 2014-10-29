@@ -240,8 +240,8 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			//viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
 			//::system("pause");
       viewer->fit2d(MultilinearReconstructor::FIT_POSE);
-      //QApplication::processEvents();
-      //::system("pause");
+      QApplication::processEvents();
+      ::system("pause");
       viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
       //viewer->fit2d(MultilinearReconstructor::FIT_POSE);
       QApplication::processEvents();
