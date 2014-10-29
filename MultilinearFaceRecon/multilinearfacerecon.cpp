@@ -160,8 +160,9 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
-	const int startIdx = 10001;
+	const int startIdx = 10000;
 	const int imageCount = 250;
+
 #elif YILONG
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\Yilong\\test_images\\";
 	const string imageName = "00";
@@ -258,7 +259,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 		//viewer->fit(MultilinearReconstructor::FIT_POSE);
 
 		QApplication::processEvents();
-		//::system("pause");
+		::system("pause");
 #endif	
 	}
 	tCombined.toc();

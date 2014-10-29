@@ -172,10 +172,12 @@ private:
 	bool fitExpressionWeights_withPrior();
 
 	// reconstruction with 2D feature points
-	friend void evalCost_2D(float *p, float *hx, int m, int n, void* adata);
-	friend void evalJacobian_2D(float *p, float *J, int m, int n, void* adata);
-	friend void evalCost2_2D(float *p, float *hx, int m, int n, void* adata);
-	friend void evalCost3_2D(float *p, float *hx, int m, int n, void* adata);
+	friend void evalCost_pose_2D(float *p, float *hx, int m, int n, void* adata);
+	friend void evalJacobian_pose_2D(float *p, float *J, int m, int n, void* adata);
+  friend void evalCost_identity_2D(float *p, float *hx, int m, int n, void* adata);
+  friend void evalJacobian_identity_2D(float *p, float *J, int m, int n, void* adata);
+	friend void evalCost_expression_2D(float *p, float *hx, int m, int n, void* adata);
+  friend void evalJacobian_expression_2D(float *p, float *J, int m, int n, void* adata);
 
 	float computeError_2D();
 
