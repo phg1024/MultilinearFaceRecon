@@ -24,6 +24,12 @@ void ESRWrapper::setup() {
   f.reserve(256);
 }
 
+void ESRWrapper::printTimeStats() {
+  cout << "Preparation time " << tPrep.gap() * 1000.0 << " ms." << endl;
+  cout << "Detection time " << tDetect.gap() * 1000.0 << " ms." << endl;
+  cout << "Prediction time " << tPredict.gap() * 1000.0 << " ms." << endl;
+}
+
 const vector<float>& ESRWrapper::track(const unsigned char* cimg,
   const unsigned char* dimg, int w, int h) {
   /// realtime tracking related
@@ -38,7 +44,9 @@ const vector<float>& ESRWrapper::track(const unsigned char* cimg,
   IplImage pgray(colorIMG_Gray);
   tPrep.toc();
 
+  tDetect.tic();
   vector<Rect> rects = detector.findFaceFull(&pframe);
+  tDetect.toc();
   if (rects.empty()) return eptf;
 
   /*
@@ -47,8 +55,9 @@ const vector<float>& ESRWrapper::track(const unsigned char* cimg,
        << rects.front().br().x << ", " 
        << rects.front().br().y << endl;
   */
-
+  tPredict.tic();
   vector<cv::Mat> facesMat = engine.predict_real_givenRects(&pgray, rects);
+  tPredict.toc();
   if (facesMat.empty()) return eptf;
 
   /// only track the first face

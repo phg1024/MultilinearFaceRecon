@@ -187,8 +187,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	PhGUtils::Timer tRecon, tCombined;
 	int validFrames = 0;
 	frameIdx = 0;
-
-	tCombined.tic();
+  	
 	for(int imgidx=1;imgidx<=imageCount;imgidx++) {
 		// process each image and perform reconstruction
 		string colorImageName = path + imageName + PhGUtils::toString(startIdx+imgidx) + colorPostfix;
@@ -215,12 +214,15 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 		QApplication::processEvents();		
 		::system("pause");
 #else
+    tCombined.tic();
     vector<float> f = tracker->track(&(colordata[0]), &(depthdata[0]));
+    tCombined.toc();
+    tracker->printTimeStats();
 		colorView->bindLandmarks(f);
 
 		// do not update the mesh if the landmarks are unknown
 		if( f.empty() ) continue;
-
+    tCombined.tic();
 		// get the 3D landmarks and feed to recon manager
 		int npts = f.size()/2;
 		for(int i=0;i<npts;i++) {
@@ -242,11 +244,11 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			//::system("pause");
       viewer->fit2d(MultilinearReconstructor::FIT_POSE);
       QApplication::processEvents();
-      ::system("pause");
+      //::system("pause");
       viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
       //viewer->fit2d(MultilinearReconstructor::FIT_POSE);
       QApplication::processEvents();
-      ::system("pause");
+      //::system("pause");
 		}
 		else{
 			validFrames++;
@@ -257,12 +259,12 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 		}
 		//viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 		//viewer->fit(MultilinearReconstructor::FIT_POSE);
+    tCombined.toc();
 
 		QApplication::processEvents();
 		//::system("pause");
 #endif	
 	}
-	tCombined.tocMS();
 	PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() * 1000.0 / validFrames) + "ms");
 	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() * 1000.0 / validFrames) + "ms");
 }

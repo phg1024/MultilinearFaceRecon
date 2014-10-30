@@ -22,6 +22,8 @@ public:
     return tPrep.elapsed();
   }
 
+  void printTimeStats();
+
 protected:
   void setup();
 
@@ -49,6 +51,6 @@ private:
   vector<float> f;
   vector<float> eptf;	// dummy
 
-  PhGUtils::Timer tPrep;
+  PhGUtils::Timer tPrep, tDetect, tPredict;
 };
 

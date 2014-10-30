@@ -13,7 +13,7 @@ public:
   void setImageHeight(int height){ h = height; }
   const vector<float>& track(const unsigned char* cimg,
                              const unsigned char* dimg);
-
+  void printTimeStats();
   void reset();
 protected:
   void initializeEngine();
@@ -22,6 +22,12 @@ private:
   int w, h;
   unique_ptr<Engine> engine;
 };
+
+template <class Engine>
+void FaceAligner<Engine>::printTimeStats()
+{
+  engine->printTimeStats();
+}
 
 template <typename Engine>
 FaceAligner<Engine>::FaceAligner()
