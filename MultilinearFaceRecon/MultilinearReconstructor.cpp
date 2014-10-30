@@ -20,6 +20,10 @@
 #define OUTPUT_STATS 0
 #define FBO_DEBUG 0
 
+#define RIGID_TRANS_FIT_USE_DIFF 0
+#define IDENTITY_FIT_USE_DIFF 0
+#define EXPRESSION_FIT_USE_DIFF 0
+
 MultilinearReconstructor::MultilinearReconstructor(void)
 {	
 	culaStatus stas = culaInitialize();
@@ -37,8 +41,8 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	w_outer = 1e2;
 	w_fp = 2.5;
 
-  w_prior_exp_2D = 0.5;
-  w_prior_id_2D = 0.5;
+  w_prior_exp_2D = 1.0;
+  w_prior_id_2D = 5.0;
 	w_boundary_2D = 1.0;
 
 	w_history = 0.0001;
@@ -1200,6 +1204,11 @@ void MultilinearReconstructor::fit2d_pose_identity_camera() {
     */
   }
 
+  timerOther.tic();
+  // update TM0
+  tm0 = core.modeProduct(Wid, 0);
+  timerOther.toc();
+
   timerTransform.tic();
   tplt = tm1.modeProduct(Wid, 0);
   timerTransform.toc();
@@ -1251,7 +1260,7 @@ void MultilinearReconstructor::fit2d_poseAndExpression() {
     converged &= fitRigidTransformationAndScale_2D();
     timerRT.toc();
 
-    cout << "fitting expression weights ..." << endl;
+    //cout << "fitting expression weights ..." << endl;
     timerOther.tic();
     // apply the global transformation to tm0c
     // because tm0c is required in fitting expression weights
@@ -1270,7 +1279,7 @@ void MultilinearReconstructor::fit2d_poseAndExpression() {
 
 
     E = computeError_2D();
-    PhGUtils::info("iters", iters, "Error", E);
+    //PhGUtils::info("iters", iters, "Error", E);
 
     converged |= E < errorThreshold;
     converged |= fabs(E - E0) < errorDiffThreshold;
@@ -1310,10 +1319,9 @@ void MultilinearReconstructor::fit2d_poseAndExpression() {
   //emit oneiter();
   timerTotal.toc();
 
-#if OUTPUT_STATS
+#if 0
   cout << "Total iterations = " << iters << endl;
   PhGUtils::message("Time cost for pose fitting = " + PhGUtils::toString(timerRT.elapsed() * 1000) + " ms.");
-  PhGUtils::message("Time cost for wid fitting = " + PhGUtils::toString(timerID.elapsed() * 1000) + " ms.");
   PhGUtils::message("Time cost for wexp fitting = " + PhGUtils::toString(timerExp.elapsed() * 1000) + " ms.");
   PhGUtils::message("Time cost for tensor transformation = " + PhGUtils::toString(timerTransform.elapsed() * 1000) + " ms.");
   PhGUtils::message("Time cost for other computation = " + PhGUtils::toString(timerOther.elapsed() * 1000) + " ms.");
@@ -2227,18 +2235,18 @@ void evalJacobian_pose_2D(float *p, float *J, int m, int n, void *adata) {
 		const PhGUtils::Point3f& q = targets_2d[i].first;
 
 		// R * p
-		float rpx = px, rpy = py, rpz = pz;
-		PhGUtils::rotatePoint( rpx, rpy, rpz, R );
+		float Rpx = px, Rpy = py, Rpz = pz;
+		PhGUtils::rotatePoint( Rpx, Rpy, Rpz, R );
 
-		// R * p + t
-		float pkx = rpx + tx, pky = rpy + ty, pkz = rpz + tz;
+		// P = R * p + t
+		float Pkx = Rpx + tx, Pky = Rpy + ty, Pkz = Rpz + tz;
 
 		// Jf
-		float inv_z = 1.0 / pkz;
+		float inv_z = 1.0 / Pkz;
 		float inv_z2 = inv_z * inv_z;
 		
-		Jf[0] = f_x * inv_z; Jf[2] = -f_x * pkx * inv_z2;
-		Jf[4] = f_y * inv_z; Jf[5] = -f_y * pky * inv_z2;
+		Jf[0] = f_x * inv_z; Jf[2] = -f_x * Pkx * inv_z2;
+		Jf[4] = f_y * inv_z; Jf[5] = -f_y * Pky * inv_z2;
 		
     /*
 		Jf[0] = -f_x * inv_z; Jf[2] = f_x * pkx * inv_z2;
@@ -2247,12 +2255,14 @@ void evalJacobian_pose_2D(float *p, float *J, int m, int n, void *adata) {
 
 		// project p to color image plane
 		float pu, pv;
-    PhGUtils::projectPoint(pu, pv, pkx, pky, pkz, Mproj);
+    PhGUtils::projectPoint(pu, pv, Pkx, Pky, Pkz, Mproj);
 
 		// residue
 		float rkx = pu - q.x, rky = pv - q.y;
-    float rk = sqrt(rkx*rkx + rky*rky);
-    float inv_rk = 1.0 / rk;
+    double rk = sqrt(rkx*rkx + rky*rky);
+    double inv_rk = 1.0 / rk;
+    // normalize it
+    rkx *= inv_rk; rky *= inv_rk;
 
 		// J_? * p_k
 		float jpx, jpy, jpz;
@@ -2271,30 +2281,30 @@ void evalJacobian_pose_2D(float *p, float *J, int m, int n, void *adata) {
 		*/
 
 		// \frac{\partial r_i}{\partial \theta_x}
-		J[jidx++] = inv_rk * (jfjpx * rkx + jfjpy * rky) * wpt;
+		J[jidx++] = (jfjpx * rkx + jfjpy * rky) * wpt;
 
 		jpx = px, jpy = py, jpz = pz;
 		PhGUtils::rotatePoint( jpx, jpy, jpz, Jy );
 		jfjpx = Jf[0] * jpx + Jf[2] * jpz;
 		jfjpy = Jf[4] * jpy + Jf[5] * jpz;
 		// \frac{\partial r_i}{\partial \theta_y}
-    J[jidx++] = inv_rk * (jfjpx * rkx + jfjpy * rky) * wpt;
+    J[jidx++] = (jfjpx * rkx + jfjpy * rky) * wpt;
 
 		jpx = px, jpy = py, jpz = pz;
 		PhGUtils::rotatePoint( jpx, jpy, jpz, Jz );
 		jfjpx = Jf[0] * jpx + Jf[2] * jpz;
 		jfjpy = Jf[4] * jpy + Jf[5] * jpz;
 		// \frac{\partial r_i}{\partial \theta_z}
-    J[jidx++] = inv_rk * (jfjpx * rkx + jfjpy * rky) * wpt;
+    J[jidx++] = (jfjpx * rkx + jfjpy * rky) * wpt;
 
 		// \frac{\partial r_i}{\partial \t_x}
-    J[jidx++] = inv_rk * (Jf[0] * rkx) * wpt;
+    J[jidx++] = (Jf[0] * rkx) * wpt;
 
 		// \frac{\partial r_i}{\partial \t_y}
-    J[jidx++] = inv_rk * (Jf[4] * rky) * wpt;
+    J[jidx++] = (Jf[4] * rky) * wpt;
 
 		// \frac{\partial r_i}{\partial \t_z}
-    J[jidx++] = inv_rk * (Jf[2] * rkx + Jf[5] * rky) * wpt;
+    J[jidx++] = (Jf[2] * rkx + Jf[5] * rky) * wpt;
 	}
 
 	/*
@@ -2391,20 +2401,29 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
     "# Jacobian evaluations",
     "# linear systems solved"
   };
-  //int iters = slevmar_dif(evalCost_2D, RTparams, &(meas[0]), nparams, npts, 128, NULL, lminfo, NULL, NULL, this);
-  //for (int i = 0; i < 10; ++i) {
-  //  if (i == 6)
-  //    cout << infostr[i] << ": " << lmStopReason[(int)lminfo[i]] << endl;
-  //  else
-  //    cout << infostr[i] << ": " << lminfo[i] << endl;
-  //}
-  //cout << endl;
-	float opts[4] = {1e-3, 1e-9, 1e-9, 1e-9};
-	int iters = slevmar_der(evalCost_pose_2D, evalJacobian_pose_2D, RTparams, &(meas[0]), nparams, npts, 128, opts, NULL, NULL, NULL, this);
 
-  /*float opts[3] = { 0.1, 1e-3, 1e-4 };
-  int iters = PhGUtils::GaussNewton<float>(evalCost_2D, evalJacobian_2D, RTparams, NULL, NULL, 7, npts, 128, opts, this);*/
-	PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
+#if RIGID_TRANS_FIT_USE_DIFF
+  float opts[5] = { 1e-3, 1e-9, 1e-9, 1e-9, 1e-6 }; // tau, eps1, eps2, eps3, delta
+  int iters = slevmar_dif(evalCost_pose_2D, RTparams, &(meas[0]), nparams, npts, 128, NULL, lminfo, NULL, NULL, this);
+#else
+  float opts[4] = { 1e-3, 1e-9, 1e-9, 1e-9};  // tau, eps1, eps2, eps3
+  //vector<float> errorvec(npts);
+  //slevmar_chkjac(evalCost_pose_2D, evalJacobian_pose_2D, RTparams, nparams, npts, this, &(errorvec[0]));
+  //PhGUtils::message("error vec");
+  //PhGUtils::printArray(&errorvec[0], npts);
+	int iters = slevmar_der(evalCost_pose_2D, evalJacobian_pose_2D, RTparams, &(meas[0]), nparams, npts, 128, opts, NULL, NULL, NULL, this);
+#endif
+#if 0
+  for (int i = 0; i < 10; ++i) {
+    if (i == 6)
+      cout << infostr[i] << ": " << lmStopReason[(int)lminfo[i]] << endl;
+    else
+      cout << infostr[i] << ": " << lminfo[i] << endl;
+  }
+  cout << endl;
+#endif
+
+	//PhGUtils::message("rigid fitting finished in " + PhGUtils::toString(iters) + " iterations.");
   //cout << "after: "
   //     << RTparams[0] << ", "
   //     << RTparams[1] << ", "
@@ -2418,19 +2437,21 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 	float diff = 0;
 	for(int i=0;i<3;i++) {
 		for(int j=0;j<3;j++) {
-			diff += fabs(R(i, j) - Rmat(i, j));
+			diff = max(diff, fabs(R(i, j) - Rmat(i, j)));
 			R(i, j) = Rmat(i, j);			
 		}
 	}
 
 	Tvec.x = RTparams[3], Tvec.y = RTparams[4], Tvec.z = RTparams[5];
-	diff += fabs(Tvec.x - T(0)) + fabs(Tvec.y - T(1)) + fabs(Tvec.z - T(2));
+  diff = max(diff, fabs(Tvec.x - T(0)));
+  diff = max(diff, fabs(Tvec.y - T(1)));
+  diff = max(diff, fabs(Tvec.z - T(2)));
 	T(0) = RTparams[3], T(1) = RTparams[4], T(2) = RTparams[5];
 
  // cout << "after" << endl;
 	//cout << R << endl;
 	//cout << T << endl;
-	return diff / 7 < cc;
+	return diff < 2.5e-6;
 }
 
 // uses both 2D and 3D feature points
@@ -2869,7 +2890,7 @@ void evalCost_identity_2D(float *p, float *hx, int m, int n, void* adata) {
     0, recon->camparams.fy, recon->camparams.cy,
     0, 0, 1);
 
-  //cout << "hx: ";
+  //cout << "npts = " << npts << endl;
 	for(int i=0, vidx=0;i<npts;i++, vidx+=3) {
 		float wpt = w_landmarks[vidx];
 
@@ -2891,9 +2912,8 @@ void evalCost_identity_2D(float *p, float *hx, int m, int n, void* adata) {
 	}
 
 	// regularization term
-  int nparams = recon->mu_wid.n_elem;
-  arma::fvec wmmu(nparams);
-  for (int i = 0; i < nparams; ++i) {
+  arma::fvec wmmu(m);
+  for (int i = 0; i < m; ++i) {
 		wmmu(i) = p[i] - mu_wid_orig(i);
 	}
   hx[n-1] = sqrt(arma::dot(wmmu, recon->sigma_wid * wmmu)) * w_prior_id_2D;
@@ -2903,8 +2923,8 @@ void evalCost_identity_2D(float *p, float *hx, int m, int n, void* adata) {
 void evalJacobian_identity_2D(float *p, float *J, int m, int n, void* adata) {
   MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
 
-  float s, rx, ry, rz, tx, ty, tz;
-  rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
+  float rx, ry, rz, tx, ty, tz;
+  rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5];
 
   auto targets_2d = recon->targets_2d;
   int npts = targets_2d.size();
@@ -2924,34 +2944,28 @@ void evalJacobian_identity_2D(float *p, float *J, int m, int n, void* adata) {
   float Jf[6] = { 0 };
   float f_x = recon->camparams.fx, f_y = recon->camparams.fy;
 
-  // regularization term
-  int nparams = recon->mu_wid.n_elem;
-  arma::fvec wmmu(nparams);
-  for (int i = 0; i < nparams; ++i) {
-    wmmu(i) = p[i] - mu_wid_orig(i);
-  }
-  arma::fvec Jprior = 2.0 * recon->sigma_wid * wmmu;
-
   int jidx = 0;
   for (int i = 0, vidx = 0; i < npts; i++, vidx += 3) {
     float wpt = w_landmarks[vidx];
 
-    float x = 0, y = 0, z = 0;
+    // Pk
+    float Px = 0, Py = 0, Pz = 0;
     for (int j = 0; j < m; j++) {
-      x += tm1cRT(j, vidx) * p[j];
-      y += tm1cRT(j, vidx + 1) * p[j];
-      z += tm1cRT(j, vidx + 2) * p[j];
+      Px += tm1cRT(j, vidx) * p[j];
+      Py += tm1cRT(j, vidx + 1) * p[j];
+      Pz += tm1cRT(j, vidx + 2) * p[j];
     }
-    const PhGUtils::Point3f& q = targets_2d[i].first;
+    Px += T.x; Py += T.y; Pz += T.z;
 
-    float Px = x + T.x, Py = y + T.y, Pz = z + T.z;
+    const PhGUtils::Point3f& q = targets_2d[i].first;    
     float u, v;
     PhGUtils::projectPoint(u, v, Px, Py, Pz, Mproj);
 
-    float dx = q.x - u, dy = q.y - v;
+    float rkx = u - q.x, rky = v - q.y;
 
-    float rk = sqrt(dx*dx + dy*dy);
-    float inv_rk = 1.0 / rk;
+    double rk = sqrt(rkx*rkx + rky*rky);
+    double inv_rk = 1.0 / rk;
+    rkx *= inv_rk; rky *= inv_rk;
 
     // Jf
     float inv_z = 1.0 / Pz;
@@ -2961,18 +2975,28 @@ void evalJacobian_identity_2D(float *p, float *J, int m, int n, void* adata) {
     Jf[4] = f_y * inv_z; Jf[5] = -f_y * Py * inv_z2;
 
     for (int j = 0; j < m; ++j) {
-      // Jm * e_j
+      // R * Jm * e_j
       float jmex = tm1cRT(j, vidx), jmey = tm1cRT(j, vidx + 1), jmez = tm1cRT(j, vidx + 2);
-      // Jf * Jm * e_j
-      float jfjmex = Jf[0] * jmex + Jf[2] * jmez;
-      float jfjmey = Jf[4] * jmey + Jf[5] * jmez;
+
+      // Jf * R * Jm * e_j
+      float jfjmx = Jf[0] * jmex + Jf[2] * jmez;
+      float jfjmy = Jf[4] * jmey + Jf[5] * jmez;
       // data term and prior term
-      J[jidx++] = (jfjmex * dx + jfjmex * dy) * inv_rk;
+      J[jidx++] = (jfjmx * rkx + jfjmy * rky);
     }
   }
 
+  // regularization term
+  arma::fvec wmmu(m);
   for (int j = 0; j < m; ++j) {
-    J[jidx++] = Jprior(j) * w_prior_id_2D;
+    wmmu(j) = p[j] - mu_wid_orig(j);
+  }
+  arma::fvec Jprior = recon->sigma_wid * wmmu;
+  float Eprior = sqrt(arma::dot(wmmu, Jprior));
+  float inv_Eprior = 1.0 / Eprior;
+
+  for (int j = 0; j < m; ++j) {
+    J[jidx++] = inv_Eprior * Jprior(j) * w_prior_id_2D;
   }
 }
 
@@ -2982,23 +3006,34 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_2D()
 	vector<float> params(Wid.rawptr(), Wid.rawptr()+nparams);
 	int npts = targets.size();
 	vector<float> meas(npts+1, 0.0);
-  //float opts[4] = { 1e-3, 1e-9, 1e-9, 1e-9 };
-  float opts[4] = { 1e-6, 1e-12, 1e-12, 1e-12 };
+#if IDENTITY_FIT_USE_DIFF
+  float opts[5] = { 1e-3, 1e-9, 1e-9, 1e-9, 1e-6 };
   int iters = slevmar_dif(evalCost_identity_2D, &(params[0]), &(meas[0]), nparams, npts + 1, 128, opts, NULL, NULL, NULL, this);
-  //int iters = slevmar_der(evalCost_identity_2D, evalJacobian_identity_2D, &(params[0]), &(meas[0]), nparams, npts + 1, 128, opts, NULL, NULL, NULL, this);
-	cout << "identity fitting finished in " << iters << " iterations." << endl;
+#else
+  // evaluate the jacobian
+  vector<float> errorvec(npts+1);
+  slevmar_chkjac(evalCost_identity_2D, evalJacobian_identity_2D, &(params[0]), nparams, npts + 1, this, &(errorvec[0]));
+  PhGUtils::message("error vec[identity]");
+  PhGUtils::printArray(&(errorvec[0]), npts + 1);
+
+  float opts[4] = { 1e-3, 1e-9, 1e-9, 1e-9 };
+  int iters = slevmar_der(evalCost_identity_2D, evalJacobian_identity_2D, &(params[0]), &(meas[0]), nparams, npts + 1, 128, opts, NULL, NULL, NULL, this);
+#endif
+	//cout << "identity fitting finished in " << iters << " iterations." << endl;
 
 	//debug("rtn", rtn);
-	float diff = 0;
+	float diff = 0.0;
 	//b.print("b");
 	for(int i=0;i<nparams;i++) {
-		diff += fabs(Wid(i) - params[i]);
+		diff = max(diff, fabs(Wid(i) - params[i]) / (fabs(Wid(i))+1e-12f));
 		Wid(i) = params[i];		
 		//cout << params[i] << ' ';
 	}
-  cout << endl;
+  //cout << endl;
 
-	return diff / nparams < cc;
+  cout << "diff = " << diff  << endl;
+
+	return diff < 1e-4;
 }
 
 void evalCost2(float *p, float *hx, int m, int n, void* adata) {
@@ -3305,7 +3340,7 @@ void evalJacobian_expression_2D(float *p, float *J, int m, int n, void* adata) {
     float u, v;
     PhGUtils::projectPoint(u, v, Px, Py, Pz, Mproj);
 
-    float dx = q.x - u, dy = q.y - v;
+    float dx = u - q.x, dy = v - q.y;
 
     float rk = sqrt(dx*dx + dy*dy);
     float inv_rk = 1.0 / rk;
@@ -3321,10 +3356,10 @@ void evalJacobian_expression_2D(float *p, float *J, int m, int n, void* adata) {
       // Jm * e_j
       float jmex = tm0cRT(j, vidx), jmey = tm0cRT(j, vidx + 1), jmez = tm0cRT(j, vidx + 2);
       // Jf * Jm * e_j
-      float jfjmex = Jf[0] * jmex + Jf[2] * jmez;
-      float jfjmey = Jf[4] * jmey + Jf[5] * jmez;
+      float jfjmx = Jf[0] * jmex + Jf[2] * jmez;
+      float jfjmy = Jf[4] * jmey + Jf[5] * jmez;
       // data term and prior term
-      J[jidx++] = (jfjmex * dx + jfjmex * dy) * inv_rk;
+      J[jidx++] = (jfjmx * dx + jfjmy * dy) * inv_rk;
     }
   }
 
@@ -3340,19 +3375,23 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_2D()
 	vector<float> params(Wexp.rawptr(), Wexp.rawptr() + nparams);
 	int npts = targets.size();
 	vector<float> meas(npts+1, 0.0);
-  float opts[4] = { 1e-3, 1e-9, 1e-9, 1e-9 };
+#if EXPRESSION_FIT_USE_DIFF
+  float opts[5] = { 1e-3, 1e-12, 1e-12, 1e-12, 1e-6 };
   int iters = slevmar_dif(evalCost_expression_2D, &(params[0]), &(meas[0]), nparams, npts + 1, 128, opts, NULL, NULL, NULL, this);
-  //int iters = slevmar_der(evalCost_expression_2D, evalJacobian_expression_2D, &(params[0]), &(meas[0]), nparams, npts + 1, 128, NULL, NULL, NULL, NULL, this);
+#else
+  float opts[4] = { 1e-3, 1e-9, 1e-9, 1e-9};
+  int iters = slevmar_der(evalCost_expression_2D, evalJacobian_expression_2D, &(params[0]), &(meas[0]), nparams, npts + 1, 128, NULL, NULL, NULL, NULL, this);
+#endif
 
 	//cout << "finished in " << iters << " iterations." << endl;
 
 	float diff = 0;
 	for(int i=0;i<nparams;i++) {
-		diff += fabs(Wexp(i) - params[i]);
+		diff = max(diff, fabs(Wexp(i) - params[i]));
 		Wexp(i) = params[i];
 	}
 
-	return diff / nparams < cc;
+	return diff < 1e-6;
 }
 
 void evalCost3(float *p, float *hx, int m, int n, void* adata) {
@@ -3881,6 +3920,9 @@ float MultilinearReconstructor::computeError_2D()
 {
 	int npts = targets.size();
 	float E = 0;
+  PhGUtils::Matrix3x3f Mproj(camparams.fx, 0, camparams.cx,
+    0, camparams.fy, camparams.cy,
+    0, 0, 1);
 	for(int i=0;i<npts;i++) {
 		int vidx = i * 3;
 		// should change this to a fast version
@@ -3890,8 +3932,8 @@ float MultilinearReconstructor::computeError_2D()
 		PhGUtils::transformPoint(p.x, p.y, p.z, Rmat, Tvec);
 
 		// project the point
-		float u, v, d;
-		PhGUtils::worldToColor(p.x, p.y, p.z, u, v, d);
+		float u, v;
+    PhGUtils::projectPoint(u, v, p.x, p.y, p.z, Mproj);
 
 		float dx, dy;
 		dx = u - targets_2d[i].first.x;

@@ -160,7 +160,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
-	const int startIdx = 10000;
+	const int startIdx = 10001;
 	const int imageCount = 250;
 
 #elif YILONG
@@ -253,18 +253,18 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			tRecon.tic();
       //viewer->fit2d(MultilinearReconstructor::FIT_POSE);
       viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
-			tRecon.toc();
+			tRecon.tocMS("Reconstruction");
 		}
 		//viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
 		//viewer->fit(MultilinearReconstructor::FIT_POSE);
 
 		QApplication::processEvents();
-		::system("pause");
+		//::system("pause");
 #endif	
 	}
-	tCombined.toc();
-	PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() / validFrames));
-	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() / validFrames));
+	tCombined.tocMS();
+	PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() * 1000.0 / validFrames) + "ms");
+	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() * 1000.0 / validFrames) + "ms");
 }
 
 #if USE_GPU_RECON
