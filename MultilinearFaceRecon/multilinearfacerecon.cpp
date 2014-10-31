@@ -131,13 +131,13 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 		if( frameIdx++ == 0 ) {
 			// fit the pose first, then fit the identity and pose together
 
-			viewer->fit(MultilinearReconstructor::FIT_ALL);
+			viewer->fit(MultilinearReconstructor_old::FIT_ALL);
 		}
 		else{
-			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+			viewer->fit(MultilinearReconstructor_old::FIT_POSE_AND_EXPRESSION);
 		}
 
-		const MultilinearReconstructor& recon = viewer->getReconstructor();
+		const MultilinearReconstructor_old& recon = viewer->getReconstructor();
 		pose.assign(recon.getPose(), recon.getPose()+7);
 		/*
 		for(int i=0;i<pose.size();i++)
@@ -236,25 +236,25 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 			lms[i].z = d;
 		}
 
-		viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
+		viewer->bindTargetLandmarks(lms, MultilinearReconstructor_old::TargetType_2D);
 		if( imgidx == 1 ) {
 			// fit the pose first, then fit the identity and pose together
 			//viewer->fit(MultilinearReconstructor::FIT_POSE);
 			//viewer->fit(MultilinearReconstructor::FIT_IDENTITY);
 			//::system("pause");
-      viewer->fit2d(MultilinearReconstructor::FIT_POSE);
+      viewer->fit2d(MultilinearReconstructor_old::FIT_POSE);
       QApplication::processEvents();
-      //::system("pause");
-      viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+      ::system("pause");
+      viewer->fit2d(MultilinearReconstructor_old::FIT_POSE_AND_IDENTITY);
       //viewer->fit2d(MultilinearReconstructor::FIT_POSE);
       QApplication::processEvents();
-      //::system("pause");
+      ::system("pause");
 		}
 		else{
 			validFrames++;
 			tRecon.tic();
       //viewer->fit2d(MultilinearReconstructor::FIT_POSE);
-      viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+      viewer->fit2d(MultilinearReconstructor_old::FIT_POSE_AND_EXPRESSION);
 			tRecon.tocMS("Reconstruction");
 		}
 		//viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
@@ -420,9 +420,9 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_GPU()
 
 		if( imgidx == 0 ) {
 			viewer->bindRGBDTarget(colordata, depthdata);
-			viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
+			viewer->bindTargetLandmarks(lms, MultilinearReconstructor_old::TargetType_2D);
 			// fit the pose first, then fit the identity and pose together
-			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+			viewer->fit(MultilinearReconstructor_old::FIT_POSE_AND_IDENTITY);
 			//viewer->fitICP_GPU(MultilinearReconstructorGPU::FIT_POSE_AND_IDENTITY);
 
 			viewer->transferParameters(BlendShapeViewer::CPUToGPU);
@@ -547,15 +547,15 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 			lms[i].z = d;
 			//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 		}
-		viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
+		viewer->bindTargetLandmarks(lms, MultilinearReconstructor_old::TargetType_2D);
 
 		if( imgidx == 1 ) {
 			// fit the pose first, then fit the identity and pose together
 			//viewer->fitICP(MultilinearReconstructor::FIT_POSE);
 			//viewer->fitICP(MultilinearReconstructor::FIT_IDENTITY);
-			viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+			viewer->fit(MultilinearReconstructor_old::FIT_POSE_AND_IDENTITY);
 			//viewer->fitICP(MultilinearReconstructor::FIT_POSE);
-			viewer->fitICP(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+			viewer->fitICP(MultilinearReconstructor_old::FIT_POSE_AND_IDENTITY);
 		}
 		else{
 			validFrames++;
@@ -563,7 +563,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 			//viewer->fitICP(MultilinearReconstructor::FIT_POSE);
 			//viewer->fitICP(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
 			//viewer->fitICP(MultilinearReconstructor::FIT_POSE);
-			viewer->fitICP(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+			viewer->fitICP(MultilinearReconstructor_old::FIT_POSE_AND_EXPRESSION);
 			tRecon.toc();
 		}
 
@@ -622,13 +622,13 @@ void MultilinearFaceRecon::updateKinectStreams_2D()
 		lms[i].z = d;
 		//PhGUtils::debug("u", u, "v", v, "d", d, "X", X, "Y", Y, "Z", Z);
 	}
-	viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
+	viewer->bindTargetLandmarks(lms, MultilinearReconstructor_old::TargetType_2D);
 	if( frameIdx++ == 0 ) {
-		viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+		viewer->fit2d(MultilinearReconstructor_old::FIT_POSE_AND_IDENTITY);
 		//viewer->fit2d(MultilinearReconstructor::FIT_POSE);
 	}
 	else
-		viewer->fit2d(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+		viewer->fit2d(MultilinearReconstructor_old::FIT_POSE_AND_EXPRESSION);
 	//viewer->fit2d(MultilinearReconstructor::FIT_POSE);
 	tRecon.toc();
 }
@@ -693,12 +693,12 @@ void MultilinearFaceRecon::updateKinectStreams()
 		lms[i].y = v;
 		lms[i].z = depths[mfilterSize*mfilterSize/2];
 	}
-	viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
+	viewer->bindTargetLandmarks(lms, MultilinearReconstructor_old::TargetType_2D);
 	if( frameIdx++ == 0 ) {
-		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+		viewer->fit(MultilinearReconstructor_old::FIT_POSE_AND_IDENTITY);
 	}
 	else
-		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+		viewer->fit(MultilinearReconstructor_old::FIT_POSE_AND_EXPRESSION);
 	tRecon.toc();
 }
 
@@ -768,17 +768,17 @@ void MultilinearFaceRecon::updateKinectStreams_ICP()
 
 		// also bind the 3D feature points
 		// get the 3D landmarks and feed to recon manager
-		viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
+		viewer->bindTargetLandmarks(lms, MultilinearReconstructor_old::TargetType_2D);
 
-		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
-		viewer->fitICP(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+		viewer->fit(MultilinearReconstructor_old::FIT_POSE_AND_IDENTITY);
+		viewer->fitICP(MultilinearReconstructor_old::FIT_POSE_AND_IDENTITY);
 	}
 	else{
 		// also bind the 3D feature points
 		// get the 3D landmarks and feed to recon manager
-		viewer->bindTargetLandmarks(lms, MultilinearReconstructor::TargetType_2D);
+		viewer->bindTargetLandmarks(lms, MultilinearReconstructor_old::TargetType_2D);
 
-		viewer->fit(MultilinearReconstructor::FIT_POSE_AND_EXPRESSION);
+		viewer->fit(MultilinearReconstructor_old::FIT_POSE_AND_EXPRESSION);
 	}
 	tRecon.toc();
 }

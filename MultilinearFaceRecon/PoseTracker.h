@@ -1,6 +1,6 @@
 #pragma once
 
-#include "MultilinearReconstructor.h"
+#include "MultilinearReconstructor_old.h"
 #include "MultilinearReconstructorGPU.cuh"
 
 #include "AAMWrapper.h"
@@ -52,7 +52,7 @@ private:
 	vector<pair<PhGUtils::Point3f, int>> labeledLandmarks;
 
 	MultilinearReconstructorGPU reconGPU;
-	MultilinearReconstructor recon;	
+	MultilinearReconstructor_old recon;	
 
 	int trackedFrames, frameIdx;
 	vector<PhGUtils::Point3f> lms;		// landmarks got from AAM tracking

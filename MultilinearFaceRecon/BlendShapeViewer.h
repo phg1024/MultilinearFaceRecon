@@ -3,7 +3,10 @@
 #include "OpenGL/gl3dcanvas.h"
 #include "Geometry/MeshLoader.h"
 #include "Geometry/Mesh.h"
-#include "MultilinearReconstructor.h"
+#include "Optimizer.h"
+#include "EnergyFunctions.h"
+#include "MultilinearReconstructor.hpp"
+#include "MultilinearReconstructor_old.h"
 #include "MultilinearReconstructorGPU.cuh"
 
 #include <QtWidgets/QFileDialog>
@@ -19,13 +22,13 @@ public:
 	~BlendShapeViewer(void);
 
 	void bindTargetMesh(const string& filename);
-	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts, MultilinearReconstructor::TargetType ttp = MultilinearReconstructor::TargetType_3D);
+	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts, MultilinearReconstructor_old::TargetType ttp = MultilinearReconstructor_old::TargetType_3D);
 	void bindRGBDTarget(
 		const vector<unsigned char>& colordata,
 		const vector<unsigned char>& depthdata
 		);
 #if USE_GPU_RECON
-  void bindTargetLandmarksGPU(const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor::TargetType ttp = MultilinearReconstructor::TargetType_2D);
+  void bindTargetLandmarksGPU(const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor_old::TargetType ttp = MultilinearReconstructor_old::TargetType_2D);
   void bindRGBDTargetGPU(
 		const vector<unsigned char>& colordata,
 		const vector<unsigned char>& depthdata
@@ -38,9 +41,9 @@ public:
 	};
 	void transferParameters(TransferDirection dir);
 
-	void fit(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
-	void fit2d(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
-	void fitICP(MultilinearReconstructor::FittingOption ops = MultilinearReconstructor::FIT_ALL);
+	void fit(MultilinearReconstructor_old::FittingOption ops = MultilinearReconstructor_old::FIT_ALL);
+	void fit2d(MultilinearReconstructor_old::FittingOption ops = MultilinearReconstructor_old::FIT_ALL);
+	void fitICP(MultilinearReconstructor_old::FittingOption ops = MultilinearReconstructor_old::FIT_ALL);
 #if USE_GPU_RECON	
   void fitICP_GPU(MultilinearReconstructorGPU::FittingOption ops = MultilinearReconstructorGPU::FIT_ALL);
 #endif
@@ -52,7 +55,7 @@ public:
   void printStatsGPU();
 #endif
 
-	const MultilinearReconstructor& getReconstructor() const {
+	const MultilinearReconstructor_old& getReconstructor() const {
 		return recon;
 	}
 
@@ -91,10 +94,13 @@ private:
 
 	vector<PhGUtils::Point3f> targetLandmarks;
 	vector<int> landmarks;
+  vector<Constraint_2D> constraints;
+
 #if USE_GPU_RECON
 	MultilinearReconstructorGPU GPURecon;
 #endif
-	MultilinearReconstructor recon;
+	MultilinearReconstructor_old recon;
+  MultilinearReconstructor<Constraint_2D, Optimizer<Constraint_2D, DefaultParameters, EnergyFunction2D>> recon_2d;
 
 	PhGUtils::Matrix4x4f mProj, mMv;
 

@@ -23,7 +23,9 @@
 
 #include <concurrent_vector.h>
 
-class MultilinearReconstructor : public QObject
+#include "PointConstraint.h"
+
+class MultilinearReconstructor_old : public QObject
 {
 	Q_OBJECT
 public:
@@ -33,7 +35,7 @@ public:
 	};
 
 	enum FittingOption {
-		FIT_POSE,
+		FIT_POSE = 0,
 		FIT_IDENTITY,
 		FIT_EXPRESSION,
 		FIT_POSE_AND_IDENTITY,
@@ -41,8 +43,8 @@ public:
 		FIT_ALL
 	};
 
-	MultilinearReconstructor(void);
-	~MultilinearReconstructor(void);
+	MultilinearReconstructor_old(void);
+	~MultilinearReconstructor_old(void);
 
   double cameraFocalLength() const {
     return -camparams.fx;

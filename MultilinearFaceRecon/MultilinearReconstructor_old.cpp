@@ -1,4 +1,4 @@
-#include "MultilinearReconstructor.h"
+#include "MultilinearReconstructor_old.h"
 #include "Utils/utility.hpp"
 #include "Utils/stringutils.h"
 #include "Utils/Timer.h"
@@ -24,7 +24,7 @@
 #define IDENTITY_FIT_USE_DIFF 0
 #define EXPRESSION_FIT_USE_DIFF 0
 
-MultilinearReconstructor::MultilinearReconstructor(void)
+MultilinearReconstructor_old::MultilinearReconstructor_old(void)
 {	
 	culaStatus stas = culaInitialize();
 	PhGUtils::culaCheckStatus(stas);
@@ -105,12 +105,12 @@ MultilinearReconstructor::MultilinearReconstructor(void)
 	historyWeights[9] = 10.24;
 }
 
-MultilinearReconstructor::~MultilinearReconstructor(void)
+MultilinearReconstructor_old::~MultilinearReconstructor_old(void)
 {
 }
 
 
-void MultilinearReconstructor::reset()
+void MultilinearReconstructor_old::reset()
 {
 	updateMatrices();
 	// reset the identity weights and expression weights
@@ -123,7 +123,7 @@ void MultilinearReconstructor::reset()
 	initRigidTransformationParams();
 }
 
-void MultilinearReconstructor::togglePrior()
+void MultilinearReconstructor_old::togglePrior()
 {
 	usePrior = !usePrior;
 	PhGUtils::message((usePrior)?"Using prior":"Not using prior");
@@ -132,7 +132,7 @@ void MultilinearReconstructor::togglePrior()
 }
 
 
-void MultilinearReconstructor::loadPrior()
+void MultilinearReconstructor_old::loadPrior()
 {
 	// the prior data is stored in the following format
 	// the matrices are stored in column major order
@@ -194,19 +194,19 @@ void MultilinearReconstructor::loadPrior()
 	mu_wexp_weighted = mu_wexp * w_prior_exp;
 }
 
-void MultilinearReconstructor::loadCoreTensor()
+void MultilinearReconstructor_old::loadCoreTensor()
 {
 	const string filename = "../Data/blendshape/core.bin";
 	core.read(filename);
 }
 
-void MultilinearReconstructor::unfoldTensor()
+void MultilinearReconstructor_old::unfoldTensor()
 {
 	tu0 = core.unfold(0);
 	tu1 = core.unfold(1);
 }
 
-void MultilinearReconstructor::createTemplateItem()
+void MultilinearReconstructor_old::createTemplateItem()
 {
 	PhGUtils::message("creating template face ...");
 	tplt = tm1.modeProduct(Wid, 0);
@@ -214,7 +214,7 @@ void MultilinearReconstructor::createTemplateItem()
 	PhGUtils::message("done.");
 }
 
-void MultilinearReconstructor::initializeWeights()
+void MultilinearReconstructor_old::initializeWeights()
 {
 	PhGUtils::message("initializing weights ...");
 	Wid.resize(core.dim(0));
@@ -239,7 +239,7 @@ void MultilinearReconstructor::initializeWeights()
 	PhGUtils::message("done.");
 }
 
-void MultilinearReconstructor::initRigidTransformationParams()
+void MultilinearReconstructor_old::initRigidTransformationParams()
 {
 	RTparams[0] = 0; RTparams[1] = 0; RTparams[2] = 0;
 	RTparams[3] = meanX; RTparams[4] = meanY; RTparams[5] = meanZ;
@@ -253,7 +253,7 @@ void MultilinearReconstructor::initRigidTransformationParams()
 	Tvec = PhGUtils::Point3f::zero();
 }
 
-void MultilinearReconstructor::fitICP(FittingOption ops /*= FIT_ALL*/)
+void MultilinearReconstructor_old::fitICP(FittingOption ops /*= FIT_ALL*/)
 {
 	switch( ops ) {
 	case FIT_POSE:
@@ -343,7 +343,7 @@ void MultilinearReconstructor::fitICP(FittingOption ops /*= FIT_ALL*/)
 }
 
 // create a convex hull as the face mask
-void MultilinearReconstructor::createFaceMask()
+void MultilinearReconstructor_old::createFaceMask()
 {
 #define USE_FACE_MASK 0
 #if USE_FACE_MASK
@@ -377,7 +377,7 @@ void MultilinearReconstructor::createFaceMask()
 	*/
 }
 
-void MultilinearReconstructor::collectICPConstraints(int iter, int maxIter)
+void MultilinearReconstructor_old::collectICPConstraints(int iter, int maxIter)
 {
 	const float DIST_THRES_MAX = 0.010;
 	const float DIST_THRES_MIN = 0.001;
@@ -498,7 +498,7 @@ void MultilinearReconstructor::collectICPConstraints(int iter, int maxIter)
 	*/
 }
 
-void MultilinearReconstructor::collectICPConstraints_topo(int iter, int maxIter)
+void MultilinearReconstructor_old::collectICPConstraints_topo(int iter, int maxIter)
 {
 	icpc.clear();
 	// the depth map and the face index map are flipped vertically
@@ -632,7 +632,7 @@ void MultilinearReconstructor::collectICPConstraints_topo(int iter, int maxIter)
 	*/	
 }
 
-void MultilinearReconstructor::collectICPConstraints_bruteforce(int iter, int maxIter) {
+void MultilinearReconstructor_old::collectICPConstraints_bruteforce(int iter, int maxIter) {
 	icpc.clear();
 	// the depth map and the face index map are flipped vertically
 	for(int v=0, vv=479, idx=0;v<480;v++, vv--) {
@@ -682,7 +682,7 @@ void MultilinearReconstructor::collectICPConstraints_bruteforce(int iter, int ma
 	::system("pause");
 }
 
-void MultilinearReconstructor::fitICP_withPrior() {
+void MultilinearReconstructor_old::fitICP_withPrior() {
 	PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
 
 	//cout << "initial guess ..." << endl;
@@ -863,7 +863,7 @@ void MultilinearReconstructor::fitICP_withPrior() {
 #endif
 }
 
-void MultilinearReconstructor::fit2d(FittingOption ops /*= FIT_ALL*/)
+void MultilinearReconstructor_old::fit2d(FittingOption ops /*= FIT_ALL*/)
 {
 	switch( ops ) {
 	case FIT_POSE:
@@ -922,7 +922,7 @@ void MultilinearReconstructor::fit2d(FittingOption ops /*= FIT_ALL*/)
 	frameCounter++;
 }
 
-void MultilinearReconstructor::fit2d_pose() {
+void MultilinearReconstructor_old::fit2d_pose() {
   cout << "fit with prior using 2D feature points" << endl;
 
   //init();
@@ -979,7 +979,7 @@ void MultilinearReconstructor::fit2d_pose() {
 #endif
 }
 
-void MultilinearReconstructor::fit2d_identity() {
+void MultilinearReconstructor_old::fit2d_identity() {
   cout << "fit with prior using 2D feature points" << endl;
 
   //init();
@@ -1040,11 +1040,11 @@ void MultilinearReconstructor::fit2d_identity() {
 #endif
 }
 
-void MultilinearReconstructor::fit2d_expression() {
+void MultilinearReconstructor_old::fit2d_expression() {
 
 }
 
-void MultilinearReconstructor::fit2d_poseAndIdentity() {
+void MultilinearReconstructor_old::fit2d_poseAndIdentity() {
   if (targets.empty())
   {
     PhGUtils::error("No target set!");
@@ -1139,7 +1139,7 @@ void MultilinearReconstructor::fit2d_poseAndIdentity() {
 #endif
 }
 
-void MultilinearReconstructor::fit2d_pose_identity_camera() {
+void MultilinearReconstructor_old::fit2d_pose_identity_camera() {
   if (targets.empty())
   {
     PhGUtils::error("No target set!");
@@ -1241,7 +1241,7 @@ void MultilinearReconstructor::fit2d_pose_identity_camera() {
 #endif
 }
 
-void MultilinearReconstructor::fit2d_poseAndExpression() {
+void MultilinearReconstructor_old::fit2d_poseAndExpression() {
   if (targets.empty())
   {
     PhGUtils::error("No target set!");
@@ -1329,11 +1329,11 @@ void MultilinearReconstructor::fit2d_poseAndExpression() {
 #endif
 }
 
-void MultilinearReconstructor::fit2d_all() {
+void MultilinearReconstructor_old::fit2d_all() {
 
 }
 
-void MultilinearReconstructor::fit2d_withPrior() {
+void MultilinearReconstructor_old::fit2d_withPrior() {
 	cout << "fit with prior using 2D feature points" << endl;
 
 	//init();
@@ -1483,7 +1483,7 @@ void MultilinearReconstructor::fit2d_withPrior() {
 #endif
 }
 
-void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops )
+void MultilinearReconstructor_old::fit( MultilinearReconstructor_old::FittingOption ops )
 {
 	switch( ops ) {
 	case FIT_POSE:
@@ -1572,7 +1572,7 @@ void MultilinearReconstructor::fit( MultilinearReconstructor::FittingOption ops 
 	}
 }
 
-void MultilinearReconstructor::fit_withPrior() {
+void MultilinearReconstructor_old::fit_withPrior() {
 	//cout << "fit with prior" << endl;
 
 	//init();
@@ -1729,7 +1729,7 @@ void MultilinearReconstructor::fit_withPrior() {
 #endif
 }
 
-vector<float> MultilinearReconstructor::computeWeightedMeanPose() {
+vector<float> MultilinearReconstructor_old::computeWeightedMeanPose() {
 	vector<float> m(7, 0);
 
 	float wsum = 0;
@@ -1748,7 +1748,7 @@ vector<float> MultilinearReconstructor::computeWeightedMeanPose() {
 }
 
 void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
 	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
@@ -1853,7 +1853,7 @@ void evalCost_ICP(float *p, float *hx, int m, int n, void* adata) {
 
 void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 	// J is a n-by-m matrix
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
 	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
@@ -2089,7 +2089,7 @@ void evalJacobian_ICP(float *p, float *J, int m, int n, void *adata) {
 	}
 }
 
-bool MultilinearReconstructor::fitRigidTransformationAndScale_ICP() {
+bool MultilinearReconstructor_old::fitRigidTransformationAndScale_ICP() {
 	int nparams = fitScale?7:6;
 	int npts = icpc.size() + targets.size() + nparams;
 
@@ -2137,7 +2137,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_ICP() {
 }
 
 void evalCost_pose_2D(float *p, float *hx, int m, int n, void* adata) {
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
   rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5];
@@ -2189,7 +2189,7 @@ void evalCost_pose_2D(float *p, float *hx, int m, int n, void* adata) {
 
 void evalJacobian_pose_2D(float *p, float *J, int m, int n, void *adata) {
 	// J is a n-by-m matrix
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
 	float rx, ry, rz, tx, ty, tz;
 	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5];
@@ -2323,7 +2323,7 @@ void evalJacobian_pose_2D(float *p, float *J, int m, int n, void *adata) {
 	*/		
 }
 
-bool MultilinearReconstructor::fitCameraParameters_2D() {
+bool MultilinearReconstructor_old::fitCameraParameters_2D() {
   int npts = targets.size();
   /// compute the focal length analytically
   double numer = 0.0, denom = 0.0;
@@ -2344,7 +2344,7 @@ bool MultilinearReconstructor::fitCameraParameters_2D() {
   return true;
 }
 
-bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
+bool MultilinearReconstructor_old::fitRigidTransformationAndScale_2D() {
 	int npts = targets.size();
 	// use levmar
 
@@ -2460,7 +2460,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale_2D() {
 void evalCost(float *p, float *hx, int m, int n, void* adata) {
 	//PhGUtils::message("cost func");
 
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
 	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
@@ -2525,7 +2525,7 @@ void evalCost(float *p, float *hx, int m, int n, void* adata) {
 void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 	//PhGUtils::message("jac func");
 	// J is a n-by-m matrix
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
 	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
@@ -2703,7 +2703,7 @@ void evalJacobian(float *p, float *J, int m, int n, void *adata) {
 	*/
 }
 
-bool MultilinearReconstructor::fitRigidTransformationAndScale() {
+bool MultilinearReconstructor_old::fitRigidTransformationAndScale() {
 	int npts = targets.size();
 	
 	int nparams = fitScale?7:6;
@@ -2750,7 +2750,7 @@ bool MultilinearReconstructor::fitRigidTransformationAndScale() {
 	return diff / nparams < cc;
 }
 
-bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
+bool MultilinearReconstructor_old::fitIdentityWeights_withPrior_ICP() {
 	//cout << "fitting identity weights ..." << endl;
 	// to use this method, the tensor tm1 must first be updated using the rotation matrix
 	int nparams = core.dim(0);	
@@ -2871,7 +2871,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_ICP() {
 }
 
 void evalCost_identity_2D(float *p, float *hx, int m, int n, void* adata) {
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
 	rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5], s = p[6];
@@ -2921,7 +2921,7 @@ void evalCost_identity_2D(float *p, float *hx, int m, int n, void* adata) {
 }
 
 void evalJacobian_identity_2D(float *p, float *J, int m, int n, void* adata) {
-  MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+  MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
   float rx, ry, rz, tx, ty, tz;
   rx = p[0], ry = p[1], rz = p[2], tx = p[3], ty = p[4], tz = p[5];
@@ -3000,7 +3000,7 @@ void evalJacobian_identity_2D(float *p, float *J, int m, int n, void* adata) {
   }
 }
 
-bool MultilinearReconstructor::fitIdentityWeights_withPrior_2D()
+bool MultilinearReconstructor_old::fitIdentityWeights_withPrior_2D()
 {
 	int nparams = core.dim(0);
 	vector<float> params(Wid.rawptr(), Wid.rawptr()+nparams);
@@ -3037,7 +3037,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior_2D()
 }
 
 void evalCost2(float *p, float *hx, int m, int n, void* adata) {
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
 	s = p[0], rx = p[1], ry = p[2], rz = p[3], tx = p[4], ty = p[5], tz = p[6];
@@ -3066,7 +3066,7 @@ void evalCost2(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
-bool MultilinearReconstructor::fitIdentityWeights_withPrior()
+bool MultilinearReconstructor_old::fitIdentityWeights_withPrior()
 {
 #if USELEVMAR4WEIGHTS
 	int nparams = core.dim(0);
@@ -3130,7 +3130,7 @@ bool MultilinearReconstructor::fitIdentityWeights_withPrior()
 	return diff / nparams < cc;
 }
 
-bool MultilinearReconstructor::fitExpressionWeights_withPrior_ICP() {
+bool MultilinearReconstructor_old::fitExpressionWeights_withPrior_ICP() {
 	//cout << "fitting identity weights ..." << endl;
 	// to use this method, the tensor tm1 must first be updated using the rotation matrix
 	int nparams = core.dim(1);
@@ -3246,7 +3246,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_ICP() {
 }
 
 void evalCost_expression_2D(float *p, float *hx, int m, int n, void* adata) {
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
 	s = p[0], rx = p[1], ry = p[2], rz = p[3], tx = p[4], ty = p[5], tz = p[6];
@@ -3294,7 +3294,7 @@ void evalCost_expression_2D(float *p, float *hx, int m, int n, void* adata) {
 }
 
 void evalJacobian_expression_2D(float *p, float *J, int m, int n, void* adata) {
-  MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+  MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
   float s, rx, ry, rz, tx, ty, tz;
   s = p[0], rx = p[1], ry = p[2], rz = p[3], tx = p[4], ty = p[5], tz = p[6];
@@ -3368,7 +3368,7 @@ void evalJacobian_expression_2D(float *p, float *J, int m, int n, void* adata) {
   }
 }
 
-bool MultilinearReconstructor::fitExpressionWeights_withPrior_2D()
+bool MultilinearReconstructor_old::fitExpressionWeights_withPrior_2D()
 {
 	// fix both rotation and identity weights, solve for expression weights
 	int nparams = core.dim(1);
@@ -3395,7 +3395,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior_2D()
 }
 
 void evalCost3(float *p, float *hx, int m, int n, void* adata) {
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 
 	float s, rx, ry, rz, tx, ty, tz;
 	s = p[0], rx = p[1], ry = p[2], rz = p[3], tx = p[4], ty = p[5], tz = p[6];
@@ -3424,7 +3424,7 @@ void evalCost3(float *p, float *hx, int m, int n, void* adata) {
 	}
 }
 
-bool MultilinearReconstructor::fitExpressionWeights_withPrior()
+bool MultilinearReconstructor_old::fitExpressionWeights_withPrior()
 {
 #if USELEVMAR4WEIGHTS
 	// fix both rotation and identity weights, solve for expression weights
@@ -3505,7 +3505,7 @@ bool MultilinearReconstructor::fitExpressionWeights_withPrior()
 }
 
 // transforms the template mesh into a target mesh with rotation and translation
-void MultilinearReconstructor::transformMesh()
+void MultilinearReconstructor_old::transformMesh()
 {
 	int nverts = tplt.length()/3;
 	arma::fmat pt(3, nverts);
@@ -3526,7 +3526,7 @@ void MultilinearReconstructor::transformMesh()
 	}
 }
 
-void MultilinearReconstructor::bindRGBDTarget(const vector<unsigned char>& colordata, const vector<unsigned char>& depthdata)
+void MultilinearReconstructor_old::bindRGBDTarget(const vector<unsigned char>& colordata, const vector<unsigned char>& depthdata)
 {
 	targetColor = colordata;
 	targetDepth = depthdata;
@@ -3545,7 +3545,7 @@ void MultilinearReconstructor::bindRGBDTarget(const vector<unsigned char>& color
 	}
 }
 
-void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, int>>& pts, TargetType ttp )
+void MultilinearReconstructor_old::bindTarget( const vector<pair<PhGUtils::Point3f, int>>& pts, TargetType ttp )
 {
 	bool updateTC = false;
 	// check if the computation tensors need update
@@ -3664,7 +3664,7 @@ void MultilinearReconstructor::bindTarget( const vector<pair<PhGUtils::Point3f, 
 	//PhGUtils::debug("valid landmarks", validCount);
 }
 
-void MultilinearReconstructor::updateMatrices() {
+void MultilinearReconstructor_old::updateMatrices() {
 	if( usePrior ) {
 		int ndim_id = mu_wid.size();
 		int ndim_exp = mu_wexp.size();
@@ -3694,7 +3694,7 @@ void MultilinearReconstructor::updateMatrices() {
 	}
 }
 
-void MultilinearReconstructor::updateComputationTensor()
+void MultilinearReconstructor_old::updateComputationTensor()
 {
 	updateCoreC();
 	tm0c = corec.modeProduct(Wid, 0);
@@ -3705,7 +3705,7 @@ void MultilinearReconstructor::updateComputationTensor()
 }
 
 // build a truncated version of the core
-void MultilinearReconstructor::updateCoreC() {
+void MultilinearReconstructor_old::updateCoreC() {
 	corec.resize(core.dim(0), core.dim(1), targets.size()*3);
 
 	for(int i=0;i<core.dim(0);i++) {
@@ -3721,7 +3721,7 @@ void MultilinearReconstructor::updateCoreC() {
 }
 
 // transform TM0C with global rigid transformation
-void MultilinearReconstructor::transformTM0()
+void MultilinearReconstructor_old::transformTM0()
 {
 	int npts = tm0.dim(1) / 3;
 	// don't use the assignment operator, it actually moves the data
@@ -3740,7 +3740,7 @@ void MultilinearReconstructor::transformTM0()
 }
 
 // transform TM0C with global rigid transformation
-void MultilinearReconstructor::transformTM1()
+void MultilinearReconstructor_old::transformTM1()
 {
 	//cout << "Transform TM1 ..." << endl;
 	int npts = tm1.dim(1) / 3;
@@ -3762,7 +3762,7 @@ void MultilinearReconstructor::transformTM1()
 }
 
 // transform TM0C with global rigid transformation
-void MultilinearReconstructor::transformTM0C() {
+void MultilinearReconstructor_old::transformTM0C() {
 	int npts = tm0c.dim(1) / 3;
 	// don't use the assignment operator, it actually moves the data
 	//tm0cRT = tm0c;
@@ -3783,7 +3783,7 @@ void MultilinearReconstructor::transformTM0C() {
 }
 
 // transform TM1C with global rigid transformation
-void MultilinearReconstructor::transformTM1C() {
+void MultilinearReconstructor_old::transformTM1C() {
 	int npts = tm1c.dim(1) / 3;
 	// don't use the assignment operator, it actually moves the data
 	//tm1cRT = tm1c;
@@ -3805,26 +3805,26 @@ void MultilinearReconstructor::transformTM1C() {
 	}
 }
 
-void MultilinearReconstructor::updateTMC() {
+void MultilinearReconstructor_old::updateTMC() {
 	tm1c.modeProduct(Wid, 0, tmc);
 }
 
-void MultilinearReconstructor::updateTMCwithTM0C() {
+void MultilinearReconstructor_old::updateTMCwithTM0C() {
 	//PhGUtils::message("updating tmc");
 	tm0c.modeProduct(Wexp, 0, tmc);
 }
 
-void MultilinearReconstructor::updateTM()
+void MultilinearReconstructor_old::updateTM()
 {
 	tm1.modeProduct(Wid, 0, tplt);
 }
 
-void MultilinearReconstructor::updateTMwithTM0()
+void MultilinearReconstructor_old::updateTMwithTM0()
 {
 	tm0.modeProduct(Wexp, 0, tplt);
 }
 
-float MultilinearReconstructor::computeError_ICP() {
+float MultilinearReconstructor_old::computeError_ICP() {
 
 	// set up rotation matrix and translation vector
 	float w_fp_scale = icpc.size() / 1000.0;
@@ -3895,7 +3895,7 @@ float MultilinearReconstructor::computeError_ICP() {
 	return E;
 }
 
-float MultilinearReconstructor::computeError()
+float MultilinearReconstructor_old::computeError()
 {
 	int npts = targets.size();
 	float E = 0;
@@ -3916,7 +3916,7 @@ float MultilinearReconstructor::computeError()
 	return E;
 }
 
-float MultilinearReconstructor::computeError_2D()
+float MultilinearReconstructor_old::computeError_2D()
 {
 	int npts = targets.size();
 	float E = 0;
@@ -3941,13 +3941,14 @@ float MultilinearReconstructor::computeError_2D()
 		E += (dx * dx + dy * dy) * w_landmarks[vidx];
 	}
 
+
 	E /= npts;
 	return E;
 }
 
 // render the mesh to the FBO
 // need to call update mesh before rendering it, if the latest mesh is needed
-void MultilinearReconstructor::renderMesh()
+void MultilinearReconstructor_old::renderMesh()
 {
 	dummyWgt->makeCurrent();
 	fbo->bind();
@@ -4018,7 +4019,7 @@ void MultilinearReconstructor::renderMesh()
 #endif
 }
 
-void MultilinearReconstructor::updateMesh()
+void MultilinearReconstructor_old::updateMesh()
 {
 	#pragma omp parallel for
 	for(int i=0;i<tplt.length()/3;i++) {
@@ -4036,7 +4037,7 @@ void MultilinearReconstructor::updateMesh()
 
 // mesh fitting functions
 
-tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor::fitMesh(const string& filename, const vector<pair<int, int>>& hint)
+tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor_old::fitMesh(const string& filename, const vector<pair<int, int>>& hint)
 {
 	// reset all related parameters
 	reset();
@@ -4078,7 +4079,7 @@ tuple<vector<float>, vector<float>, vector<float>> MultilinearReconstructor::fit
 }
 
 void evalCost_withConstraints(float *p, float *hx, int m, int n, void* adata) {
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 	auto targets = recon->vcons;
 	auto tplt = recon->tplt;
 
@@ -4101,7 +4102,7 @@ void evalCost_withConstraints(float *p, float *hx, int m, int n, void* adata) {
 void evalJacobian_withConstraints(float *p, float *J, int m, int n, void *adata) {
 //PhGUtils::message("jac func");
 	// J is a n-by-m matrix
-	MultilinearReconstructor* recon = static_cast<MultilinearReconstructor*>(adata);
+	MultilinearReconstructor_old* recon = static_cast<MultilinearReconstructor_old*>(adata);
 	auto targets = recon->vcons;
 	auto tplt = recon->tplt;
 
@@ -4157,7 +4158,7 @@ void evalJacobian_withConstraints(float *p, float *J, int m, int n, void *adata)
 	}
 }
 
-void MultilinearReconstructor::fitIdentityWeights_withPrior_Constraints() {
+void MultilinearReconstructor_old::fitIdentityWeights_withPrior_Constraints() {
 	//cout << "fitting identity weights ..." << endl;
 	// to use this method, the tensor tm1 must first be updated using the rotation matrix
 	int nparams = core.dim(0);	
@@ -4238,7 +4239,7 @@ void MultilinearReconstructor::fitIdentityWeights_withPrior_Constraints() {
 	//cout << "identity weights fitted." << endl;
 }
 
-void MultilinearReconstructor::fitExpressionWeights_withPrior_Constraints()
+void MultilinearReconstructor_old::fitExpressionWeights_withPrior_Constraints()
 {
 	//cout << "fitting expression weights ..." << endl;
 	// to use this method, the tensor tm1 must first be updated using the rotation matrix
@@ -4313,7 +4314,7 @@ void MultilinearReconstructor::fitExpressionWeights_withPrior_Constraints()
 	//cout << "expression weights fitted." << endl;
 }
 
-void MultilinearReconstructor::fit_withConstraints()
+void MultilinearReconstructor_old::fit_withConstraints()
 {
 	PhGUtils::message("fit with point constraints...");
 	int npts = vcons.size();
@@ -4372,7 +4373,7 @@ void MultilinearReconstructor::fit_withConstraints()
 	}
 }
 
-void MultilinearReconstructor::collectICPConstraints(const shared_ptr<PhGUtils::TriMesh>& msh, int iter, int maxIter)
+void MultilinearReconstructor_old::collectICPConstraints(const shared_ptr<PhGUtils::TriMesh>& msh, int iter, int maxIter)
 {
 	const float scaleFactor = fabs(RTparams[6]);
 	// determine a distance threshold
@@ -4436,7 +4437,7 @@ void MultilinearReconstructor::collectICPConstraints(const shared_ptr<PhGUtils::
 	*/
 }
 
-void MultilinearReconstructor::fitMesh_ICP(
+void MultilinearReconstructor_old::fitMesh_ICP(
 	const shared_ptr<PhGUtils::TriMesh>& msh)
 {
 	fitPose = true; fitIdentity = true; fitExpression = true;
@@ -4578,7 +4579,7 @@ void MultilinearReconstructor::fitMesh_ICP(
 	timerTotal.toc("total time");
 }
 
-float MultilinearReconstructor::computeError_Constraints()
+float MultilinearReconstructor_old::computeError_Constraints()
 {
 	// set up rotation matrix and translation vector
 	float E = 0, wsum = 0;
@@ -4600,7 +4601,7 @@ float MultilinearReconstructor::computeError_Constraints()
 	return E / vcons.size();
 }
 
-void MultilinearReconstructor::printStats()
+void MultilinearReconstructor_old::printStats()
 {
 
 }

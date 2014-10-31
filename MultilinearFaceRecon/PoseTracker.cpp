@@ -122,10 +122,10 @@ bool PoseTracker::reconstructionWithSingleFrame(
 				int vidx = landmarks[i];
 				labeledLandmarks[i] = (make_pair(lms[i], vidx));
 			}
-			recon.bindTarget(labeledLandmarks, MultilinearReconstructor::TargetType_2D);
+			recon.bindTarget(labeledLandmarks, MultilinearReconstructor_old::TargetType_2D);
 
 			// fit the pose first, then fit the identity and pose together
-			recon.fit(MultilinearReconstructor::FIT_POSE_AND_IDENTITY);
+			recon.fit(MultilinearReconstructor_old::FIT_POSE_AND_IDENTITY);
 
 			// transfer the result to GPU
 			// rigid transformation parameters

@@ -222,7 +222,11 @@ void BlendShapeViewer::updateMeshWithGPUReconstructor() {
 void BlendShapeViewer::updateMeshWithReconstructor() {
 	//cout << "updating mesh with recon ..." << endl;
 	// set the vertices of mesh with the template mesh in the reconstructor
-	const Tensor1<float>& tplt = recon.currentMesh();
+#if 0
+  const Tensor1<float>& tplt = recon.currentMesh();
+#else
+  const Tensor1<float>& tplt = recon_2d.currentMesh();
+#endif
 
 	for(int i=0,idx=0;i<tplt.length()/3;i++) {
 		mesh.vertex(i).x = tplt(idx++);
@@ -239,9 +243,9 @@ void BlendShapeViewer::updateMeshWithReconstructor() {
 }
 
 #if USE_GPU_RECON
-void BlendShapeViewer::bindTargetLandmarksGPU( const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor::TargetType ttp ) {
+void BlendShapeViewer::bindTargetLandmarksGPU( const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor_old::TargetType ttp ) {
 	switch( ttp ) {
-	case MultilinearReconstructor::TargetType_2D:
+	case MultilinearReconstructor_old::TargetType_2D:
 		{
 			targetLandmarks.clear();
 			for(int i=0;i<lms.size();i++) {
@@ -251,7 +255,7 @@ void BlendShapeViewer::bindTargetLandmarksGPU( const vector<PhGUtils::Point3f>& 
 			}
 			break;
 		}
-	case MultilinearReconstructor::TargetType_3D:
+	case MultilinearReconstructor_old::TargetType_3D:
 		{
 			targetLandmarks = lms;
 			break;
@@ -264,10 +268,10 @@ void BlendShapeViewer::bindTargetLandmarksGPU( const vector<PhGUtils::Point3f>& 
 #endif
 
 // @note	lms may have larger size than landmarks, so always use the length of landmarks
-void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor::TargetType ttp )
+void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms, MultilinearReconstructor_old::TargetType ttp )
 {
 	switch( ttp ) {
-	case MultilinearReconstructor::TargetType_2D:
+	case MultilinearReconstructor_old::TargetType_2D:
 		{
 			targetLandmarks.clear();
 			for(int i=0;i<lms.size();i++) {
@@ -277,7 +281,7 @@ void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms
 			}
 			break;
 		}
-	case MultilinearReconstructor::TargetType_3D:
+	case MultilinearReconstructor_old::TargetType_3D:
 		{
 			targetLandmarks = lms;
 			break;
@@ -290,6 +294,15 @@ void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms
 		int vidx = landmarks[i];
 		pts.push_back(make_pair(lms[i], vidx));
 	}
+
+  // update the constraints
+  constraints.resize(landmarks.size());
+  for (int i = 0; i < landmarks.size(); ++i) {
+    constraints[i].vidx = landmarks[i];
+    constraints[i].weight = 1.0;
+    constraints[i].q.x = lms[i].x;
+    constraints[i].q.y = lms[i].y;
+  }
 
 	// pass the targets to recon
 	recon.bindTarget(pts, ttp);
@@ -327,7 +340,7 @@ void BlendShapeViewer::bindTargetMesh( const string& filename ) {
 	targetSet = true;
 }
 
-void BlendShapeViewer::fit(MultilinearReconstructor::FittingOption ops) {
+void BlendShapeViewer::fit(MultilinearReconstructor_old::FittingOption ops) {
 	//PhGUtils::Timer t;
 	//t.tic();
 	recon.fit(ops);
@@ -336,18 +349,23 @@ void BlendShapeViewer::fit(MultilinearReconstructor::FittingOption ops) {
 	updateMeshWithReconstructor();
 }
 
-void BlendShapeViewer::fit2d(MultilinearReconstructor::FittingOption ops /*= MultilinearReconstructor::FIT_ALL*/)
+void BlendShapeViewer::fit2d(MultilinearReconstructor_old::FittingOption ops /*= MultilinearReconstructor::FIT_ALL*/)
 {
 	//PhGUtils::Timer t;
 	//t.tic();
+#if 0
 	recon.fit2d(ops);
+#else
+  //cout << "fitting using the new engine..." << endl;
+  recon_2d.fit(constraints, FittingOption(ops));
+#endif
 	//t.toc("reconstruction");
 
 	updateMeshWithReconstructor();
 }
 
 
-void BlendShapeViewer::fitICP(MultilinearReconstructor::FittingOption ops /*= MultilinearReconstructor::FIT_ALL*/)
+void BlendShapeViewer::fitICP(MultilinearReconstructor_old::FittingOption ops /*= MultilinearReconstructor::FIT_ALL*/)
 {
 	PhGUtils::Timer t;
 	t.tic();
