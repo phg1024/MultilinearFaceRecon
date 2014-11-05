@@ -8,7 +8,7 @@
 struct DefaultParameters {
   DefaultParameters() {
     w_prior_id = 10.0;
-    w_prior_exp = 1.0;
+    w_prior_exp = 5.0;
   }
 
   // weights prior

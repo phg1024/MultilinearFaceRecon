@@ -75,9 +75,6 @@ protected:
 
 	// keyboard events handler
 	virtual void keyPressEvent(QKeyEvent *e);
-  virtual void mousePressEvent(QMouseEvent *e);
-  virtual void mouseReleaseEvent(QMouseEvent *e);
-  virtual void mouseMoveEvent(QMouseEvent *e);
 
 	void enableLighting();
 	void disableLighting();
