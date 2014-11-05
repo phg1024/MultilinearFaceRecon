@@ -5,7 +5,7 @@
 #include "opencv\cxcore.h"
 #include "opencv\highgui.h"
 //#include "opencv\cxerror.h"
-#include "engine.h"
+//#include "engine.h"
 //#pragma comment(lib,"opencv_highgui230.lib")
 //#pragma comment(lib,"cv230.lib") 
 //#pragma comment(lib,"cvaux230.lib") 

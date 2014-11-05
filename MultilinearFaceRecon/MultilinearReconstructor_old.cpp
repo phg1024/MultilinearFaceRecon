@@ -1277,7 +1277,6 @@ void MultilinearReconstructor_old::fit2d_poseAndExpression() {
     //updateTMC();
     timerOther.toc();
 
-
     E = computeError_2D();
     //PhGUtils::info("iters", iters, "Error", E);
 

@@ -52,6 +52,7 @@
     <addaction name="actionStart_Kinect"/>
     <addaction name="actionStart_Kinect_ICP"/>
     <addaction name="actionReset_Tracking"/>
+    <addaction name="actionSingle_Recon"/>
     <addaction name="actionBatch_Recon"/>
     <addaction name="actionBatch_Recon_ICP"/>
     <addaction name="actionBatch_Recon_ICP_GPU"/>
@@ -122,6 +123,11 @@
   <action name="actionBatch_Recon_ICP_GPU">
    <property name="text">
     <string>Batch Recon ICP GPU</string>
+   </property>
+  </action>
+  <action name="actionSingle_Recon">
+   <property name="text">
+    <string>Single Recon</string>
    </property>
   </action>
  </widget>

@@ -32,6 +32,7 @@ public slots:
 	void toggleKinectInput_Record();
 	void resetAAM();
 	void reconstructionWithBatchInput();
+  void reconstructionWithSingleImage();
 	int reconstructionWithSingleFrame(
 		const unsigned char* colordata,
 		const unsigned char* depthdata,

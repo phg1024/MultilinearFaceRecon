@@ -37,6 +37,7 @@ public:
   }
   ~MultilinearReconstructor(){}
 
+  void reset();
   void fit(const vector<Constraint> &constraints, FittingOption ops = FIT_ALL) {
     tmesh = opt->fit(constraints, ops);
   }
@@ -47,6 +48,7 @@ public:
 
 private:
   friend typename Optimizer;
+  friend class BlendShapeViewer;
   void init() {
     params.loadPrior("../Data/blendshape/wid.bin", "../Data/blendshape/wexp.bin");
     params.init();
@@ -70,3 +72,11 @@ private:
   Tensor1<float> tmesh;   // fitted mesh
   Parameters params;
 };
+
+template <class Constraint, class Optimizer, class Parameters /*= DefaultParameters*/>
+void MultilinearReconstructor<Constraint, Optimizer, Parameters>::reset()
+{
+  this->params.init();
+  model.applyWeights(params.Wid, params.Wexp);
+  opt->init();
+}

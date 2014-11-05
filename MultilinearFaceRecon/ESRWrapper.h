@@ -11,6 +11,7 @@ public:
   ~ESRWrapper(void);
 
   void reset();
+  void resize(int w, int h);
   float getTrackingError() const {
     return 0;
   }

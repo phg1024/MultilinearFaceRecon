@@ -63,6 +63,7 @@ struct EnergyFunction2D {
       0, params.camparams.fy, params.camparams.cy,
       0, 0, 1);
     
+    //cout << Mproj << endl;
 
     // apply the new global transformation
     for (int i = 0, vidx = 0; i < npts; i++) {
@@ -72,8 +73,9 @@ struct EnergyFunction2D {
       // exclude mouth region and chin region
       if (params.fitExpression) {
         if (i >= 48 || (i >= 4 && i <= 12))
-          wpt = 0.0;
+          wpt = 0.35;
       }
+      else if (i < 17) wpt = 0.75;
 
       float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
       const PhGUtils::Point2f& q = targets_2d.at(i).q;
@@ -94,6 +96,7 @@ struct EnergyFunction2D {
       hx[i] = sqrt(dx * dx + dy * dy) * wpt;
     }
   }
+
   void jacobian_pose(float *p, float *J, int m, int n, void* adata) {
     // J is a n-by-m matrix
     float rx, ry, rz, tx, ty, tz;
@@ -125,8 +128,9 @@ struct EnergyFunction2D {
       // exclude mouth region and chin region
       if (params.fitExpression) {
         if (i >= 48 || (i >= 4 && i <= 12))
-          wpt = 0.0;
+          wpt = 0.35;
       }
+      else if (i < 17) wpt = 0.75;
 
       // point p
       float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);

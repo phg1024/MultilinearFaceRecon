@@ -61,6 +61,12 @@ public:
   }
   ~Optimizer(){}
 
+  void init() {
+    updateProjectedTensors();
+    initializeRigidTransformation();
+    engfun.reset(new EnergyFunction(model_projected, params, cons));
+  }
+
   Tensor1<float> fit(const vector<Constraint> &constraints,
                      FittingOption &ops) {
 
@@ -111,9 +117,7 @@ private:
     cons = constraints;
 
     if (needInitialize) {
-      updateProjectedTensors();
-      initializeRigidTransformation();
-      engfun.reset(new EnergyFunction(model_projected, params, cons));
+      init();
     }      
   }
 
@@ -153,8 +157,38 @@ private:
 
   void fit_pose() {
     PhGUtils::message("fitting pose ...");
-    fitRigidTransformation();
-    float E = computeError();
+    params.fitExpression = false;
+
+    int iters = 0;
+    float E0 = 0, E = 1e10;
+    bool converged = false;
+    const int MAXITERS = 128;
+    const float errorThreshold = 1e-3;
+    const float errorDiffThreshold = 1e-6;
+
+    while (!converged && iters++ < MAXITERS) {
+      converged = true;
+
+      converged &= fitRigidTransformation();
+      
+      E = computeError();
+      PhGUtils::info("iters", iters, "Error", E);
+
+      converged |= E < errorThreshold;
+      converged |= fabs(E - E0) < errorDiffThreshold;
+      E0 = E;
+
+      // uncomment to show the transformation process		
+
+      /*
+      transformMesh();
+      Rmat.print("R");
+      Tvec.print("T");
+      emit oneiter();
+      QApplication::processEvents();
+      ::system("pause");
+      */
+    }
     cout << "Error = " << E << endl;
   }
 
@@ -173,7 +207,7 @@ private:
     int iters = 0;
     float E0 = 0, E = 1e10;
     bool converged = false;
-    const int MAXITERS = 32;
+    const int MAXITERS = 128;
     const float errorThreshold = 1e-3;
     const float errorDiffThreshold = 1e-6;
 
@@ -238,13 +272,15 @@ private:
   }
 
   void fit_pose_and_expression() {
+    params.fitExpression = true;
+
     PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
 
     timerTotal.tic();
     int iters = 0;
     float E0 = 0, E = 1e10;
     bool converged = false;
-    const int MAXITERS = 32;
+    const int MAXITERS = 128;
     const float errorThreshold = 1e-3;
     const float errorDiffThreshold = 1e-6;
 
@@ -330,9 +366,14 @@ private:
     auto &RTparams = params.RTparams;
     int nparams = Parameters::nRTparams;
 
-    float opts[4] = { 1e-3, 1e-9, 1e-9, 1e-9 };  // tau, eps1, eps2, eps3
+    float opts[4] = { 1e-6, 1e-12, 1e-12, 1e-12 };  // tau, eps1, eps2, eps3
+#if 1
     int iters = slevmar_der(cost_func_pose<EnergyFunction>, jac_func_pose<EnergyFunction>, 
-      RTparams, &(meas[0]), nparams, npts, 128, opts, NULL, NULL, NULL, engfun.get());
+      RTparams, &(meas[0]), nparams, npts, 256, opts, NULL, NULL, NULL, engfun.get());
+#else
+    int iters = slevmar_dif(cost_func_pose<EnergyFunction>, RTparams, &(meas[0]), nparams, npts, 256, NULL, NULL, NULL, NULL, engfun.get());
+#endif
+
     //cout << "iters = " << iters << endl;
     // set up the matrix and translation vector
     params.Rmat = PhGUtils::rotationMatrix(RTparams[0], RTparams[1], RTparams[2]);

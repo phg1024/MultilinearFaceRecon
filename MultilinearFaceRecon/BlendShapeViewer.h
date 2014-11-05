@@ -21,6 +21,9 @@ public:
 	BlendShapeViewer(QWidget* parent);
 	~BlendShapeViewer(void);
 
+  void setReconstructionImageSize(int w, int h);
+  void resetReconstructor();
+
 	void bindTargetMesh(const string& filename);
 	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts, MultilinearReconstructor_old::TargetType ttp = MultilinearReconstructor_old::TargetType_3D);
 	void bindRGBDTarget(
@@ -55,9 +58,11 @@ public:
   void printStatsGPU();
 #endif
 
+#if 0
 	const MultilinearReconstructor_old& getReconstructor() const {
 		return recon;
 	}
+#endif
 
 protected:
 	virtual void initializeGL();
@@ -70,6 +75,9 @@ protected:
 
 	// keyboard events handler
 	virtual void keyPressEvent(QKeyEvent *e);
+  virtual void mousePressEvent(QMouseEvent *e);
+  virtual void mouseReleaseEvent(QMouseEvent *e);
+  virtual void mouseMoveEvent(QMouseEvent *e);
 
 	void enableLighting();
 	void disableLighting();
@@ -94,12 +102,15 @@ private:
 
 	vector<PhGUtils::Point3f> targetLandmarks;
 	vector<int> landmarks;
+
+  int imageWidth, imageHeight;
+
   vector<Constraint_2D> constraints;
 
 #if USE_GPU_RECON
 	MultilinearReconstructorGPU GPURecon;
 #endif
-	MultilinearReconstructor_old recon;
+	//MultilinearReconstructor_old recon;
   MultilinearReconstructor<Constraint_2D, Optimizer<Constraint_2D, DefaultParameters, EnergyFunction2D>> recon_2d;
 
 	PhGUtils::Matrix4x4f mProj, mMv;

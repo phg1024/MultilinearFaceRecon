@@ -7,7 +7,7 @@
 
 struct DefaultParameters {
   DefaultParameters() {
-    w_prior_id = 1.0;
+    w_prior_id = 10.0;
     w_prior_exp = 1.0;
   }
 
@@ -32,7 +32,7 @@ struct DefaultParameters {
   PhGUtils::Point3f Tvec;
 
   struct CameraParams {
-    CameraParams() :fx(-525.0), fy(525.0), cx(320.0), cy(240.0){}
+    CameraParams() :fx(-5.25), fy(5.25), cx(320.0), cy(240.0){}
     double fx, fy, cx, cy;  /// estimated projection matrix
   } camparams;
 

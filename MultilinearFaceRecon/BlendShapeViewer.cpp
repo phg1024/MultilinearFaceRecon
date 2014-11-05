@@ -7,21 +7,24 @@
 BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 	GL3DCanvas(parent)
 {
-	this->resize(640, 480);
+  imageWidth = 640; imageHeight = 480;
+	this->resize(imageWidth, imageHeight);
 	this->setSceneScale(1.0);
 
-	showLandmarks = true;
+	showLandmarks = false;
 
 	// load a dummy mesh
 	PhGUtils::OBJLoader loader;
 	loader.load("../Data/shape_0.obj");
 	mesh.initWithLoader( loader );
 
-	recon.setBaseMesh(mesh);
+	//recon.setBaseMesh(mesh);
 
 #if USE_GPU_RECON
 	GPURecon.setBaseMesh(mesh);
 #endif
+
+  recon_2d.params.w_prior_exp = 0.5;
 
 	targetSet = false;
 
@@ -29,7 +32,7 @@ BlendShapeViewer::BlendShapeViewer(QWidget* parent):
 
 	updateMeshWithReconstructor();
 
-	connect(&recon, SIGNAL(oneiter()), this, SLOT(updateMeshWithReconstructor()));
+	//connect(&recon, SIGNAL(oneiter()), this, SLOT(updateMeshWithReconstructor()));
 
 	mProj = PhGUtils::KinectColorProjection.transposed();
 	mMv = PhGUtils::Matrix4x4f::identity();
@@ -88,13 +91,16 @@ void BlendShapeViewer::paintGL() {
 }
 
 void BlendShapeViewer::setupViewingParameters() {
-	glViewport(0, 0, 640, 480);
+	glViewport(0, 0, imageWidth, imageHeight);
 
   /// obtain the projection matrix from recon
-  double f = recon.cameraFocalLength();
-  mProj = PhGUtils::Matrix4x4f(f / 320.0, 0, 0, 0,
-                               0, f / 240.0, 0, 0,
-                               0, 0, -10.001 / 9.999, -0.02 / 9.999,
+  //double f = recon.cameraFocalLength();
+  double f = recon_2d.params.camparams.fy;
+  double fx = imageWidth / 2.0;
+  double fy = imageHeight / 2.0;
+  mProj = PhGUtils::Matrix4x4f(f / fx, 0, 0, 0,
+                               0, f / fy, 0, 0,
+                               0, 0, -1000.00001 / 999.99999, -0.02 / 999.99999,
                                0, 0, -1.0, 0).transposed();
 
 	glMatrixMode(GL_PROJECTION);
@@ -129,6 +135,7 @@ bool BlendShapeViewer::loadLandmarks()
 
 void BlendShapeViewer::drawGenreatedMesh()
 {
+#if 0
 	const Tensor1<float>& tplt = recon.currentMesh();
 	// draw the mesh directly with the reconstructed data
 	int nFaces = mesh.faceCount();
@@ -156,21 +163,49 @@ void BlendShapeViewer::drawGenreatedMesh()
 		glVertex3f(v4.x, v4.y, v4.z);
 	}
 	glEnd();
+#endif
 }
 
 
 void BlendShapeViewer::drawLandmarks() {
-	glPointSize(3.0);
+	glPointSize(5.0);
 	glColor4f(1, 0, 0, 1);
 	// landmarks on the mesh
 	GLfloat mat_diffuse[] = {1.0, 0.25, 0.25, 1.0};
 	glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, mat_diffuse);
 
+  double modelMatrix[16], projMatrix[16];
+  int viewport[4];
+  glGetDoublev(GL_MODELVIEW_MATRIX, modelMatrix);
+  glGetDoublev(GL_PROJECTION_MATRIX, projMatrix);
+  glGetIntegerv(GL_VIEWPORT, viewport);
+
 	glBegin(GL_POINTS);
+  int qidx = 0;
 	for_each(landmarks.begin(), landmarks.end(), [&](int vidx){
 		const PhGUtils::QuadMesh::vert_t& v = mesh.vertex(vidx);
 		glNormal3f(0, 0, 1.0);
-		glVertex3f(v.x, v.y, v.z);
+		//glVertex3f(v.x, v.y, v.z);
+
+    double x, y, z;
+    gluProject(v.x, v.y, v.z, modelMatrix, projMatrix, viewport, &x, &y, &z);
+
+    double nx, ny, nz;
+    gluUnProject(x, y, 0.999975, modelMatrix, projMatrix, viewport, &nx, &ny, &nz);
+
+    glNormal3f(0, 0, 1.0);
+    glVertex3f(nx, ny, nz);
+
+    /*
+    if (targetSet) {
+      PhGUtils::Point3f q2d;
+      PhGUtils::worldToColor(v.x, v.y, v.z, q2d.x, q2d.y, q2d.z,
+        recon_2d.params.camparams.fx, recon_2d.params.camparams.cx, recon_2d.params.camparams.cy);
+
+      cout << q2d << " | " << targetLandmarks[qidx] << endl;
+      ++qidx;
+    }
+    */
 	});
 	glEnd();
 
@@ -194,9 +229,15 @@ void BlendShapeViewer::drawLandmarks() {
 			float t = (p.z -minZ) / diffZ;
 			glColor4f(0, 1-t, t, 1);
 			*/
+      /*
+      PhGUtils::Point3f q;
+      PhGUtils::colorToWorld(p.x, p.y, 1.0, q.x, q.y, q.z,
+        recon_2d.params.camparams.fx, recon_2d.params.camparams.cx, recon_2d.params.camparams.cy);
+        */
+      double x, y, z;
+      gluUnProject(p.x, height()-p.y, 0.99995, modelMatrix, projMatrix, viewport, &x, &y, &z);
 			glNormal3f(0, 0, 1.0);
-			glVertex3f(p.x, p.y, p.z);
-			//cout << p << endl;
+			glVertex3f(x, y, z);			
 		});
 		glEnd();
 	}
@@ -233,6 +274,8 @@ void BlendShapeViewer::updateMeshWithReconstructor() {
 		mesh.vertex(i).y = tplt(idx++);
 		mesh.vertex(i).z = tplt(idx++);
 	}
+
+  mesh.computeNormals();
 
   /*
   PhGUtils::OBJWriter writer;
@@ -275,9 +318,13 @@ void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms
 		{
 			targetLandmarks.clear();
 			for(int i=0;i<lms.size();i++) {
+#if 0
 				PhGUtils::Point3f p;
 				PhGUtils::colorToWorld(lms[i].x, lms[i].y, lms[i].z, p.x, p.y, p.z);
 				targetLandmarks.push_back(p);
+#else
+        targetLandmarks.push_back(lms[i]);
+#endif
 			}
 			break;
 		}
@@ -305,13 +352,13 @@ void BlendShapeViewer::bindTargetLandmarks( const vector<PhGUtils::Point3f>& lms
   }
 
 	// pass the targets to recon
-	recon.bindTarget(pts, ttp);
+	// recon.bindTarget(pts, ttp);
 	targetSet = true;
 }
 
 void BlendShapeViewer::bindRGBDTarget(const vector<unsigned char>& colordata, const vector<unsigned char>& depthdata)
 {
-	recon.bindRGBDTarget(colordata, depthdata);
+	//recon.bindRGBDTarget(colordata, depthdata);
 }
 
 #if USE_GPU_RECON
@@ -336,14 +383,14 @@ void BlendShapeViewer::bindTargetMesh( const string& filename ) {
 		targetLandmarks[i] = vi;
 	}
 
-	recon.bindTarget(pts);
+	//recon.bindTarget(pts);
 	targetSet = true;
 }
 
 void BlendShapeViewer::fit(MultilinearReconstructor_old::FittingOption ops) {
 	//PhGUtils::Timer t;
 	//t.tic();
-	recon.fit(ops);
+	//recon.fit(ops);
 	//t.toc("reconstruction");
 	
 	updateMeshWithReconstructor();
@@ -369,7 +416,7 @@ void BlendShapeViewer::fitICP(MultilinearReconstructor_old::FittingOption ops /*
 {
 	PhGUtils::Timer t;
 	t.tic();
-	recon.fitICP(ops);
+	//recon.fitICP(ops);
 	t.toc("reconstruction");
 
 	updateMeshWithReconstructor();
@@ -394,6 +441,7 @@ void BlendShapeViewer::fitICP_GPU(MultilinearReconstructorGPU::FittingOption ops
 #endif
 
 void BlendShapeViewer::generatePrior() {
+#if 0
 	const string path = "C:\\Users\\Peihong\\Desktop\\Data\\FaceWarehouse_Data_0\\";
 	const string foldername = "Tester_";
 	//const string meshFolder = "Blendshape";
@@ -441,6 +489,7 @@ void BlendShapeViewer::generatePrior() {
 	// write the fitted weights to files
 	PhGUtils::write2file(Wids, "wid.txt");
 	PhGUtils::write2file(Wexps, "wexp.txt");
+#endif
 }
 
 void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
@@ -462,7 +511,7 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 			PhGUtils::message("Please input expression prior weight:");
 			float w;
 			cin >> w;
-			recon.expPriorWeights(w);
+			//recon.expPriorWeights(w);
 			break;
 		}
 #if USE_GPU_RECON
@@ -478,7 +527,7 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 			PhGUtils::message("Please input identity prior weight:");
 			float w;
 			cin >> w;
-			recon.idPriorWeight(w);
+			//recon.idPriorWeight(w);
 			break;
 		}
 	case Qt::Key_L:
@@ -510,11 +559,11 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 
 			QString filename = QFileDialog::getOpenFileName(this, "Please select a mesh file", "../Data/", "*.obj");
 
-			recon.fitMesh(filename.toStdString(), hints);
+			//recon.fitMesh(filename.toStdString(), hints);
 		}
 	case Qt::Key_P:
 		{
-			recon.togglePrior();
+			//recon.togglePrior();
 			break;
 		}
 	}
@@ -523,11 +572,13 @@ void BlendShapeViewer::keyPressEvent( QKeyEvent *e ) {
 void BlendShapeViewer::enableLighting()
 {
 	GLfloat light_position[] = {10.0, 4.0, 10.0,1.0};
-	GLfloat mat_specular[] = {0.8, 0.8, 0.8, 1.0};
+	GLfloat mat_specular[] = {0.25, 0.25, 0.25, 1.0};
 	GLfloat mat_diffuse[] = {0.375, 0.375, 0.375, 1.0};
 	GLfloat mat_shininess[] = {25.0};
 	GLfloat light_ambient[] = {0.05, 0.05, 0.05, 1.0};
 	GLfloat white_light[] = {1.0, 1.0, 1.0, 1.0};
+
+  glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE);
 
 	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, mat_specular);
 	glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, mat_shininess);
@@ -644,5 +695,36 @@ void BlendShapeViewer::transferParameters(TransferDirection dir)
 
 void BlendShapeViewer::printStats()
 {
-	recon.printStats();
+	//recon.printStats();
+}
+
+void BlendShapeViewer::setReconstructionImageSize(int w, int h)
+{
+  imageWidth = w;
+  imageHeight = h;
+  recon_2d.params.camparams.cx = imageWidth / 2.0;
+  recon_2d.params.camparams.cy = imageHeight / 2.0;
+  recon_2d.params.camparams.fx = -500.0;
+  recon_2d.params.camparams.fy = 500.0;
+}
+
+void BlendShapeViewer::resetReconstructor()
+{
+  // reset pose and identity
+  recon_2d.reset();
+}
+
+void BlendShapeViewer::mousePressEvent(QMouseEvent *e)
+{
+
+}
+
+void BlendShapeViewer::mouseReleaseEvent(QMouseEvent *e)
+{
+
+}
+
+void BlendShapeViewer::mouseMoveEvent(QMouseEvent *e)
+{
+
 }

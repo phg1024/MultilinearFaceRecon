@@ -14,6 +14,11 @@ void ESRWrapper::reset() {
 
 }
 
+void ESRWrapper::resize(int w, int h) {
+  colorImage.create(h, w, CV_8UC4);
+  depthImg = cv::Mat::zeros(h, w, CV_32FC1);
+}
+
 void ESRWrapper::setup() {
   char *modelName = "../Data/model_LocalGlobal_RandLarge_WRCV_Advanced_fast.bin";
   engine.load_CVPR14(modelName);
@@ -32,6 +37,7 @@ void ESRWrapper::printTimeStats() {
 
 const vector<float>& ESRWrapper::track(const unsigned char* cimg,
   const unsigned char* dimg, int w, int h) {
+  cout << "tracking a " << w << "x" << h << " image." << endl;
   /// realtime tracking related
   tPrep.tic();
   // copy the image over here

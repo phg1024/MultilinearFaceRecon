@@ -41,6 +41,7 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	connect(ui.actionBatch_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithBatchInput()));
 	connect(ui.actionBatch_Recon_ICP, SIGNAL(triggered()), this,  SLOT(reconstructionWithBatchInput_ICP()));
 	connect(ui.actionBatch_Recon_ICP_GPU, SIGNAL(triggered()), this,  SLOT(reconstructionWithBatchInput_GPU()));
+  connect(ui.actionSingle_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithSingleImage()));
 
 	connect(ui.actionRecord, SIGNAL(triggered()), this, SLOT(toggleKinectInput_Record()));
 
@@ -104,6 +105,7 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 	vector<float>& fpts
 	) 
 {
+#if 0
 	const int w = 640, h = 480;
 
 
@@ -145,6 +147,10 @@ int MultilinearFaceRecon::reconstructionWithSingleFrame(
 		*/
 		return 0;
 	}
+#else
+
+  return 0;
+#endif
 }
 
 void MultilinearFaceRecon::reconstructionWithBatchInput() {
@@ -160,7 +166,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
 	const string imageName = "Peihong_";
 	const string colorPostfix = "_color.png";
 	const string depthPostfix = "_depth.png";
-	const int startIdx = 10001;
+	const int startIdx = 10000;
 	const int imageCount = 250;
 
 #elif YILONG
@@ -262,7 +268,7 @@ void MultilinearFaceRecon::reconstructionWithBatchInput() {
     tCombined.toc();
 
 		QApplication::processEvents();
-		//::system("pause");
+		::system("pause");
 #endif	
 	}
 	PhGUtils::message("Average reconstruction time = " + PhGUtils::toString(tRecon.elapsed() * 1000.0 / validFrames) + "ms");
@@ -576,8 +582,6 @@ void MultilinearFaceRecon::reconstructionWithBatchInput_ICP()
 	PhGUtils::message("Average tracking+recon time = " + PhGUtils::toString(tCombined.elapsed() / validFrames));
 }
 
-
-
 void MultilinearFaceRecon::updateKinectStreams_2D()
 {
 	tKman.tic();
@@ -632,7 +636,6 @@ void MultilinearFaceRecon::updateKinectStreams_2D()
 	//viewer->fit2d(MultilinearReconstructor::FIT_POSE);
 	tRecon.toc();
 }
-
 
 void MultilinearFaceRecon::updateKinectStreams()
 {	
@@ -895,4 +898,70 @@ void MultilinearFaceRecon::toggleKinectInput_Record()
 		}
 		PhGUtils::message("done.");
 	}
+}
+
+void MultilinearFaceRecon::reconstructionWithSingleImage()
+{
+  // load an selected image
+  QString filename = QFileDialog::getOpenFileName();
+  QImage inimg(filename);
+  cout << "image size: " << inimg.width() << "x" << inimg.height() << endl;
+
+  // scale down the image if necessary
+  int w = inimg.width(), h = inimg.height();
+  int longside = max(w, h);
+  float factor = 640 / (float)longside;
+  inimg = inimg.scaled(w*factor, h*factor);
+  cout << "new image size: " << inimg.width() << "x" << inimg.height() << endl;
+  w = inimg.width();
+  h = inimg.height();
+
+  // resize the viewer accordingly
+  //viewer->resize(w, h);
+  colorView->resize(w, h);
+  this->resize(w, h + 53);
+  cout << "canvas size: " << viewer->width() << "x" << viewer->height() << endl;
+  // obtain the data
+  vector<unsigned char> colordata = PhGUtils::fromQImage(inimg);
+
+  colorView->bindStreamData(&colordata[0], w, h);
+  depthView->hide();
+
+  // update the tracker
+  int w0 = tracker->getImageWidth();
+  int h0 = tracker->getImageHeight();
+
+  tracker->setImageSize(w, h);
+
+  cout << "finding feature points..." << endl;
+  vector<float> fpts = tracker->track(&colordata[0], NULL);
+  tracker->printTimeStats();
+  colorView->bindLandmarks(fpts);
+
+  // reconstruction
+  if (fpts.empty()) return;
+  
+  // get the 3D landmarks and feed to recon manager
+  int npts = fpts.size() / 2;
+  for (int i = 0; i < npts; i++) {
+    int u = fpts[i];
+    int v = fpts[i + npts];
+    int idx = (v*w + u) * 4;
+    float d = 0.99995;
+
+    lms[i].x = u;
+    lms[i].y = v;
+    lms[i].z = d;
+  }
+
+  viewer->bindTargetLandmarks(lms, MultilinearReconstructor_old::TargetType_2D);
+  viewer->setReconstructionImageSize(w, h);
+  viewer->resetReconstructor();
+  viewer->fit2d(MultilinearReconstructor_old::FIT_POSE);
+  QApplication::processEvents();
+  ::system("pause");
+  viewer->fit2d(MultilinearReconstructor_old::FIT_POSE_AND_IDENTITY);
+  QApplication::processEvents();
+  ::system("pause");
+  viewer->fit2d(MultilinearReconstructor_old::FIT_POSE_AND_EXPRESSION);
 }

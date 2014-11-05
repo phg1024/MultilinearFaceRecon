@@ -9,8 +9,11 @@ public:
   FaceAligner();
   ~FaceAligner();
 
+  void setImageSize(int width, int height) { w = width; h = height; engine->resize(w, h); }
   void setImageWidth(int width){ w = width; }
   void setImageHeight(int height){ h = height; }
+  int getImageWidth() const { return w; }
+  int getImageHeight() const { return h; }
   const vector<float>& track(const unsigned char* cimg,
                              const unsigned char* dimg);
   void printTimeStats();
