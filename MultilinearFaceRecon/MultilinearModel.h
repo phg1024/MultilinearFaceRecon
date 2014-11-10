@@ -13,7 +13,7 @@ struct MultilinearModel {
   }
 
   MultilinearModel project(const vector<int> &indices) const {
-    cout << "creating projected tensors..." << endl;
+    //cout << "creating projected tensors..." << endl;
     // create a projected version of the model
     MultilinearModel newmodel;
     newmodel.core.resize(core.dim(0), core.dim(1), indices.size() * 3);
@@ -86,14 +86,14 @@ struct MultilinearModel {
   }
 
   void applyWeights(const Tensor1<T> &w0, const Tensor1<T> &w1) {
-    cout << "applying weights ..." << endl;
+    //cout << "applying weights ..." << endl;
     updateTM0(w0);
-    cout << tm0.dim(0) << "x" << tm0.dim(1) << endl;
+    //cout << tm0.dim(0) << "x" << tm0.dim(1) << endl;
     updateTM1(w1);
-    cout << tm1.dim(0) << "x" << tm1.dim(1) << endl;
+    //cout << tm1.dim(0) << "x" << tm1.dim(1) << endl;
     updateTMWithMode1(w0);
-    cout << tm.length() << endl;
-    cout << "done." << endl;
+    //cout << tm.length() << endl;
+    //cout << "done." << endl;
   }
 
   // original tensors

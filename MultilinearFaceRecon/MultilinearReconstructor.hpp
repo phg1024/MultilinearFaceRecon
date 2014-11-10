@@ -27,6 +27,7 @@
 #include "Optimizer.h"
 #include "MultilinearModel.h"
 #include "Parameters.h"
+#include "OffscreenRenderer.h"
 
 template <class Constraint, class Optimizer, class Parameters = DefaultParameters>
 class MultilinearReconstructor {
@@ -38,6 +39,7 @@ public:
   ~MultilinearReconstructor(){}
 
   void reset();
+  void setImageSize(int w, int h);
   void fit(const vector<Constraint> &constraints, FittingOption ops = FIT_ALL) {
     tmesh = opt->fit(constraints, ops);
   }
@@ -45,6 +47,8 @@ public:
   const Tensor1<float> &currentMesh() const{
     return tmesh;
   }
+
+  const vector<Constraint>& getConstraints() const { return opt->getConstraints(); }
 
 private:
   friend typename Optimizer;
@@ -55,6 +59,9 @@ private:
     loadModel("../Data/blendshape/core.bin");
     preprocessModel();
     opt.reset(new Optimizer(model, params));
+
+    renderer.reset(new OffscreenRenderer(640, 480));
+    opt->bindOffscreenRenderer(renderer);
   }
 
   void loadModel(const string &filename) {
@@ -71,7 +78,21 @@ private:
   shared_ptr<Optimizer> opt;
   Tensor1<float> tmesh;   // fitted mesh
   Parameters params;
+  shared_ptr<OffscreenRenderer> renderer;
 };
+
+template <class Constraint, class Optimizer, class Parameters /*= DefaultParameters*/>
+void MultilinearReconstructor<Constraint, Optimizer, Parameters>::setImageSize(int w, int h)
+{
+  // update the parameters for the reconstruction engine
+  params.camparams.cx = w / 2.0;
+  params.camparams.cy = h / 2.0;
+  params.camparams.fx = -500.0;
+  params.camparams.fy = 500.0;
+
+  // update the parameters for the fbo
+  renderer->resizeBuffers(w, h);
+}
 
 template <class Constraint, class Optimizer, class Parameters /*= DefaultParameters*/>
 void MultilinearReconstructor<Constraint, Optimizer, Parameters>::reset()

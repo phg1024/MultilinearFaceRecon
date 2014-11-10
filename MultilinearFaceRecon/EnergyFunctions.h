@@ -75,7 +75,7 @@ struct EnergyFunction2D {
         if (i >= 48 || (i >= 4 && i <= 12))
           wpt = 0.35;
       }
-      else if (i < 17) wpt = 0.75;
+      else if (i < 17) wpt = 1.0;
 
       float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
       const PhGUtils::Point2f& q = targets_2d.at(i).q;
@@ -130,7 +130,7 @@ struct EnergyFunction2D {
         if (i >= 48 || (i >= 4 && i <= 12))
           wpt = 0.35;
       }
-      else if (i < 17) wpt = 0.75;
+      else if (i < 17) wpt = 1.0;
 
       // point p
       float px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);

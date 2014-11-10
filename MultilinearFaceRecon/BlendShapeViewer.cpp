@@ -11,7 +11,7 @@ GL3DCanvas(parent)
   this->resize(imageWidth, imageHeight);
   this->setSceneScale(1.0);
 
-  showLandmarks = false;
+  showLandmarks = true;
 
   // load a dummy mesh
   PhGUtils::OBJLoader loader;
@@ -197,6 +197,7 @@ void BlendShapeViewer::drawLandmarks() {
   int qidx = 0;
   for_each(landmarks.begin(), landmarks.end(), [&](int vidx){
     const PhGUtils::QuadMesh::vert_t& v = mesh.vertex(vidx);
+    cout << vidx << " ";
     glNormal3f(0, 0, 1.0);
     //glVertex3f(v.x, v.y, v.z);
 
@@ -208,19 +209,35 @@ void BlendShapeViewer::drawLandmarks() {
 
     glNormal3f(0, 0, 1.0);
     glVertex3f(nx, ny, nz);
-
-    /*
-    if (targetSet) {
-    PhGUtils::Point3f q2d;
-    PhGUtils::worldToColor(v.x, v.y, v.z, q2d.x, q2d.y, q2d.z,
-    recon_2d.params.camparams.fx, recon_2d.params.camparams.cx, recon_2d.params.camparams.cy);
-
-    cout << q2d << " | " << targetLandmarks[qidx] << endl;
-    ++qidx;
-    }
-    */
   });
+  cout << endl;
   glEnd();
+
+  if (1) {
+    GLfloat mat_diffuse2[] = { 1.0, 1.0, 0.25, 1.0 };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, mat_diffuse2);
+    glColor4f(1, 1, 0, 1);
+
+    glBegin(GL_POINTS);
+    auto& updatedLandmarks = recon_2d.getConstraints();
+    for_each(updatedLandmarks.begin(), updatedLandmarks.end(), [&](const Constraint_2D &c){
+      cout << c.vidx << " ";
+      const PhGUtils::QuadMesh::vert_t& v = mesh.vertex(c.vidx);
+      glNormal3f(0, 0, 1.0);
+      //glVertex3f(v.x, v.y, v.z);
+
+      double x, y, z;
+      gluProject(v.x, v.y, v.z, modelMatrix, projMatrix, viewport, &x, &y, &z);
+
+      double nx, ny, nz;
+      gluUnProject(x, y, 0.999975, modelMatrix, projMatrix, viewport, &nx, &ny, &nz);
+
+      glNormal3f(0, 0, 1.0);
+      glVertex3f(nx, ny, nz);
+    });
+    cout << endl;
+    glEnd();
+  }
 
   if (targetSet) {
     GLfloat mat_diffuse[] = { 0.25, 1.0, 0.25, 1.0 };
@@ -722,10 +739,7 @@ void BlendShapeViewer::setReconstructionImageSize(int w, int h)
 {
   imageWidth = w;
   imageHeight = h;
-  recon_2d.params.camparams.cx = imageWidth / 2.0;
-  recon_2d.params.camparams.cy = imageHeight / 2.0;
-  recon_2d.params.camparams.fx = -500.0;
-  recon_2d.params.camparams.fy = 500.0;
+  recon_2d.setImageSize(w, h);
 }
 
 void BlendShapeViewer::resetReconstructor()

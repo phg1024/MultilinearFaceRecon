@@ -4,6 +4,7 @@
 #include "MultilinearModel.h"
 #include "PointConstraint.h"
 #include "EnergyFunctions.h"
+#include "OffscreenRenderer.h"
 
 enum FittingOption {
   FIT_POSE = 0,
@@ -61,7 +62,11 @@ public:
   }
   ~Optimizer(){}
 
+  void bindOffscreenRenderer(const shared_ptr<OffscreenRenderer> &r) {
+    renderer = r;
+  }
   void init() {
+    useInputBinding = true;
     updateProjectedTensors();
     initializeRigidTransformation();
     engfun.reset(new EnergyFunction(model_projected, params, cons));
@@ -106,15 +111,24 @@ private:
       needInitialize = true;
     }
     else{
-      // check every single
+      // check every single constraint
       for (int i = 0; i < constraints.size(); ++i) {
         if (!cons[i].hasSameId(constraints[i])) {
-          needInitialize = true;
+          needInitialize = false;
           break;
         }
       }
     }
-    cons = constraints;
+    if (needInitialize || useInputBinding) {
+      cons = constraints;
+      useInputBinding = false;
+    }
+    else {
+      // correspondences are updated, only update the locations of the constraints
+      for (int i = 0; i < constraints.size(); ++i) {
+        cons[i].q = constraints[i].q;
+      }
+    }
 
     if (needInitialize) {
       init();
@@ -127,7 +141,7 @@ private:
       indices[i] = cons[i].vidx;
     }
     model_projected = model.project(indices);
-    cout << model_projected.core.dim(0) << ", " << model_projected.core.dim(1) << ", " << model_projected.core.dim(2) << endl;
+    //cout << model_projected.core.dim(0) << ", " << model_projected.core.dim(1) << ", " << model_projected.core.dim(2) << endl;
     model_projected.applyWeights(params.Wid, params.Wexp);
 
     // assume no rotation at this point
@@ -155,6 +169,8 @@ private:
     return engfun->error();
   }
 
+  void updateContourPoints();
+
   void fit_pose() {
     PhGUtils::message("fitting pose ...");
     params.fitExpression = false;
@@ -178,16 +194,17 @@ private:
       converged |= fabs(E - E0) < errorDiffThreshold;
       E0 = E;
 
-      // uncomment to show the transformation process		
+      generateFittedMesh();
+      renderer->updateMesh(tmesh);
+      renderer->updateFocalLength(params.camparams.fy);
+      renderer->render();
 
-      /*
-      transformMesh();
-      Rmat.print("R");
-      Tvec.print("T");
-      emit oneiter();
+      // update correspondence for contour feature points
+      updateContourPoints();
+      updateProjectedTensors();
+
       QApplication::processEvents();
       ::system("pause");
-      */
     }
     cout << "Error = " << E << endl;
   }
@@ -245,16 +262,14 @@ private:
       E0 = E;
       timerOther.toc();
 
-      // uncomment to show the transformation process		
+      model.updateTMWithMode1(params.Wid);
+      generateFittedMesh();
+      renderer->updateMesh(tmesh);
+      renderer->updateFocalLength(params.camparams.fy);
+      renderer->render();
 
-      /*
-      transformMesh();
-      Rmat.print("R");
-      Tvec.print("T");
-      emit oneiter();
-      QApplication::processEvents();
-      ::system("pause");
-      */
+      updateContourPoints();
+      updateProjectedTensors();
     }
 
     timerOther.tic();
@@ -272,7 +287,7 @@ private:
   }
 
   void fit_pose_and_expression() {
-    params.fitExpression = true;
+    params.fitExpression = false;
 
     PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
 
@@ -308,7 +323,7 @@ private:
       timerOther.toc();
       
       E = computeError();
-      //PhGUtils::info("iters", iters, "Error", E);
+      PhGUtils::info("iters", iters, "Error", E);
 
       converged |= E < errorThreshold;
       converged |= fabs(E - E0) < errorDiffThreshold;
@@ -316,15 +331,14 @@ private:
       timerOther.toc();
 
       // uncomment to show the transformation process		
+      model.updateTMWithMode0(params.Wexp);
+      generateFittedMesh();
+      renderer->updateMesh(tmesh);
+      renderer->updateFocalLength(params.camparams.fy);
+      renderer->render();
 
-      /*
-      transformMesh();
-      Rmat.print("R");
-      Tvec.print("T");
-      emit oneiter();
-      QApplication::processEvents();
-      ::system("pause");
-      */
+      updateContourPoints();
+      updateProjectedTensors();
     }
 
     timerTransform.tic();
@@ -353,7 +367,7 @@ private:
       denom += (yz*yz + xz*xz);
     }
     double nf = -numer / denom;
-    cout << nf << endl;
+    //cout << nf << endl;
     params.camparams.fx = -nf;
     params.camparams.fy = nf;
     return true;
@@ -431,7 +445,7 @@ private:
     }
     //cout << endl;
 
-    cout << "diff = " << diff << endl;
+    //cout << "diff = " << diff << endl;
 
     return diff < 1e-4;
   }
@@ -485,12 +499,110 @@ private:
     }
   }
 
+public:
+  const vector<Constraint>& getConstraints() const { return cons; }
+
 private:
   MultilinearModel<float> &model;
   Parameters &params;
   unique_ptr<EnergyFunction> engfun;
 
+  bool useInputBinding;
   MultilinearModel<float> model_projected;
   vector<Constraint> cons;
   Tensor1<float> tmesh;
+  shared_ptr<OffscreenRenderer> renderer;
 };
+
+template <typename Constraint, typename Parameters, typename EnergyFunction>
+void Optimizer<Constraint, Parameters, EnergyFunction>::updateContourPoints()
+{
+  //PhGUtils::message("Updating contour points...");
+  vector<Constraint> contour;
+  int imgWidth = renderer->getWidth(), imgHeight = renderer->getHeight();
+
+  auto depthMap = renderer->getDepthMap();
+  auto indexMap = renderer->getIndexMap();
+  auto baseMesh = renderer->getBaseMesh();
+
+  contour.reserve(32);
+  // project the contour points to the image plane
+  vector<PhGUtils::Point3f> contourPts;
+  int contourPointsCount = 17;
+  for (int i = 0; i < contourPointsCount; ++i) {
+    int fptIdx = cons[i].vidx;
+    int fptOffset = fptIdx * 3;
+    PhGUtils::Point3f fpt(tmesh(fptOffset), tmesh(fptOffset + 1), tmesh(fptOffset + 2));
+    double u, v, d;
+    renderer->project(u, v, d, fpt.x, fpt.y, fpt.z);
+    contourPts.push_back(PhGUtils::Point3f(u, v, d));
+  }
+
+  // on the projected image plane, find the closest match
+  for (int i = 0; i < contourPts.size(); ++i) {
+    const int wSize = 5;
+
+    set<int> checkedFaces;
+    set<int> fpts_candidate;
+
+    const float alpha = 0.75;
+    int u = alpha * cons[i].q.x + (1.0 - alpha)*contourPts[i].x;
+    //cout << cons[i].q.x << " vs " << contourPts[i].x << "\t";
+    //cout << cons[i].q.y << " vs " << (imgHeight-1-contourPts[i].y) << endl;
+    int v = alpha * cons[i].q.y + (1.0 - alpha)*(imgHeight-1-contourPts[i].y);
+
+    // scan a small window to find the potential faces
+    for (int r = v - wSize; r <= v + wSize; r++) {
+      int rr = imgHeight - 1 - r;
+      for (int c = u - wSize; c <= u + wSize; c++) {
+        int pidx = rr * imgWidth + c;
+        int poffset = pidx << 2;		// pixel index for synthesized image
+
+        // get face index and depth value
+        int fidx;
+        PhGUtils::decodeIndex<float>(indexMap[poffset] / 255.0f, indexMap[poffset + 1] / 255.0f, indexMap[poffset + 2] / 255.0f, fidx);
+        float depthVal = depthMap[pidx];
+
+        if (depthVal < 1.0) {
+          if (std::find(checkedFaces.begin(), checkedFaces.end(), fidx) == checkedFaces.end()) {
+            // not checked yet
+            checkedFaces.insert(fidx);
+            const PhGUtils::QuadMesh::face_t& f = baseMesh.face(fidx);
+
+            fpts_candidate.insert(f.x); fpts_candidate.insert(f.y); fpts_candidate.insert(f.z); fpts_candidate.insert(f.w);
+          }
+          else {
+            // already checked, do nothing
+          }
+        }
+      }
+
+      //cout << "candidates = " << fpts_candidate.size() << endl;
+    }
+
+    // now check the candidates
+    float dx = contourPts[i].x - u;
+    float dy = (imgHeight - 1 - contourPts[i].y) - v;
+    float closestDist = dx*dx + dy*dy;
+    int closestIdx = cons[i].vidx;
+
+    for (auto cidx : fpts_candidate) {
+      int cOffset = cidx * 3;
+      PhGUtils::Point3f fpt(tmesh(cOffset), tmesh(cOffset + 1), tmesh(cOffset + 2));
+      double uf, vf, df;
+      renderer->project(uf, vf, df, fpt.x, fpt.y, fpt.z);
+      vf = imgHeight - 1 - vf;
+      float du = u - uf;
+      float dv = v - vf;
+      float dist = du*du + dv*dv;
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIdx = cidx;
+      }
+    }
+
+    // update the constraint
+    //cout << fpts_candidate.size() << "\t" << cons[i].vidx << " -> " << closestIdx << endl;
+    cons[i].vidx = closestIdx;
+  }
+}
