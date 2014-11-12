@@ -71,9 +71,9 @@ struct EnergyFunction2D {
       float wpt = 1.0;
 
       // exclude mouth region and chin region
-      if (params.fitExpression) {
+      if (!params.fitExpression) {
         if (i >= 48 || (i >= 4 && i <= 12))
-          wpt = 0.35;
+          wpt = 0.9;
       }
       else if (i < 17) wpt = 1.0;
 
@@ -126,9 +126,9 @@ struct EnergyFunction2D {
       float wpt = 1.0;
 
       // exclude mouth region and chin region
-      if (params.fitExpression) {
+      if (!params.fitExpression) {
         if (i >= 48 || (i >= 4 && i <= 12))
-          wpt = 0.35;
+          wpt = 0.9;
       }
       else if (i < 17) wpt = 1.0;
 

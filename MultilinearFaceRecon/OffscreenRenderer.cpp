@@ -14,6 +14,7 @@ OffscreenRenderer::OffscreenRenderer(int w, int h)
   baseMesh.initWithLoader(loader);
 
   // find out interesting faces
+#if 0
   faceSet.reserve(baseMesh.faceCount());
   for (int i = 0; i < baseMesh.faceCount();++i) {
     const PhGUtils::QuadMesh::face_t& f = baseMesh.face(i);
@@ -26,6 +27,17 @@ OffscreenRenderer::OffscreenRenderer(int w, int h)
       faceSet.push_back(i);
     }
   }
+#else
+  faceSet.reserve(baseMesh.faceCount());
+  ifstream fin("../Data/facemask.txt");
+  while (fin) {
+    int idx;
+    fin >> idx;
+    faceSet.push_back(idx);
+  }
+  fin.close();
+  cout << "faces in the mask = " << faceSet.size() << endl;
+#endif
 }
 
 void OffscreenRenderer::renderMeshToFBO()
@@ -140,7 +152,7 @@ void OffscreenRenderer::updateViewingMatricesFBO()
   double fy = fbo_height / 2.0;
   mProj = PhGUtils::Matrix4x4f(f / fx, 0, 0, 0,
     0, f / fy, 0, 0,
-    0, 0, -1000.00001 / 999.99999, -0.02 / 999.99999,
+    0, 0, -100.0001 / 99.9999, -0.02 / 99.9999,
     0, 0, -1.0, 0).transposed();
   mMv = PhGUtils::Matrix4x4f::identity();
 

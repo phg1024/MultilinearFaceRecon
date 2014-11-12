@@ -956,6 +956,7 @@ void MultilinearFaceRecon::reconstructionWithSingleImage()
 
   viewer->bindTargetLandmarks(lms, MultilinearReconstructor_old::TargetType_2D);
   viewer->setReconstructionImageSize(w, h);
+  viewer->bindImage(colordata);
   viewer->resetReconstructor();
   viewer->fit2d(MultilinearReconstructor_old::FIT_POSE);
   QApplication::processEvents();

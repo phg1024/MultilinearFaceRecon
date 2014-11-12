@@ -203,8 +203,8 @@ private:
       updateContourPoints();
       updateProjectedTensors();
 
-      QApplication::processEvents();
-      ::system("pause");
+      //QApplication::processEvents();
+      //::system("pause");
     }
     cout << "Error = " << E << endl;
   }
@@ -287,7 +287,7 @@ private:
   }
 
   void fit_pose_and_expression() {
-    params.fitExpression = false;
+    params.fitExpression = true;
 
     PhGUtils::Timer timerRT, timerID, timerExp, timerOther, timerTransform, timerTotal;
 

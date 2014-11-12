@@ -24,6 +24,7 @@ public:
   void setReconstructionImageSize(int w, int h);
   void resetReconstructor();
 
+  void bindImage(const vector<unsigned char> &img);
 	void bindTargetMesh(const string& filename);
 	void bindTargetLandmarks(const vector<PhGUtils::Point3f>& pts, MultilinearReconstructor_old::TargetType ttp = MultilinearReconstructor_old::TargetType_3D);
 	void bindRGBDTarget(
@@ -81,7 +82,7 @@ protected:
 
 	void drawLandmarks();
 	void drawGenreatedMesh();
-
+  void drawImage();
 	void drawMeshToFBO();
 
 private:
@@ -101,6 +102,8 @@ private:
 	vector<int> landmarks;
 
   int imageWidth, imageHeight;
+  vector<unsigned char> pixels;
+  GLuint imgTex;
 
   vector<Constraint_2D> constraints;
 

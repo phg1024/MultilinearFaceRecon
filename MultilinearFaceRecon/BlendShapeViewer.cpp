@@ -59,13 +59,21 @@ void BlendShapeViewer::paintGL() {
   glClearColor(1, 1, 1, 0);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+  glEnable(GL_BLEND);
+
   glEnable(GL_DEPTH_TEST);
   glDepthMask(GL_TRUE);
-
+  
   glEnable(GL_CULL_FACE);
   glCullFace(GL_BACK);
-  glPushMatrix();
 
+#if 0
+  glPushMatrix();
+  drawImage();
+  glPopMatrix();
+#endif
+
+  glPushMatrix();
   // setup the viewing matrices
   setupViewingParameters();
 
@@ -89,8 +97,8 @@ void BlendShapeViewer::paintGL() {
   //mesh.drawFrame();
   //drawGenreatedMesh();
 
-  glColor4f(0, 0, 0, 0.25);
-  targetMesh.drawFrame();
+  //glColor4f(0, 0, 0, 0.25);
+  //targetMesh.drawFrame();
 
   if (showLandmarks)
     drawLandmarks();
@@ -113,16 +121,18 @@ void BlendShapeViewer::setupViewingParameters() {
   double fy = imageHeight / 2.0;
   mProj = PhGUtils::Matrix4x4f(f / fx, 0, 0, 0,
     0, f / fy, 0, 0,
-    0, 0, -1000.00001 / 999.99999, -0.02 / 999.99999,
+    0, 0, -100.0001 / 99.9999, -0.02 / 99.9999,
     0, 0, -1.0, 0).transposed();
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  glMultMatrixf(mProj.data());
+  glLoadMatrixf(mProj.data());
+  //glMultMatrixf(mProj.data());
 
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-  glMultMatrixf(mMv.data());
+  glLoadMatrixf(mMv.data());
+  //glMultMatrixf(mMv.data());
 }
 
 bool BlendShapeViewer::loadLandmarks()
@@ -181,6 +191,16 @@ void BlendShapeViewer::drawGenreatedMesh()
 
 
 void BlendShapeViewer::drawLandmarks() {
+  glPushMatrix();
+
+  float tx = recon_2d.params.RTparams[3], ty = recon_2d.params.RTparams[4], tz = recon_2d.params.RTparams[5];
+  float* rotationMatrix = this->trackBall.getMatrix();
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+  glTranslatef(tx, ty, tz);
+  glMultMatrixf(rotationMatrix);
+  glTranslatef(-tx, -ty, -tz);
+
   glPointSize(5.0);
   glColor4f(1, 0, 0, 1);
   // landmarks on the mesh
@@ -198,17 +218,23 @@ void BlendShapeViewer::drawLandmarks() {
   for_each(landmarks.begin(), landmarks.end(), [&](int vidx){
     const PhGUtils::QuadMesh::vert_t& v = mesh.vertex(vidx);
     cout << vidx << " ";
-    glNormal3f(0, 0, 1.0);
-    //glVertex3f(v.x, v.y, v.z);
-
+#if 1
+    glPushMatrix();
+    glLoadIdentity();
+    //glMultMatrixf(rotationMatrix);
+    glTranslatef(v.x, v.y, v.z);    
+    glutSolidSphere(0.015, 16, 16);
+    glPopMatrix();
+#else
     double x, y, z;
     gluProject(v.x, v.y, v.z, modelMatrix, projMatrix, viewport, &x, &y, &z);
-
+    cout << z << endl;
     double nx, ny, nz;
-    gluUnProject(x, y, 0.999975, modelMatrix, projMatrix, viewport, &nx, &ny, &nz);
+    gluUnProject(x, y, z, modelMatrix, projMatrix, viewport, &nx, &ny, &nz);
 
     glNormal3f(0, 0, 1.0);
     glVertex3f(nx, ny, nz);
+#endif
   });
   cout << endl;
   glEnd();
@@ -223,9 +249,12 @@ void BlendShapeViewer::drawLandmarks() {
     for_each(updatedLandmarks.begin(), updatedLandmarks.end(), [&](const Constraint_2D &c){
       cout << c.vidx << " ";
       const PhGUtils::QuadMesh::vert_t& v = mesh.vertex(c.vidx);
-      glNormal3f(0, 0, 1.0);
-      //glVertex3f(v.x, v.y, v.z);
-
+#if 1
+      glPushMatrix();
+      glTranslatef(v.x, v.y, v.z);
+      glutSolidSphere(0.015, 16, 16);
+      glPopMatrix();
+#else
       double x, y, z;
       gluProject(v.x, v.y, v.z, modelMatrix, projMatrix, viewport, &x, &y, &z);
 
@@ -234,10 +263,15 @@ void BlendShapeViewer::drawLandmarks() {
 
       glNormal3f(0, 0, 1.0);
       glVertex3f(nx, ny, nz);
+#endif
     });
     cout << endl;
     glEnd();
   }
+  glPopMatrix();
+
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
 
   if (targetSet) {
     GLfloat mat_diffuse[] = { 0.25, 1.0, 0.25, 1.0 };
@@ -746,4 +780,66 @@ void BlendShapeViewer::resetReconstructor()
 {
   // reset pose and identity
   recon_2d.reset();
+}
+
+void BlendShapeViewer::drawImage()
+{
+  /// why is the depth incorrect?
+  if (pixels.empty()) return;
+
+  //glPushMatrix();
+
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  float r = imageWidth/2.0, l = -r, t = imageHeight/2.0, b = -t;
+  float f = 1000, n = 0.0001;
+  PhGUtils::Matrix4x4f m(1/r, 0, 0, 0,
+    0, 1/t, 0, 0,
+    0, 0, -2/(f-n), -(f+n)/(f-n),
+    0, 0, 0, 1);
+  glLoadMatrixf(m.transposed().data());
+
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+  float* rotationMatrix = this->trackBall.getMatrix();
+  glMultMatrixf(rotationMatrix);
+
+  
+  glEnable(GL_TEXTURE_2D);
+  glBindTexture(GL_TEXTURE_2D, imgTex);
+  glColor4f(1, 1, 1, 0.5);
+  glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+
+  const float zval = -999.0;
+  glBegin(GL_QUADS);
+  glVertex3f(0, 0, zval);glTexCoord2f(1.0, 1.0);
+  glVertex3f(imageWidth, 0, zval); glTexCoord2f(1.0, 0.0);
+  glVertex3f(imageWidth, imageHeight, zval); glTexCoord2f(0.0, 0.0);
+  glVertex3f(0, imageHeight, zval); glTexCoord2f(0.0, 1.0);
+  glEnd();
+  
+  glDisable(GL_TEXTURE_2D);
+  //glPopMatrix();
+}
+
+void BlendShapeViewer::bindImage(const vector<unsigned char> &img)
+{
+  pixels = img;
+  makeCurrent();
+  // Create one OpenGL texture
+  glGenTextures(1, &imgTex);
+
+  // "Bind" the newly created texture : all future texture functions will modify this texture
+  glBindTexture(GL_TEXTURE_2D, imgTex);
+
+  // Read the file, call glTexImage2D with the right parameters
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, imageWidth, imageHeight, 0, GL_BGRA, GL_UNSIGNED_BYTE, &pixels[0]);
+  
+  // Nice trilinear filtering.
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glGenerateMipmap(GL_TEXTURE_2D);
+  doneCurrent();
 }
