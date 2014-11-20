@@ -17,7 +17,7 @@ public:
   }
 
   // tracking interface
-  const vector<float>& track(const unsigned char* cimg, const unsigned char* dimg, int w, int h);
+  const vector<float>& track(const unsigned char* cimg, const unsigned char* dimg, int w, int h, const string &filename = string());
 
   float getPrepTime() const {
     return tPrep.elapsed();

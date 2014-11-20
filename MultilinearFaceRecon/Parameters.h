@@ -7,29 +7,29 @@
 
 struct DefaultParameters {
   DefaultParameters() {
-    w_prior_id = 5.0;
-    w_prior_exp = 5.0;
+    w_prior_id = 0.25;
+    w_prior_exp = 0.25;
   }
 
   // weights prior
   // average identity and neutral expression
-  arma::fvec mu_wid0, mu_wexp0;
+  arma::vec mu_wid0, mu_wexp0;
   // mean wid and mean wexp
-  arma::fvec mu_wid_orig, mu_wexp_orig;
+  arma::vec mu_wid_orig, mu_wexp_orig;
   // mean wid and mean wexp, multiplied by the inverse of sigma_?
-  arma::fvec mu_wid, mu_wexp;
+  arma::vec mu_wid, mu_wexp;
   // actually inv(sigma_wid), inv(sigma_wexp), same for below
-  arma::fmat sigma_wid, sigma_wexp;
+  arma::mat sigma_wid, sigma_wexp;
 
   // parameters to optimize
   static const int nRTparams = 6;
 
-  Tensor1<float> Wid, Wexp;
-  float RTparams[nRTparams];
-  arma::fmat R;
-  arma::fvec T;
-  PhGUtils::Matrix3x3f Rmat;
-  PhGUtils::Point3f Tvec;
+  Tensor1<double> Wid, Wexp;
+  double RTparams[nRTparams];
+  arma::mat R;
+  arma::vec T;
+  PhGUtils::Matrix3x3d Rmat;
+  PhGUtils::Point3d Tvec;
 
   struct CameraParams {
     CameraParams() :fx(-5.25), fy(5.25), cx(320.0), cy(240.0){}
@@ -64,9 +64,9 @@ struct DefaultParameters {
     mu_wid.resize(ndims);
     sigma_wid.resize(ndims, ndims);
 
-    fwid.read(reinterpret_cast<char*>(mu_wid0.memptr()), sizeof(float)*ndims);
-    fwid.read(reinterpret_cast<char*>(mu_wid.memptr()), sizeof(float)*ndims);
-    fwid.read(reinterpret_cast<char*>(sigma_wid.memptr()), sizeof(float)*ndims*ndims);
+    fwid.read(reinterpret_cast<char*>(mu_wid0.memptr()), sizeof(double)*ndims);
+    fwid.read(reinterpret_cast<char*>(mu_wid.memptr()), sizeof(double)*ndims);
+    fwid.read(reinterpret_cast<char*>(sigma_wid.memptr()), sizeof(double)*ndims*ndims);
 
     fwid.close();
 
@@ -89,9 +89,9 @@ struct DefaultParameters {
     mu_wexp.resize(ndims);
     sigma_wexp.resize(ndims, ndims);
 
-    fwexp.read(reinterpret_cast<char*>(mu_wexp0.memptr()), sizeof(float)*ndims);
-    fwexp.read(reinterpret_cast<char*>(mu_wexp.memptr()), sizeof(float)*ndims);
-    fwexp.read(reinterpret_cast<char*>(sigma_wexp.memptr()), sizeof(float)*ndims*ndims);
+    fwexp.read(reinterpret_cast<char*>(mu_wexp0.memptr()), sizeof(double)*ndims);
+    fwexp.read(reinterpret_cast<char*>(mu_wexp.memptr()), sizeof(double)*ndims);
+    fwexp.read(reinterpret_cast<char*>(sigma_wexp.memptr()), sizeof(double)*ndims*ndims);
 
     fwexp.close();
     //mu_wexp.print("mean_wexp");

@@ -12,6 +12,7 @@
 #include "FaceAligner.h"
 #include "AAMWrapper.h"
 #include "ESRWrapper.h"
+#include "PointFileTracker.h"
 
 #include "Utils/Timer.h"
 
@@ -33,6 +34,7 @@ public slots:
 	void resetAAM();
 	void reconstructionWithBatchInput();
   void reconstructionWithSingleImage();
+  void reconstructionWithSettings();
 	int reconstructionWithSingleFrame(
 		const unsigned char* colordata,
 		const unsigned char* depthdata,
@@ -72,6 +74,8 @@ private:
 	vector<PhGUtils::Point3f> lms;		// landmarks got from AAM tracking
   typedef FaceAligner<ESRWrapper> tracker_t;
   unique_ptr<tracker_t> tracker;
+  typedef FaceAligner<PointFileTracker> pointfile_tracker_t;
+  unique_ptr<pointfile_tracker_t> pointfile_tracker;
 	shared_ptr<StreamViewer> colorView, depthView;
 
 	PhGUtils::Timer tAAM, tKman, tView, tRecon;

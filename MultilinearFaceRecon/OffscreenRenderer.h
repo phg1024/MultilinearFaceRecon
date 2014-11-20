@@ -18,12 +18,13 @@ public:
     fbo = f;
   }
   void resizeBuffers(int w, int h);
-  void updateMesh(const Tensor1<float> &tmesh);
+  void updateMesh(const Tensor1<double> &tmesh);
   void updateFocalLength(float f);
   
   int getWidth() const { return fbo_width; }
   int getHeight() const { return fbo_height; }
   const PhGUtils::QuadMesh& getBaseMesh() const { return baseMesh; }
+  PhGUtils::QuadMesh& getBaseMesh() { return baseMesh; }
   const vector<float>& getDepthMap() const { return depthMap; }
   const vector<unsigned char>& getIndexMap() const { return indexMap; }
 

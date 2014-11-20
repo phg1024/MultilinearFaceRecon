@@ -28,7 +28,7 @@ GL3DCanvas(parent)
 
   targetSet = false;
 
-  loadLandmarks();
+  loadLandmarks("../Data/model/landmarks.txt");
 
   updateMeshWithReconstructor();
 
@@ -135,15 +135,16 @@ void BlendShapeViewer::setupViewingParameters() {
   //glMultMatrixf(mMv.data());
 }
 
-bool BlendShapeViewer::loadLandmarks()
+bool BlendShapeViewer::loadLandmarks(const string &filename)
 {
-  const string filename = "../Data/model/landmarks.txt";
   ifstream fin(filename, ios::in);
   if (fin.is_open()) {
     landmarks.reserve(128);
+    landmarks.clear();
     int idx;
     while (fin.good()) {
       fin >> idx;
+      cout << idx << endl;
       landmarks.push_back(idx);
     }
     PhGUtils::message("landmarks loaded.");
@@ -330,7 +331,7 @@ void BlendShapeViewer::updateMeshWithReconstructor() {
 #if 0
   const Tensor1<float>& tplt = recon.currentMesh();
 #else
-  const Tensor1<float>& tplt = recon_2d.currentMesh();
+  const Tensor1<double>& tplt = recon_2d.currentMesh();
 #endif
 
   for (int i = 0, idx = 0; i < tplt.length() / 3; i++) {

@@ -85,8 +85,8 @@ protected:
   void drawImage();
 	void drawMeshToFBO();
 
-private:
-	bool loadLandmarks();
+public:
+	bool loadLandmarks(const string &filename);
 
 private slots:
 	void updateMeshWithReconstructor();	
@@ -111,7 +111,7 @@ private:
 	MultilinearReconstructorGPU GPURecon;
 #endif
 	//MultilinearReconstructor_old recon;
-  MultilinearReconstructor<Constraint_2D, Optimizer<Constraint_2D, DefaultParameters, EnergyFunction2D>> recon_2d;
+  MultilinearReconstructor<Constraint_2D, Optimizer<Constraint_2D, DefaultParameters, EnergyFunction2D<double>>> recon_2d;
 
 	PhGUtils::Matrix4x4f mProj, mMv;
 

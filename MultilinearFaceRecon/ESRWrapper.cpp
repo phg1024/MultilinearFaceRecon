@@ -36,7 +36,7 @@ void ESRWrapper::printTimeStats() {
 }
 
 const vector<float>& ESRWrapper::track(const unsigned char* cimg,
-  const unsigned char* dimg, int w, int h) {
+  const unsigned char* dimg, int w, int h, const string &filename) {
   cout << "tracking a " << w << "x" << h << " image." << endl;
   /// realtime tracking related
   tPrep.tic();

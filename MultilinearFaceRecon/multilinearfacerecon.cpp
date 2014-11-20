@@ -22,10 +22,13 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	viewer = new BlendShapeViewer(this);
 	this->setCentralWidget((QWidget*)viewer);
 
-	//aam = new AAMWrapper;
+	// esr tracker
   tracker.reset(new tracker_t());
   tracker->setImageWidth(640);
   tracker->setImageHeight(480);
+
+  // plain point file tracker
+  pointfile_tracker.reset(new pointfile_tracker_t());
 
 	setupKinectManager();
 	lms.resize(78);
@@ -41,7 +44,9 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	connect(ui.actionBatch_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithBatchInput()));
 	connect(ui.actionBatch_Recon_ICP, SIGNAL(triggered()), this,  SLOT(reconstructionWithBatchInput_ICP()));
 	connect(ui.actionBatch_Recon_ICP_GPU, SIGNAL(triggered()), this,  SLOT(reconstructionWithBatchInput_GPU()));
-  connect(ui.actionSingle_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithSingleImage()));
+  
+  //connect(ui.actionSingle_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithSingleImage()));
+  connect(ui.actionSingle_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithSettings()));
 
 	connect(ui.actionRecord, SIGNAL(triggered()), this, SLOT(toggleKinectInput_Record()));
 
@@ -965,4 +970,95 @@ void MultilinearFaceRecon::reconstructionWithSingleImage()
   QApplication::processEvents();
   ::system("pause");
   viewer->fit2d(MultilinearReconstructor_old::FIT_POSE_AND_EXPRESSION);
+}
+
+void MultilinearFaceRecon::reconstructionWithSettings()
+{
+  /// load the setting file
+  QString filename = QFileDialog::getOpenFileName();
+  ifstream settings(filename.toStdString());
+  string imgfile, ptsfile, lmsfile;
+  settings >> imgfile >> ptsfile >> lmsfile;
+  settings.close();
+
+  cout << imgfile << "\n" << ptsfile << "\n" << lmsfile << endl;
+
+  /// set the landmark indices for the viewer
+  viewer->loadLandmarks(lmsfile);
+
+  QImage inimg(QString(imgfile.c_str()));
+  cout << "image size: " << inimg.width() << "x" << inimg.height() << endl;
+
+  // scale down the image if necessary
+  int w = inimg.width(), h = inimg.height();
+  int longside = max(w, h);
+  float factor = 640 / (float)longside;
+  inimg = inimg.scaled(w*factor, h*factor);
+  cout << "new image size: " << inimg.width() << "x" << inimg.height() << endl;
+  w = inimg.width();
+  h = inimg.height();
+
+  // resize the viewer accordingly
+  //viewer->resize(w, h);
+  colorView->resize(w, h);
+  this->resize(w, h + 53);
+  cout << "canvas size: " << viewer->width() << "x" << viewer->height() << endl;
+  // obtain the data
+  vector<unsigned char> colordata = PhGUtils::fromQImage(inimg);
+
+  colorView->bindStreamData(&colordata[0], w, h);
+  depthView->hide();
+
+  // update the tracker
+  cout << "finding feature points..." << endl;
+  pointfile_tracker->setGroudTruthFile(ptsfile);
+  vector<float> fpts = pointfile_tracker->track(NULL, NULL);
+  pointfile_tracker->printTimeStats();
+
+  // process the feature points
+  std::for_each(fpts.begin(), fpts.end(), [=](float &x){ x *= factor; });
+
+  colorView->bindLandmarks(fpts);
+  cout << "binded." << endl;
+  // reconstruction
+  if (fpts.empty()) return;
+
+  // get the 3D landmarks and feed to recon manager  
+  int npts = fpts.size() / 2;
+  cout << npts << endl;
+  lms.resize(npts);
+  for (int i = 0; i < npts; i++) {
+    int u = fpts[i];
+    int v = fpts[i + npts];
+    int idx = (v*w + u) * 4;
+    float d = 0.99995;
+
+    lms[i].x = u;
+    lms[i].y = v;
+    lms[i].z = d;
+  }
+
+  viewer->bindTargetLandmarks(lms, MultilinearReconstructor_old::TargetType_2D);
+  cout << "binded" << endl;
+  viewer->setReconstructionImageSize(w, h);
+  cout << "set." << endl;
+  viewer->bindImage(colordata);
+  cout << "binded." << endl;
+  viewer->resetReconstructor();
+  cout << "recon reset." << endl;
+  viewer->fit2d(MultilinearReconstructor_old::FIT_POSE);
+  QApplication::processEvents();
+  ::system("pause");
+  
+#if 0
+  viewer->fit2d(MultilinearReconstructor_old::FIT_POSE_AND_IDENTITY);
+  QApplication::processEvents();
+  ::system("pause");
+  viewer->fit2d(MultilinearReconstructor_old::FIT_POSE_AND_EXPRESSION);
+  QApplication::processEvents();
+  ::system("pause");
+  viewer->fit2d(MultilinearReconstructor_old::FIT_ALL);
+#else
+  viewer->fit2d(MultilinearReconstructor_old::FIT_ALL_PROGRESSIVE);
+#endif
 }

@@ -12,6 +12,7 @@ public:
   void setImageSize(int width, int height) { w = width; h = height; engine->resize(w, h); }
   void setImageWidth(int width){ w = width; }
   void setImageHeight(int height){ h = height; }
+  void setGroudTruthFile(const string& filename) { truthfile = filename; }
   int getImageWidth() const { return w; }
   int getImageHeight() const { return h; }
   const vector<float>& track(const unsigned char* cimg,
@@ -23,6 +24,7 @@ protected:
 
 private:
   int w, h;
+  string truthfile;
   unique_ptr<Engine> engine;
 };
 
@@ -56,6 +58,6 @@ void FaceAligner<Engine>::reset() {
 template <typename Engine>
 const vector<float>& FaceAligner<Engine>::track(const unsigned char* cimg,
   const unsigned char* dimg) {
-  return engine->track(cimg, dimg, w, h);
+  return engine->track(cimg, dimg, w, h, truthfile);
 }
 

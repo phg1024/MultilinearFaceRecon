@@ -40,7 +40,8 @@ public:
 		FIT_EXPRESSION,
 		FIT_POSE_AND_IDENTITY,
 		FIT_POSE_AND_EXPRESSION,
-		FIT_ALL
+		FIT_ALL,
+    FIT_ALL_PROGRESSIVE
 	};
 
 	MultilinearReconstructor_old(void);

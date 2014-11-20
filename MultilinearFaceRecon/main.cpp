@@ -7,6 +7,7 @@
 #include "Utils/stringutils.h"
 #include "Utils/Timer.h"
 
+#if 0
 #include "PoseTracker.h"
 
 void testPoseTracker() {
@@ -61,6 +62,7 @@ void testPoseTracker() {
 
 	ptracker.printStats();
 }
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -79,9 +81,11 @@ int main(int argc, char *argv[])
   int runType = 1;
 #endif
 	switch( runType ) {
+#if 0
 	case 0:
 		testPoseTracker();
 		return a.exec();
+#endif
 	default:
 		MultilinearFaceRecon w;
 		w.show();

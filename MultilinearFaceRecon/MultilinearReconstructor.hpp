@@ -44,7 +44,7 @@ public:
     tmesh = opt->fit(constraints, ops);
   }
 
-  const Tensor1<float> &currentMesh() const{
+  const Tensor1<double> &currentMesh() const{
     return tmesh;
   }
 
@@ -54,9 +54,9 @@ private:
   friend typename Optimizer;
   friend class BlendShapeViewer;
   void init() {
-    params.loadPrior("../Data/blendshape/wid.bin", "../Data/blendshape/wexp.bin");
+    params.loadPrior("../Data/blendshape/wid_double.bin", "../Data/blendshape/wexp_double.bin");
     params.init();
-    loadModel("../Data/blendshape/core.bin");
+    loadModel("../Data/blendshape/core_double.bin");
     preprocessModel();
     opt.reset(new Optimizer(model, params));
 
@@ -65,7 +65,7 @@ private:
   }
 
   void loadModel(const string &filename) {
-    model = MultilinearModel<float>(filename);    
+    model = MultilinearModel<double>(filename);    
   }
 
   void preprocessModel() {
@@ -74,9 +74,9 @@ private:
   }
 
 private:
-  MultilinearModel<float> model;
+  MultilinearModel<double> model;
   shared_ptr<Optimizer> opt;
-  Tensor1<float> tmesh;   // fitted mesh
+  Tensor1<double> tmesh;   // fitted mesh
   Parameters params;
   shared_ptr<OffscreenRenderer> renderer;
 };
@@ -87,8 +87,8 @@ void MultilinearReconstructor<Constraint, Optimizer, Parameters>::setImageSize(i
   // update the parameters for the reconstruction engine
   params.camparams.cx = w / 2.0;
   params.camparams.cy = h / 2.0;
-  params.camparams.fx = -500.0;
-  params.camparams.fy = 500.0;
+  params.camparams.fx = -1000.0;
+  params.camparams.fy = 1000.0;
 
   // update the parameters for the fbo
   renderer->resizeBuffers(w, h);

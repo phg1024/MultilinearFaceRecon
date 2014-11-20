@@ -103,7 +103,7 @@ void OffscreenRenderer::renderMeshToFBO()
 #endif
 }
 
-void OffscreenRenderer::updateMesh(const Tensor1<float> &tmesh)
+void OffscreenRenderer::updateMesh(const Tensor1<double> &tmesh)
 {
   for (int i = 0; i < tmesh.length() / 3; i++) {
     int idx = i * 3;
