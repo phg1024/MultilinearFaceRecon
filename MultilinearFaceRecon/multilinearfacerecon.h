@@ -42,6 +42,7 @@ public slots:
 		vector<float>& fpts
 	);
 
+  void reconstructionWithMultipleImages();
 	void reconstructionWithBatchInput_ICP();
 	void reconstructionWithBatchInput_GPU();
 

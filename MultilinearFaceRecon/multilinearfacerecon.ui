@@ -58,8 +58,16 @@
     <addaction name="actionBatch_Recon_ICP_GPU"/>
     <addaction name="actionRecord"/>
    </widget>
+   <widget class="QMenu" name="menuRecon">
+    <property name="title">
+     <string>Reconstruction</string>
+    </property>
+    <addaction name="actionSingle_Image"/>
+    <addaction name="actionMultiple_Images"/>
+   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuRun"/>
+   <addaction name="menuRecon"/>
   </widget>
   <widget class="QToolBar" name="mainToolBar">
    <attribute name="toolBarArea">
@@ -128,6 +136,16 @@
   <action name="actionSingle_Recon">
    <property name="text">
     <string>Single Recon</string>
+   </property>
+  </action>
+  <action name="actionSingle_Image">
+   <property name="text">
+    <string>Single Image</string>
+   </property>
+  </action>
+  <action name="actionMultiple_Images">
+   <property name="text">
+    <string>Multiple Images</string>
    </property>
   </action>
  </widget>

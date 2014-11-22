@@ -44,10 +44,11 @@ MultilinearFaceRecon::MultilinearFaceRecon(QWidget *parent)
 	connect(ui.actionBatch_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithBatchInput()));
 	connect(ui.actionBatch_Recon_ICP, SIGNAL(triggered()), this,  SLOT(reconstructionWithBatchInput_ICP()));
 	connect(ui.actionBatch_Recon_ICP_GPU, SIGNAL(triggered()), this,  SLOT(reconstructionWithBatchInput_GPU()));
+  connect(ui.actionSingle_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithSingleImage()));
   
-  //connect(ui.actionSingle_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithSingleImage()));
-  connect(ui.actionSingle_Recon, SIGNAL(triggered()), this, SLOT(reconstructionWithSettings()));
-
+  connect(ui.actionSingle_Image, SIGNAL(triggered()), this, SLOT(reconstructionWithSettings()));
+  connect(ui.actionMultiple_Images, SIGNAL(triggered()), this, SLOT(reconstructionWithMultipleImages()));
+  
 	connect(ui.actionRecord, SIGNAL(triggered()), this, SLOT(toggleKinectInput_Record()));
 
 	// timer for kinect input
@@ -1061,4 +1062,61 @@ void MultilinearFaceRecon::reconstructionWithSettings()
 #else
   viewer->fit2d(MultilinearReconstructor_old::FIT_ALL_PROGRESSIVE);
 #endif
+}
+
+void MultilinearFaceRecon::reconstructionWithMultipleImages()
+{
+  /// load the setting file
+  QString filename = QFileDialog::getOpenFileName();
+
+  /// get the path
+  QFileInfo fileinfo(filename);
+  string filepath = fileinfo.path().toStdString();
+  cout << filepath << endl;
+
+  ifstream settings(filename.toStdString());
+  string imgfile, ptsfile, lmsfile;
+  settings >> lmsfile;
+  vector<string> imgfiles, ptsfiles;
+  while (settings.good()) {
+    settings >> imgfile >> ptsfile;
+    imgfiles.push_back(filepath + "/" + imgfile);
+    ptsfiles.push_back(filepath + "/" + ptsfile);
+  }
+  settings.close();
+
+  cout << lmsfile << endl;
+  for (auto fi : imgfiles) {
+    cout << fi << endl;
+  }
+  for (auto fi : ptsfiles) {
+    cout << fi << endl;
+  }
+
+  // collect the images
+  vector<QImage> imgset;
+  for (int i = 0; i < imgfiles.size(); ++i) {
+    QImage inimg(QString(imgfile.c_str()));
+    cout << "image size: " << inimg.width() << "x" << inimg.height() << endl;
+    imgset.push_back(inimg);
+  }
+
+  // collect the set of input 2D points
+  vector<vector<float>> fptset;
+  for (int i = 0; i < ptsfiles.size(); ++i) {
+    cout << "finding feature points from " << ptsfiles[i] << endl;
+    pointfile_tracker->setGroudTruthFile(filepath + "/" + ptsfiles[i]);
+    auto fpts = pointfile_tracker->track(NULL, NULL);
+    // reconstruction
+    if (fpts.empty()){
+      cerr << "Failed to find feature points for image " << imgfiles[i] << endl;
+      return;
+    }
+
+    fptset.push_back(fpts);
+  }
+  
+  MultilinearReconstructor<MultilinearModel<double>, Constraint_2D, 
+    Optimizer<MultilinearModel<double>, Constraint_2D, MultiImageParameters, MultiImageEngergyFunction2D<double>>, MultiImageParameters> mrecon;
+
 }

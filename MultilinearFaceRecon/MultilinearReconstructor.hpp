@@ -29,7 +29,7 @@
 #include "Parameters.h"
 #include "OffscreenRenderer.h"
 
-template <class Constraint, class Optimizer, class Parameters = DefaultParameters>
+template <class Model, class Constraint, class Optimizer, class Parameters = DefaultParameters>
 class MultilinearReconstructor {
 public:
   MultilinearReconstructor() {
@@ -54,8 +54,15 @@ private:
   friend typename Optimizer;
   friend class BlendShapeViewer;
   void init() {
+    // load the default mesh
+    PhGUtils::OBJLoader loader;
+    loader.load("../Data/shape_0.obj");
+    baseMesh.initWithLoader(loader);
+
     params.loadPrior("../Data/blendshape/wid_double.bin", "../Data/blendshape/wexp_double.bin");
     params.init();
+    params.setBaseMesh(baseMesh);
+
     loadModel("../Data/blendshape/core_double.bin");
     preprocessModel();
     opt.reset(new Optimizer(model, params));
@@ -65,24 +72,27 @@ private:
   }
 
   void loadModel(const string &filename) {
-    model = MultilinearModel<double>(filename);    
+    model = Model(filename);    
   }
 
   void preprocessModel() {
     model.unfold();
-    model.applyWeights(params.Wid, params.Wexp);
+    params.updateMesh(model);
+    //model.applyWeights(params.Wid, params.Wexp);
   }
 
 private:
-  MultilinearModel<double> model;
+  Model model;
   shared_ptr<Optimizer> opt;
   Tensor1<double> tmesh;   // fitted mesh
   Parameters params;
   shared_ptr<OffscreenRenderer> renderer;
+
+  PhGUtils::QuadMesh baseMesh;
 };
 
-template <class Constraint, class Optimizer, class Parameters /*= DefaultParameters*/>
-void MultilinearReconstructor<Constraint, Optimizer, Parameters>::setImageSize(int w, int h)
+template <class Model, class Constraint, class Optimizer, class Parameters /*= DefaultParameters*/>
+void MultilinearReconstructor<Model, Constraint, Optimizer, Parameters>::setImageSize(int w, int h)
 {
   // update the parameters for the reconstruction engine
   params.camparams.cx = w / 2.0;
@@ -90,12 +100,15 @@ void MultilinearReconstructor<Constraint, Optimizer, Parameters>::setImageSize(i
   params.camparams.fx = -1000.0;
   params.camparams.fy = 1000.0;
 
+  params.imgWidth = w;
+  params.imgHeight = h;
+
   // update the parameters for the fbo
   renderer->resizeBuffers(w, h);
 }
 
-template <class Constraint, class Optimizer, class Parameters /*= DefaultParameters*/>
-void MultilinearReconstructor<Constraint, Optimizer, Parameters>::reset()
+template <class Model, class Constraint, class Optimizer, class Parameters /*= DefaultParameters*/>
+void MultilinearReconstructor<Model, Constraint, Optimizer, Parameters>::reset()
 {
   this->params.init();
   model.applyWeights(params.Wid, params.Wexp);

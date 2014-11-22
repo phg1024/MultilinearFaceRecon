@@ -7,8 +7,8 @@
 template <typename T>
 struct EnergyFunction2D {
   EnergyFunction2D():model(MultilinearModel<T>()), params(DefaultParameters()), targets_2d(vector<Constraint_2D>()){}
-  EnergyFunction2D(MultilinearModel<T> &model, DefaultParameters &params, vector<Constraint_2D> &cons) :
-    model(model), params(params), targets_2d(cons){
+  EnergyFunction2D(DefaultParameters &params) :
+    model(params.model_projected), params(params), targets_2d(params.cons){
     f_pose = &EnergyFunction2D::cost_pose;
     jac_pose = &EnergyFunction2D::jacobian_pose;
 
@@ -491,4 +491,9 @@ struct EnergyFunction2D {
   MultilinearModel<T> &model;
   DefaultParameters &params;
   const vector<Constraint_2D> &targets_2d;
+};
+
+template <typename T>
+struct MultiImageEngergyFunction2D{
+
 };

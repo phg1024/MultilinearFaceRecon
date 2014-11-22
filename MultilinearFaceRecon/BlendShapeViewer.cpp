@@ -643,7 +643,7 @@ void BlendShapeViewer::keyPressEvent(QKeyEvent *e) {
 
 void BlendShapeViewer::enableLighting()
 {
-  GLfloat light_position[] = { 10.0, 4.0, 10.0, 1.0 };
+  GLfloat light_position[] = { 10.0, 0.0, 10.0, 1.0 };
   GLfloat mat_specular[] = { 0.25, 0.25, 0.25, 1.0 };
   GLfloat mat_diffuse[] = { 0.375, 0.375, 0.375, 1.0 };
   GLfloat mat_shininess[] = { 25.0 };

@@ -53,13 +53,13 @@ void jac_func_expression(VT *p, VT *J, int m, int n, void* adata) {
   engfun->jacobian_expression(p, J, m, n, NULL);
 }
 
-template <typename Constraint, typename Parameters, typename EnergyFunction>
+template <typename Model, typename Constraint, typename Parameters, typename EnergyFunction>
 class Optimizer {
 public:
   Optimizer(){}
-  Optimizer(MultilinearModel<double> &model, Parameters &params) :model(model), params(params){
+  Optimizer(Model &model, Parameters &params) :model(model), params(params){
     // initialize the mesh tensor
-    tmesh = model.tm;
+    params.updateMesh(model);
     loadContourPoints();
   }
   ~Optimizer(){}
@@ -93,7 +93,7 @@ public:
     useInputBinding = true;
     updateProjectedTensors();
     initializeRigidTransformation();
-    engfun.reset(new EnergyFunction(model_projected, params, cons));
+    engfun.reset(new EnergyFunction(params));
   }
 
   Tensor1<double> fit(const vector<Constraint> &constraints,
@@ -128,17 +128,18 @@ public:
     }
     generateFittedMesh();
 
-    return tmesh;
+    return params.tmesh;
   }
 
 private:
   void checkAndUpdateConstraints(const vector<Constraint> &constraints) {
     bool needInitialize = false;
-    if (constraints.size() != cons.size()) {
+    if (constraints.size() != params.constraintCount()) {
       // direct update
       needInitialize = true;
     }
     else{
+#if 0
       // check every single constraint
       for (int i = 0; i < constraints.size(); ++i) {
         if (!cons[i].hasSameId(constraints[i])) {
@@ -146,16 +147,15 @@ private:
           break;
         }
       }
+#endif
     }
     if (needInitialize || useInputBinding) {
-      cons = constraints;
+      params.setConstraints(constraints);
       useInputBinding = false;
     }
     else {
       // correspondences are updated, only update the locations of the constraints
-      for (int i = 0; i < constraints.size(); ++i) {
-        cons[i].q = constraints[i].q;
-      }
+      params.updateConstraints(constraints);
     }
 
     if (needInitialize) {
@@ -164,17 +164,22 @@ private:
   }
 
   void updateProjectedTensors() {
+    cout << "updating projected tensor ..." << endl;
+#if 0
     vector<int> indices(cons.size());
     for (int i = 0; i < cons.size(); ++i) {
       indices[i] = cons[i].vidx;
     }
     model_projected = model.project(indices);
+#else
+    params.model_projected = model.project(params.getConstraintIndices());
+#endif
     //cout << model_projected.core.dim(0) << ", " << model_projected.core.dim(1) << ", " << model_projected.core.dim(2) << endl;
-    model_projected.applyWeights(params.Wid, params.Wexp);
+    params.model_projected.applyWeights(params.Wid, params.Wexp);
 
     // assume no rotation at this point
-    model_projected.tm0RT = model_projected.tm0;
-    model_projected.tm1RT = model_projected.tm1;
+    params.model_projected.tm0RT = params.model_projected.tm0;
+    params.model_projected.tm1RT = params.model_projected.tm1;
   }
 
   void initializeRigidTransformation() {
@@ -215,7 +220,7 @@ private:
     while (!converged && iters++ < MAXITERS) {
       converged = true;
 
-      converged &= fitRigidTransformation();
+      converged &= fitRigidTransformation(32);
       
       E = computeError();
       PhGUtils::info("iters", iters, "Error", E);
@@ -223,17 +228,18 @@ private:
       converged |= E < errorThreshold;
       converged |= fabs(E - E0) < errorDiffThreshold;
       E0 = E;
-
-#if 1
+      
       generateFittedMesh();
-      renderer->updateMesh(tmesh);
+      /*
+      renderer->updateMesh(params.tmesh);
       renderer->updateFocalLength(params.camparams.fy);
       renderer->render();
+      */
 
       // update correspondence for contour feature points
       updateContourPoints();
       updateProjectedTensors();
-#endif
+
       //QApplication::processEvents();
       //::system("pause");
     }
@@ -269,7 +275,7 @@ private:
       // apply the new global transformation to tm1c
       // because tm1c is required in fitting identity weights
       timerOther.tic();
-      model_projected.transformTM1(params.Rmat);
+      params.model_projected.transformTM1(params.Rmat);
       timerOther.toc();
 
       timerID.tic();
@@ -278,7 +284,7 @@ private:
 
       // compute tmc from the new tm1c or new tm0c
       timerOther.tic();
-      model_projected.updateTMWithMode1(params.Wid);
+      params.model_projected.updateTMWithMode1(params.Wid);
       timerOther.toc();
 
       /// optimize for camera parameters
@@ -295,7 +301,7 @@ private:
 
       model.updateTMWithMode1(params.Wid);
       generateFittedMesh();
-      renderer->updateMesh(tmesh);
+      renderer->updateMesh(params.tmesh);
       renderer->updateFocalLength(params.camparams.fy);
       renderer->render();
 
@@ -306,7 +312,7 @@ private:
     timerOther.tic();
     // update tm0c with the new identity weights
     // now the tensor is not updated with global rigid transformation
-    model_projected.updateTM0(params.Wid);
+    params.model_projected.updateTM0(params.Wid);
     //corec.modeProduct(Wid, 0, tm0c);
     timerOther.toc();
 
@@ -341,7 +347,7 @@ private:
       timerOther.tic();
       // apply the global transformation to tm0c
       // because tm0c is required in fitting expression weights
-      model_projected.transformTM0(params.Rmat);
+      params.model_projected.transformTM0(params.Rmat);
       timerOther.toc();
 
       timerExp.tic();
@@ -350,7 +356,7 @@ private:
 
       // compute tmc from the new tm1c or new tm0c
       timerOther.tic();
-      model_projected.updateTMWithMode0(params.Wexp);
+      params.model_projected.updateTMWithMode0(params.Wexp);
       timerOther.toc();
       
       E = computeError();
@@ -364,7 +370,7 @@ private:
       // uncomment to show the transformation process		
       model.updateTMWithMode0(params.Wexp);
       generateFittedMesh();
-      renderer->updateMesh(tmesh);
+      renderer->updateMesh(params.tmesh);
       renderer->updateFocalLength(params.camparams.fy);
       renderer->render();
 
@@ -384,7 +390,7 @@ private:
     int iters = 1;
     float E0 = 0, E = 1e10;
     bool converged = false;
-    const int MAXITERS = 32;
+    const int MAXITERS = 16;
 
     const float errorThreshold = 1e-3;
     const float errorDiffThreshold = 1e-6;
@@ -393,14 +399,14 @@ private:
 
     while (!converged && iters++ <= MAXITERS) {
 
-      params.w_prior_id = sqrt(max_prior + (min_prior - max_prior)*iters / (float)MAXITERS);
-      params.w_prior_exp = sqrt(max_prior + (min_prior - max_prior)*iters / (float)MAXITERS);
+      params.w_prior_id = pow(max_prior + (min_prior - max_prior)*iters / (float)MAXITERS, 1.0/5.0);
+      params.w_prior_exp = pow(max_prior + (min_prior - max_prior)*iters / (float)MAXITERS, 1.0/5.0);
 
       converged = true;
 
-      maxIters_rt = 30;
-      maxIters_id = min(iters * 1.25, 3 * sqrt(iters));
-      maxIters_exp = min(iters * 1.25, 3 * sqrt(iters));
+      maxIters_rt = 32;
+      maxIters_id = min(iters * 2.5, 5.0 * pow(iters, 0.25));
+      maxIters_exp = min(iters * 2.5, 5.0 * pow(iters, 0.25));
 
       timerRT.tic();
       converged &= fitRigidTransformation(maxIters_rt);
@@ -409,17 +415,19 @@ private:
       // apply the new global transformation to tm1c
       // because tm1c is required in fitting identity weights
       timerOther.tic();
-      model_projected.transformTM1(params.Rmat);
+      params.model_projected.transformTM1(params.Rmat);
       timerOther.toc();
 
       timerID.tic();
-      converged &= fitIdentityWeights(0.25, maxIters_id);
+      for (int fitidx = 0; fitidx < 20; ++fitidx) {
+        converged &= fitIdentityWeights(0.05+fitidx*0.0025, maxIters_id);
+      }
       timerID.toc();
 
       // compute tmc from the new tm1c or new tm0c
       timerOther.tic();
-      model_projected.updateTMWithMode1(params.Wid);
-      model_projected.updateTM0(params.Wid);
+      params.model_projected.updateTMWithMode1(params.Wid);
+      params.model_projected.updateTM0(params.Wid);
       timerOther.toc();
 
       timerRT.tic();
@@ -427,11 +435,13 @@ private:
       timerRT.toc();
 
       timerOther.tic();
-      model_projected.transformTM0(params.Rmat);
+      params.model_projected.transformTM0(params.Rmat);
       timerOther.toc();
 
       timerID.tic();
-      converged &= fitExpressionWeights(0.25, maxIters_exp);
+      for (int fitidx = 0; fitidx < 5; ++fitidx) {
+        converged &= fitExpressionWeights(0.15 + fitidx * 0.025, maxIters_exp);
+      }
       timerID.toc();
 
       model.updateTM1(params.Wexp);
@@ -450,7 +460,7 @@ private:
       timerOther.toc();
 
       generateFittedMesh();
-      renderer->updateMesh(tmesh);
+      renderer->updateMesh(params.tmesh);
       //renderer->updateFocalLength(params.camparams.fy);
       //renderer->render();
 
@@ -461,7 +471,7 @@ private:
     timerOther.tic();
     // update tm0c with the new identity weights
     // now the tensor is not updated with global rigid transformation
-    model_projected.updateTM0(params.Wid);
+    params.model_projected.updateTM0(params.Wid);
     //corec.modeProduct(Wid, 0, tm0c);
     timerOther.toc();
 
@@ -578,7 +588,7 @@ private:
       // apply the new global transformation to tm1c
       // because tm1c is required in fitting identity weights
       timerOther.tic();
-      model_projected.transformTM1(params.Rmat);
+      params.model_projected.transformTM1(params.Rmat);
       timerOther.toc();
 
       timerID.tic();
@@ -587,9 +597,9 @@ private:
 
       // compute tmc from the new tm1c or new tm0c
       timerOther.tic();
-      model_projected.updateTMWithMode1(params.Wid);
-      model_projected.updateTM0(params.Wid);
-      model_projected.transformTM0(params.Rmat);
+      params.model_projected.updateTMWithMode1(params.Wid);
+      params.model_projected.updateTM0(params.Wid);
+      params.model_projected.transformTM0(params.Rmat);
       timerOther.toc();
 
       timerID.tic();
@@ -625,7 +635,7 @@ private:
     timerOther.tic();
     // update tm0c with the new identity weights
     // now the tensor is not updated with global rigid transformation
-    model_projected.updateTM0(params.Wid);
+    params.model_projected.updateTM0(params.Wid);
     //corec.modeProduct(Wid, 0, tm0c);
     timerOther.toc();
 
@@ -637,37 +647,19 @@ private:
   }
 
   bool fitCameraParameters() {
-    int npts = cons.size();
-    /// since only 2D feature points are used
-    /// compute the focal length analytically
-    auto &tmc = model_projected.tm;
-    double numer = 0.0, denom = 0.0;
-    double p0 = params.camparams.cx, q0 = params.camparams.cy;
-    for (int i = 0, vidx = 0; i < npts; ++i) {
-      double px = tmc(vidx++), py = tmc(vidx++), pz = tmc(vidx++);
-      double pi = cons[i].q.x, qi = cons[i].q.y;
-      PhGUtils::transformPoint(px, py, pz, params.Rmat, params.Tvec);
-      double xz = px / pz;
-      double yz = py / pz;
-      numer += yz * (q0 - qi) - xz*(p0 - pi);
-      denom += (yz*yz + xz*xz);
-    }
-    double nf = -numer / denom;
-    //cout << nf << endl;
-    params.camparams.fx = -nf;
-    params.camparams.fy = nf;
+    params.updateCameraParameters(params.model_projected);
     return true;
   }
 
   bool fitRigidTransformation(int maxiters=128) {
     //cout << "fitting rigid transformation ..." << endl;
-    int npts = cons.size();
+    int npts = params.constraintCount();
     vector<double> meas(npts, 0.0);
     auto &RTparams = params.RTparams;
     int nparams = Parameters::nRTparams;
 
-    double opts[4] = { 1e3, 1e-12, 1e-12, 1e-12 };  // tau, eps1, eps2, eps3
-#if 1
+    double opts[4] = { 1.0, 1e-12, 1e-12, 1e-12 };  // tau, eps1, eps2, eps3
+#if 0
     int iters = dlevmar_der(cost_func_pose<EnergyFunction>, jac_func_pose<EnergyFunction>, 
       RTparams, &(meas[0]), nparams, npts, maxiters, opts, NULL, NULL, NULL, engfun.get());
 #else
@@ -701,9 +693,9 @@ private:
 
   bool fitIdentityWeights(float underrelax_factor = 1.0, int maxiters = 128) {
     params.fitExpression = false;
-    int nparams = model_projected.core.dim(0);
+    int nparams = params.model_projected.core.dim(0);
     vector<double> wid(params.Wid.rawptr(), params.Wid.rawptr() + nparams);
-    int npts = cons.size();
+    int npts = params.constraintCount();
     vector<double> meas(npts + 1, 0.0);
 #if 0
     double opts[5] = { 1e-3, 1e-9, 1e-9, 1e-9, 1e-6 };
@@ -716,7 +708,7 @@ private:
     PhGUtils::message("error vec[identity]");
     PhGUtils::printArray(&(errorvec[0]), npts + 1);
     */
-    double opts[4] = { 1e3, 1e-9, 1e-9, 1e-9 };
+    double opts[4] = { 10.0, 1e-9, 1e-9, 1e-9 };
     int iters = dlevmar_der(cost_func_identity<EnergyFunction>, jac_func_identity<EnergyFunction>, &(wid[0]), &(meas[0]), nparams, npts + 1, maxiters, opts, NULL, NULL, NULL, engfun.get());
 #endif
     //cout << "identity fitting finished in " << iters << " iterations." << endl;
@@ -739,15 +731,15 @@ private:
   bool fitExpressionWeights(float underrelax_factor=1.0, int maxiters=128) {
     params.fitExpression = true;
     // fix both rotation and identity weights, solve for expression weights
-    int nparams = model_projected.core.dim(1);
+    int nparams = params.model_projected.core.dim(1);
     vector<double> wexp(params.Wexp.rawptr(), params.Wexp.rawptr() + nparams);
-    int npts = cons.size();
+    int npts = params.constraintCount();
     vector<double> meas(npts + 1, 0.0);
 #if 0
     double opts[5] = { 1e-3, 1e-9, 1e-9, 1e-9, 1e-6 };
     int iters = dlevmar_dif(cost_func_expression<EnergyFunction>, &(wexp[0]), &(meas[0]), nparams, npts + 1, 128, opts, NULL, NULL, NULL, engfun.get());
 #else
-    double opts[4] = { 1e3, 1e-9, 1e-9, 1e-9 };
+    double opts[4] = { 1.0, 1e-9, 1e-9, 1e-9 };
     int iters = dlevmar_der(cost_func_expression<EnergyFunction>, jac_func_expression<EnergyFunction>, 
       &(wexp[0]), &(meas[0]), nparams, npts + 1, maxiters, NULL, NULL, NULL, NULL, engfun.get());
 #endif
@@ -766,46 +758,30 @@ private:
   }
 
   void generateFittedMesh() {
-    auto &tplt = model.tm;
-    int nverts = tplt.length() / 3;
-    arma::mat pt(3, nverts);
-    for (int i = 0, idx = 0; i < nverts; i++, idx += 3) {
-      pt(0, i) = tplt(idx);
-      pt(1, i) = tplt(idx + 1);
-      pt(2, i) = tplt(idx + 2);
-    }
-
-    // batch rotation processing
-    arma::mat pt_trans = params.R * pt;
-    #pragma omp parallel for
-    for (int i = 0; i < nverts; i++) {
-      int idx = i * 3;
-      tmesh(idx) = pt_trans(0, i) + params.T(0);
-      tmesh(idx + 1) = pt_trans(1, i) + params.T(1);
-      tmesh(idx + 2) = pt_trans(2, i) + params.T(2);
-    }
+    params.generateFittedMesh(model);
   }
 
 public:
-  const vector<Constraint>& getConstraints() const { return cons; }
+  const vector<Constraint>& getConstraints() const { return params.cons; }
 
 private:
-  MultilinearModel<double> &model;
+  Model &model;
   Parameters &params;
   unique_ptr<EnergyFunction> engfun;
 
-  bool useInputBinding;
-  MultilinearModel<double> model_projected;
-  vector<Constraint> cons;
-  Tensor1<double> tmesh;
   shared_ptr<OffscreenRenderer> renderer;
+  bool useInputBinding;
   vector<vector<int>> contourPoints;
   vector<int> contourVerts;
 };
 
-template <typename Constraint, typename Parameters, typename EnergyFunction>
-void Optimizer<Constraint, Parameters, EnergyFunction>::updateContourPoints()
+template <typename Model, typename Constraint, typename Parameters, typename EnergyFunction>
+void Optimizer<Model, Constraint, Parameters, EnergyFunction>::updateContourPoints()
 {
+  cout << "updating contour points..." << endl;
+#if 1
+  params.updateContourPoints(contourPoints, contourVerts);
+#else
   PhGUtils::QuadMesh &baseMesh = renderer->getBaseMesh();
   baseMesh.computeNormals(contourVerts);
 
@@ -863,10 +839,12 @@ void Optimizer<Constraint, Parameters, EnergyFunction>::updateContourPoints()
     //cout << candidates.size() << "\t" << cons[i].vidx << " -> " << closestIdx << endl;
     cons[i].vidx = closestIdx;
   }
+#endif
 }
 
-template <typename Constraint, typename Parameters, typename EnergyFunction>
-void Optimizer<Constraint, Parameters, EnergyFunction>::updateContourPoints_ICP()
+#if 0
+template <typename Model, typename Constraint, typename Parameters, typename EnergyFunction>
+void Optimizer<Model, Constraint, Parameters, EnergyFunction>::updateContourPoints_ICP()
 {
   //PhGUtils::message("Updating contour points...");
   vector<Constraint> contour;
@@ -960,3 +938,4 @@ void Optimizer<Constraint, Parameters, EnergyFunction>::updateContourPoints_ICP(
     cons[i].vidx = closestIdx;
   }
 }
+#endif
