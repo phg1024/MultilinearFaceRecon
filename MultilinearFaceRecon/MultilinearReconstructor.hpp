@@ -29,7 +29,7 @@
 #include "Parameters.h"
 #include "OffscreenRenderer.h"
 
-template <class Model, class Constraint, class Optimizer, class Parameters = DefaultParameters>
+template <class Model, class Constraint, class Optimizer, class Parameters = SingleImageParameters>
 class MultilinearReconstructor {
 public:
   MultilinearReconstructor() {
@@ -38,14 +38,32 @@ public:
   }
   ~MultilinearReconstructor(){}
 
-  void reset();
+  void reset(int n = 1);
   void setImageSize(int w, int h);
-  void fit(const vector<Constraint> &constraints, FittingOption ops = FIT_ALL) {
+  void setImageSize(const vector<PhGUtils::Point2i> &sizes);
+  void fit(const vector<Constraint> &constraints, FittingOptions ops) {
     tmesh = opt->fit(constraints, ops);
+  }
+    
+  vector<Tensor1<double>> fit(const vector<vector<Constraint>> &constraints, FittingOptions ops)
+  {
+    return opt->fit(constraints, ops);
   }
 
   const Tensor1<double> &currentMesh() const{
     return tmesh;
+  }
+
+  PhGUtils::QuadMesh& getMesh(int idx) {
+    return params.getMesh(idx);
+  }
+
+  const float getFocalLength(int idx) const {
+    return params.getFocalLength(idx);
+  }
+
+  const void getTranslation(int idx, float &x, float &y, float &z) {
+    params.getTranslation(idx, x, y, z);
   }
 
   const vector<Constraint>& getConstraints() const { return opt->getConstraints(); }
@@ -60,8 +78,8 @@ private:
     baseMesh.initWithLoader(loader);
 
     params.loadPrior("../Data/blendshape/wid_double.bin", "../Data/blendshape/wexp_double.bin");
-    params.init();
-    params.setBaseMesh(baseMesh);
+    params.init(0);
+    params.setBaseMesh("../Data/shape_0.obj");
 
     loadModel("../Data/blendshape/core_double.bin");
     preprocessModel();
@@ -78,7 +96,7 @@ private:
   void preprocessModel() {
     model.unfold();
     params.updateMesh(model);
-    //model.applyWeights(params.Wid, params.Wexp);
+    model.applyWeights(Tensor1<double>::fromVec(params.priorParams.mu_wid0), Tensor1<double>::fromVec(params.priorParams.mu_wexp0));
   }
 
 private:
@@ -91,26 +109,26 @@ private:
   PhGUtils::QuadMesh baseMesh;
 };
 
+template <class Model, class Constraint, class Optimizer, class Parameters /*= SingleImageParameters*/>
+void MultilinearReconstructor<Model, Constraint, Optimizer, Parameters>::setImageSize(const vector<PhGUtils::Point2i> &sizes)
+{
+  params.setImageSize(sizes);
+}
+
 template <class Model, class Constraint, class Optimizer, class Parameters /*= DefaultParameters*/>
 void MultilinearReconstructor<Model, Constraint, Optimizer, Parameters>::setImageSize(int w, int h)
 {
   // update the parameters for the reconstruction engine
-  params.camparams.cx = w / 2.0;
-  params.camparams.cy = h / 2.0;
-  params.camparams.fx = -1000.0;
-  params.camparams.fy = 1000.0;
-
-  params.imgWidth = w;
-  params.imgHeight = h;
+  params.setImageSize(w, h);
 
   // update the parameters for the fbo
   renderer->resizeBuffers(w, h);
 }
 
 template <class Model, class Constraint, class Optimizer, class Parameters /*= DefaultParameters*/>
-void MultilinearReconstructor<Model, Constraint, Optimizer, Parameters>::reset()
+void MultilinearReconstructor<Model, Constraint, Optimizer, Parameters>::reset(int n)
 {
-  this->params.init();
-  model.applyWeights(params.Wid, params.Wexp);
+  params.init(n);  
+  params.setBaseMesh("../Data/shape_0.obj");
   opt->init();
 }

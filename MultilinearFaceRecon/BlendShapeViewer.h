@@ -39,6 +39,11 @@ public:
 		);
 #endif
 
+  template <typename T>
+  void bindReconstructionResult(T params) {
+
+  }
+
 	enum TransferDirection{
 		CPUToGPU,
 		GPUToCPU
@@ -92,7 +97,11 @@ private slots:
 	void updateMeshWithReconstructor();	
 #if USE_GPU_RECON
 	void updateMeshWithGPUReconstructor();	
+
+  void renderReconstructionResult();
 #endif
+
+  void renderReconstructionResult();
 
 private:
 	bool targetSet;
@@ -112,11 +121,13 @@ private:
 #endif
 	//MultilinearReconstructor_old recon;
   MultilinearReconstructor<MultilinearModel<double>, Constraint_2D, 
-    Optimizer<MultilinearModel<double>, Constraint_2D, DefaultParameters, EnergyFunction2D<double>>> recon_2d;
+    Optimizer<MultilinearModel<double>, Constraint_2D, SingleImageParameters, EnergyFunction2D<double>>> recon_2d;
 
 	PhGUtils::Matrix4x4f mProj, mMv;
 
 	bool showLandmarks;
+
+  bool visualizeResult;
 
 private:
 	// used for synthesis step

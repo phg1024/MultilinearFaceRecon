@@ -1086,6 +1086,25 @@ void MultilinearFaceRecon::reconstructionWithMultipleImages()
   settings.close();
 
   cout << lmsfile << endl;
+  ifstream fin(lmsfile, ios::in);
+  vector<int> initLandmarks;
+  if (fin.is_open()) {
+    initLandmarks.reserve(128);
+    initLandmarks.clear();
+    int idx;
+    while (fin.good()) {
+      fin >> idx;
+      cout << idx << endl;
+      initLandmarks.push_back(idx);
+    }
+    PhGUtils::message("landmarks loaded.");
+    cout << "total landmarks = " << initLandmarks.size() << endl;
+  }
+  else {
+    cerr << "Failed to open landmark file. Abort." << endl;
+    return;
+  }
+
   for (auto fi : imgfiles) {
     cout << fi << endl;
   }
@@ -1095,28 +1114,82 @@ void MultilinearFaceRecon::reconstructionWithMultipleImages()
 
   // collect the images
   vector<QImage> imgset;
+  vector<PhGUtils::Point2i> imgsizes;
+  vector<double> scales;
   for (int i = 0; i < imgfiles.size(); ++i) {
-    QImage inimg(QString(imgfile.c_str()));
+    QImage inimg(QString(imgfiles[i].c_str()));
     cout << "image size: " << inimg.width() << "x" << inimg.height() << endl;
+
+    // resize the image
+    int w = inimg.width(), h = inimg.height();
+    int longside = max(w, h);
+    float factor = 640 / (float)longside;
+    inimg = inimg.scaled(w*factor, h*factor);
+
     imgset.push_back(inimg);
+    imgsizes.push_back(PhGUtils::Point2i(inimg.width(), inimg.height()));
+    scales.push_back(factor);
   }
 
   // collect the set of input 2D points
-  vector<vector<float>> fptset;
+  vector<vector<float>> infpts;
+  vector<vector<Constraint_2D>> fptset;
   for (int i = 0; i < ptsfiles.size(); ++i) {
     cout << "finding feature points from " << ptsfiles[i] << endl;
-    pointfile_tracker->setGroudTruthFile(filepath + "/" + ptsfiles[i]);
+    pointfile_tracker->setGroudTruthFile(ptsfiles[i]);
     auto fpts = pointfile_tracker->track(NULL, NULL);
+    infpts.push_back(fpts);
     // reconstruction
     if (fpts.empty()){
       cerr << "Failed to find feature points for image " << imgfiles[i] << endl;
       return;
     }
-
-    fptset.push_back(fpts);
+    else {
+      int npts = fpts.size() / 2;
+      vector<Constraint_2D> cons(npts);
+      for (int j = 0; j < npts; ++j) {
+        int u = fpts[j];
+        int v = fpts[j + npts];       
+        cons[j].q.x = u * scales[i];
+        cons[j].q.y = v * scales[i];
+        cons[j].weight = 1.0;
+        cons[j].vidx = initLandmarks[j];
+      }
+      fptset.push_back(cons);
+    }
   }
   
+  cout << "data loaded." << endl;
+
+#if 1
   MultilinearReconstructor<MultilinearModel<double>, Constraint_2D, 
     Optimizer<MultilinearModel<double>, Constraint_2D, MultiImageParameters, MultiImageEngergyFunction2D<double>>, MultiImageParameters> mrecon;
 
+  mrecon.reset(imgfiles.size());
+  mrecon.setImageSize(imgsizes);
+  mrecon.fit(fptset, FIT_POSE);
+  auto results = mrecon.fit(fptset, FittingOptions(FIT_ALL_PROGRESSIVE, 4 * imgfile.size()));
+
+  // write results to files
+  viewers.clear();
+  for (int i = 0; i < results.size(); ++i) {
+    stringstream ss;
+    ss << i << ".mesh";
+    results[i].write(ss.str());
+
+    viewers.push_back(shared_ptr<MeshViewer>(new MeshViewer));
+    auto &vr = viewers.back();
+    vr->setWindowTitle(ss.str().c_str());
+    cout << vr << endl;
+    vr->show();
+    vr->bindImage(imgset[i]);
+    vr->bindLandmarks(infpts[i]);
+    vr->setFocalLength(mrecon.getFocalLength(i));
+    float x, y, z;
+    mrecon.getTranslation(i, x, y, z);
+    vr->setTranslation(x, y, z);
+    vr->bindMesh(mrecon.getMesh(i));
+    vr->show();
+  }
+#endif
 }

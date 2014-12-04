@@ -7,6 +7,7 @@
 #include <QTimer>
 #include "Kinect/KinectManager.h"
 #include "Kinect/StreamViewer.h"
+#include "MeshViewer.h"
 
 #include "BlendShapeViewer.h"
 #include "FaceAligner.h"
@@ -65,6 +66,7 @@ private:
 private:
 	QTimer timer, timer2d, timerICP, timerRecord;
 	BlendShapeViewer* viewer;
+  vector<shared_ptr<MeshViewer>> viewers;
 
 	vector<pair<vector<unsigned char>, vector<unsigned char>>> recordData;
 

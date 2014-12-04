@@ -13,6 +13,8 @@ GL3DCanvas(parent)
 
   showLandmarks = true;
 
+  visualizeResult = false;
+
   // load a dummy mesh
   PhGUtils::OBJLoader loader;
   loader.load("../Data/shape_0.obj");
@@ -24,7 +26,7 @@ GL3DCanvas(parent)
   GPURecon.setBaseMesh(mesh);
 #endif
 
-  recon_2d.params.w_prior_exp = 0.5;
+  recon_2d.params.priorParams.w_prior_id = 0.5;
 
   targetSet = false;
 
@@ -67,48 +69,57 @@ void BlendShapeViewer::paintGL() {
   glEnable(GL_CULL_FACE);
   glCullFace(GL_BACK);
 
+  if( visualizeResult ) {
+    renderReconstructionResult();
+  }
+  else {
 #if 0
-  glPushMatrix();
-  drawImage();
-  glPopMatrix();
+    glPushMatrix();
+    drawImage();
+    glPopMatrix();
 #endif
 
-  glPushMatrix();
-  // setup the viewing matrices
-  setupViewingParameters();
+    glPushMatrix();
+    // setup the viewing matrices
+    setupViewingParameters();
 
-  enableLighting();
+    enableLighting();
 
-  glPushMatrix();
+    glPushMatrix();
 
-  float tx = recon_2d.params.RTparams[3], ty = recon_2d.params.RTparams[4], tz = recon_2d.params.RTparams[5];
-  float* rotationMatrix = this->trackBall.getMatrix();
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  glTranslatef(tx, ty, tz);
-  glMultMatrixf(rotationMatrix);
-  glTranslatef(-tx, -ty, -tz);
+    float tx = recon_2d.params.modelParams.RTparams[3], ty = recon_2d.params.modelParams.RTparams[4], tz = recon_2d.params.modelParams.RTparams[5];
+    float* rotationMatrix = this->trackBall.getMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glTranslatef(tx, ty, tz);
+    glMultMatrixf(rotationMatrix);
+    glTranslatef(-tx, -ty, -tz);
 
-  glColor4f(0, 0.5, 1.0, 1.0);
-  mesh.draw();
+    glColor4f(0, 0.5, 1.0, 1.0);
+    mesh.draw();
 
-  glPopMatrix();
+    glPopMatrix();
 
-  //mesh.drawFrame();
-  //drawGenreatedMesh();
+    //mesh.drawFrame();
+    //drawGenreatedMesh();
 
-  //glColor4f(0, 0, 0, 0.25);
-  //targetMesh.drawFrame();
+    //glColor4f(0, 0, 0, 0.25);
+    //targetMesh.drawFrame();
 
-  if (showLandmarks)
-    drawLandmarks();
+    if (showLandmarks)
+      drawLandmarks();
 
-  disableLighting();
+    disableLighting();
 
-  //drawMeshToFBO();
+    //drawMeshToFBO();
 
-  glPopMatrix();
-  glDisable(GL_CULL_FACE);
+    glPopMatrix();
+    glDisable(GL_CULL_FACE);
+  }
+}
+
+void BlendShapeViewer::renderReconstructionResult() {
+
 }
 
 void BlendShapeViewer::setupViewingParameters() {
@@ -116,7 +127,7 @@ void BlendShapeViewer::setupViewingParameters() {
 
   /// obtain the projection matrix from recon
   //double f = recon.cameraFocalLength();
-  double f = recon_2d.params.camparams.fy;
+  double f = recon_2d.params.modelParams.camparams.fy;
   double fx = imageWidth / 2.0;
   double fy = imageHeight / 2.0;
   mProj = PhGUtils::Matrix4x4f(f / fx, 0, 0, 0,
@@ -194,7 +205,7 @@ void BlendShapeViewer::drawGenreatedMesh()
 void BlendShapeViewer::drawLandmarks() {
   glPushMatrix();
 
-  float tx = recon_2d.params.RTparams[3], ty = recon_2d.params.RTparams[4], tz = recon_2d.params.RTparams[5];
+  float tx = recon_2d.params.modelParams.RTparams[3], ty = recon_2d.params.modelParams.RTparams[4], tz = recon_2d.params.modelParams.RTparams[5];
   float* rotationMatrix = this->trackBall.getMatrix();
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
@@ -469,7 +480,7 @@ void BlendShapeViewer::fit2d(MultilinearReconstructor_old::FittingOption ops /*=
   recon.fit2d(ops);
 #else
   //cout << "fitting using the new engine..." << endl;
-  recon_2d.fit(constraints, FittingOption(ops));
+  recon_2d.fit(constraints, FittingOptions(FittingType(ops)));
 #endif
   //t.toc("reconstruction");
 
@@ -644,7 +655,7 @@ void BlendShapeViewer::keyPressEvent(QKeyEvent *e) {
 void BlendShapeViewer::enableLighting()
 {
   GLfloat light_position[] = { 10.0, 0.0, 10.0, 1.0 };
-  GLfloat mat_specular[] = { 0.25, 0.25, 0.25, 1.0 };
+  GLfloat mat_specular[] = { 0.025, 0.025, 0.025, 1.0 };
   GLfloat mat_diffuse[] = { 0.375, 0.375, 0.375, 1.0 };
   GLfloat mat_shininess[] = { 25.0 };
   GLfloat light_ambient[] = { 0.05, 0.05, 0.05, 1.0 };
